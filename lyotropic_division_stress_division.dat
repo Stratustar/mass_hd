@@ -1,0 +1,65 @@
+#
+# This is an example runcard for the dual-lyotropic model.
+#
+
+# model and initial configuration
+model    = lyotropic-with-division-stress
+config   = half
+nsteps   = 200000
+nstart   = 0000
+ninfo    = 50
+LX       = 200
+LY       = 200
+bc       = 0
+
+# model parameters... As seen in 'Defect Mediated Morphologies..'
+# ...the mobility in the Beris-Edwards equation (for Q-Tensor)
+GammaQ   = 0.3
+# ...the mobility in the Cahn-Hilliard equation (for phi)
+GammaP   = 0.05
+# ...strength of activity
+zeta     = 0.02
+# ...strength of isotropic activity
+zetaI     = 0
+# ...friction
+friction = 0.0
+# ...relaxation time (viscosity) in nematic phase
+tauNem   = 1.0
+# ...relaxation time (viscosity) in isotropic phase
+tauIso   = 1.0
+# ...binary bulk coefficient
+AA       = 0.03
+# ...coupling coefficient between phi and Q
+CC       = 0.002
+# ...Q Tensor elastic coefficient
+LL       = 0.002
+# ...phi gradient coefficient
+KK = 0.06
+# ...fluid density
+rho      = 40
+# ...aligning parameter in the Beris-Edwards eqn
+xi = 0.3
+
+# initial configuration options...
+# ...height of the nematic stripe (take this as the system size)
+level    = 200
+# ...concentration of binary parameter in nematic region
+conc     = 0.5
+
+# ...starting noise
+noise    = 0.05
+
+# Division option
+# no cell death
+beta = 0
+
+#division options
+#The time before a new cell division event occurs.
+division-rate = 150
+#The time how long a cell division event occurs.
+division-time = 100
+#division strength
+alpha = 7e-4
+#Size of division
+division-radius = 3
+
