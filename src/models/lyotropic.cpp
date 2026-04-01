@@ -25,6 +25,9 @@ void Lyotropic::Initialize()
   // initialize variables
   angle = angle_deg*M_PI/180.;
 
+  if(phiJ<=0)
+    throw error_msg("phiJ must be > 0.");
+
   // allocate memory
   ff.SetSize(LX, LY, Type);
   fn.SetSize(LX, LY, Type);
@@ -66,6 +69,11 @@ void Lyotropic::Initialize()
                     ", please set nsubsteps=1.");
 }
 
+double Lyotropic::GetCrowdingPressure(double p) const
+{
+  return exp(p/phiJ);
+}
+
 void Lyotropic::ConfigureAtNode(unsigned k)
 {
   double nematicOrder = 0;
@@ -77,7 +85,7 @@ void Lyotropic::ConfigureAtNode(unsigned k)
   ytemp=y;
   if(init_config=="circle")
   {
-    if(pow(diff(x, LX/2), 2) + pow(diff(y, LY/2), 2) <= radius*radius&&pow(diff(x, LX/2), 2) + pow(diff(y, LY/2), 2) >= ((45)*(45)))
+    if(pow(diff(x, LX/2), 2) + pow(diff(y, LY/2), 2) <= radius*radius&&pow(diff(x, LX/2), 2) + pow(diff(y, LY/2), 2) )
       nematicOrder = 1;
   }
   else if(init_config=="square")
@@ -210,6 +218,7 @@ void Lyotropic::UpdateQuantitiesAtNode(unsigned k)
   const double sigmaB = .5*AA*p*p*(1-p)*(1-p) 
   //const double sigmaB = .5*AA*(conc-p)*(conc-p)
     + .5*CC*term*term - mu*p;
+  const double Pcrowd = GetCrowdingPressure(p);
   const double sigmaF = 2*xi*( (Qxx*Qxx-1)*Hxx + Qxx*Qyx*Hyx )
     - zeta*Qxx*(1-p) + .5*KK*(dyPhi*dyPhi-dxPhi*dxPhi)
     //- active_termxx + .5*KK*(dyPhi*dyPhi-dxPhi*dxPhi)
@@ -234,11 +243,11 @@ void Lyotropic::UpdateQuantitiesAtNode(unsigned k)
   dxQQyx[k]  =  dxQyx;
   dyQQxx[k]  =  dyQxx;
   dyQQyx[k]  =  dyQyx;
-  sigmaXX[k] =  sigmaF + sigmaB + zetaI * (conc-p);// + p;
-  sigmaYY[k] = -sigmaF + sigmaB + zetaI * (conc-p);// + p;
+  sigmaXX[k] =  sigmaF + sigmaB + zetaI * (conc-p) + Pcrowd;// + p;
+  sigmaYY[k] = -sigmaF + sigmaB + zetaI * (conc-p) + Pcrowd;// + p;
   sigmaXY[k] =  sigmaS + sigmaA;
   sigmaYX[k] =  sigmaS - sigmaA;
-  sigma_bulk[k] = sigmaB + zetaI * (conc-p);
+  sigma_bulk[k] = sigmaB + zetaI * (conc-p) + Pcrowd;
   sigma_elastic_xx[k] = sigmaF - .5*KK*(dyPhi*dyPhi-dxPhi*dxPhi) + zeta*Qxx*(1-p);
   sigma_elastic_yx[k] = sigmaS + KK*dxPhi*dyPhi + zeta*Qxx*(1-p);
   sigma_phase_field_xx[k] = .5*KK*(dyPhi*dyPhi-dxPhi*dxPhi);
@@ -579,7 +588,9 @@ option_list Lyotropic::GetOptions()
     ("zeta", opt::value<double>(&zeta),
      "activity parameter")
     ("zetaI", opt::value<double>(&zetaI),
-     "activity isotropic parameter")     
+     "activity isotropic parameter")
+    ("phiJ", opt::value<double>(&phiJ)->default_value(1.0),
+     "crowding-pressure scale for Pcrowd = exp(phi/phiJ)")
     ("npc", opt::value<unsigned>(&npc),
      "number of correction steps for the predictor-corrector method");
 

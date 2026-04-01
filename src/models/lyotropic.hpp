@@ -33,7 +33,7 @@ protected:
   /** Fluid density */
   double rho = 40.;
   /** Fluid parameters */
-  double GammaP, GammaQ, xi, tauNem, tauIso, friction, LL, KK, AA, CC, zeta, zetaI;
+  double GammaP, GammaQ, xi, tauNem, tauIso, friction, LL, KK, AA, CC, zeta, zetaI, phiJ = 1.;
   /** Intial configuration */
   std::string init_config;
   /** Number of correction steps in the predictor/corrector scheme */
@@ -68,6 +68,8 @@ protected:
   virtual void BoundaryConditionsFields2();
   /** Move the LB particles */
   void Move();
+  /** Isotropic crowding pressure added on top of the bulk stress */
+  double GetCrowdingPressure(double) const;
 
 public:
   Lyotropic() = default;
@@ -106,6 +108,7 @@ public:
        & auto_name(xi)
        & auto_name(zeta)
        & auto_name(zetaI)
+       & auto_name(phiJ)
        & auto_name(tauNem)
        & auto_name(tauIso)
        & auto_name(friction)

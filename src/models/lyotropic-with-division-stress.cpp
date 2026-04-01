@@ -29,16 +29,18 @@ void LyotropicWithDivisionStress::Initialize()
   // check if phi should be conserved: yes if either strength/rate=0 for division and death, else no
   // (time=0 applies masks for 1 step, radius=0 applies masks for 1 lattice point, so phi is not conserved)
   conserve_phi = ( (alpha==0 || division_rate==0) && ( beta==0 || death_rate==0 ) );
+
+  if(P_critical<=0)
+    throw error_msg("P_critical must be > 0.");
 }
   // Here we find the maximum position of J2, and use that as our cell division point. 
 void LyotropicWithDivisionStress::SetDivision()
 {
   if(not division_rate_count--)
   {
+    const double pressure_threshold = P_critical;
     //Here we reset the counter
     division_rate_count = division_rate;
-    //Set how long the division is going to take
-    division_count.push_back(division_time);
 
     const unsigned margin = 10;
     const unsigned min_x = margin;
@@ -58,14 +60,19 @@ void LyotropicWithDivisionStress::SetDivision()
       const unsigned xk = GetXPosition(k);
       const unsigned yk = GetYPosition(k);
       
-      if (J2t > J2 && xk >= min_x && xk <= max_x && yk >= min_y && yk <= max_y)
+      const double pressure = GetCrowdingPressure(phi[k]);
+      if (pressure < pressure_threshold && J2t > J2 && xk >= min_x && xk <= max_x && yk >= min_y && yk <= max_y)
       {
         J2=J2t;
         kt=k;
       }
     }
-    //Division happens at point of largest stress.
-    centers.push_back(array<unsigned,2>{GetXPosition(kt), GetYPosition(kt)});
+    //Division happens at point of largest stress if the local crowding pressure permits it.
+    if(GetCrowdingPressure(phi[kt]) < pressure_threshold)
+    {
+      division_count.push_back(division_time);
+      centers.push_back(array<unsigned,2>{GetXPosition(kt), GetYPosition(kt)});
+    }
     
   }
 
@@ -152,7 +159,8 @@ void LyotropicWithDivisionStress::UpdateFields(bool first)
   #pragma omp parallel for num_threads(nthreads) if(nthreads)
   for(unsigned k=0; k<DomainSize; ++k)
   {
-    const double division_m = ( 1. ? division_mask[k] : 0. );
+    const double pressure = GetCrowdingPressure(phi[k]);
+    const double division_m = pressure < P_critical ? ( 1. ? division_mask[k] : 0. ) : 0.;
     const double death_m = ( 1. ? death_mask[k] : 0. );
 
     // normal update
@@ -180,7 +188,7 @@ option_list LyotropicWithDivisionStress::GetOptions()
     ("death-rate", opt::value<double>(&death_rate), "death rate")
     ("death-time", opt::value<double>(&death_time), "death life time")
     ("death-radius", opt::value<double>(&death_radius), "death radius")
-    ("phi-critical", opt::value<double>(&phi_critical), "phi critical");
+    ("P_critical", opt::value<double>(&P_critical)->default_value(1.0), "critical crowding pressure above which division stops");
 
   return options;
 }

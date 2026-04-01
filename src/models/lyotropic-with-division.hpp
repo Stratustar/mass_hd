@@ -30,8 +30,8 @@ protected:
   double death_time;
   /** Radius of a patch created by a death event */
   double death_radius;
-  /** Critical phi at which division stops */
-  double phi_critical;
+  /** Critical crowding pressure at which division stops */
+  double P_critical;
 
   /** Time counters for shuffeling the patches */
   unsigned division_count, death_count;
@@ -69,7 +69,7 @@ public:
        & auto_name(death_rate)
        & auto_name(death_time)
        & auto_name(death_radius)
-       & auto_name(phi_critical);
+       & auto_name(P_critical);
   }
 
   /** Serialization of the current frame (time snapshot) */

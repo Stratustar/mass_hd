@@ -29,6 +29,9 @@ void LyotropicWithDivision::Initialize()
   // check if phi should be conserved: yes if either strength/rate=0 for division and death, else no
   // (time=0 applies masks for 1 step, radius=0 applies masks for 1 lattice point, so phi is not conserved)
   conserve_phi = ( (alpha==0 || division_rate==0) && ( beta==0 || death_rate==0 ) );
+
+  if(P_critical<=0)
+    throw error_msg("P_critical must be > 0.");
 }
 
 void LyotropicWithDivision::SetMasks()
@@ -44,7 +47,8 @@ void LyotropicWithDivision::SetMasks()
     {
       if(phi[k]>=.5)
       {
-        const double adjusted_division_rate = division_rate * phi[k] * (1 - phi[k]/phi_critical);
+        const double pressure = GetCrowdingPressure(phi[k]);
+        const double adjusted_division_rate = pressure < P_critical ? division_rate * phi[k] : 0.;
         if(random_real()<adjusted_division_rate)
           centers.emplace_back(array<unsigned,2>{GetXPosition(k), GetYPosition(k)});
       }
@@ -113,7 +117,8 @@ void LyotropicWithDivision::UpdateFields(bool first)
   #pragma omp parallel for num_threads(nthreads) if(nthreads)
   for(unsigned k=0; k<DomainSize; ++k)
   {
-    const double division_m = ( 1. ? division_mask[k] : 0. );
+    const double pressure = GetCrowdingPressure(phi[k]);
+    const double division_m = pressure < P_critical ? ( 1. ? division_mask[k] : 0. ) : 0.;
     const double death_m = ( 1. ? death_mask[k] : 0. );
 
     // normal update
@@ -141,7 +146,7 @@ option_list LyotropicWithDivision::GetOptions()
     ("death-rate", opt::value<double>(&death_rate), "death rate")
     ("death-time", opt::value<double>(&death_time), "death life time")
     ("death-radius", opt::value<double>(&death_radius), "death radius")
-    ("phi-critical", opt::value<double>(&phi_critical), "phi critical");
+    ("P_critical", opt::value<double>(&P_critical)->default_value(1.0), "critical crowding pressure above which division stops");
 
   return options;
 }
