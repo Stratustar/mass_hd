@@ -31,7 +31,9 @@ MODELS = \
          build/models/polar.o \
          build/models/lyotropic-with-division.o \
          build/models/lyotropic-free-boundary-with-division.o \
-         build/models/nematic-free-boundary.o
+         build/models/nematic-free-boundary.o \
+         build/models/nematic-compressible-division.o \
+         build/models/nematic-compressible-division-softpressure.o
 #
 
 OUT_DIR = build/ build/models/

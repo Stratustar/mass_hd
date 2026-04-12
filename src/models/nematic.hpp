@@ -25,8 +25,8 @@ protected:
   /** Stress tensor */
   ScalarField sigmaXX, sigmaYY, sigmaYX, sigmaXY;
 
-  /** Initial angle and noise */
-  double angle_deg, angle, noise;
+  /** Initial configuration parameters */
+  double level = 0., angle_deg = 0., angle = 0., noise = 0., radius = 0.;
   /** Fluid density */
   double rho = 40.;
   /** Fluid parameters */
@@ -86,8 +86,10 @@ public:
   void serialize_params(Archive& ar)
   {
     ar
+       & auto_name(level)
        & auto_name(angle)
        & auto_name(noise)
+       & auto_name(radius)
        & auto_name(rho)
        & auto_name(Gamma)
        & auto_name(xi)
@@ -95,7 +97,8 @@ public:
        & auto_name(tau)
        & auto_name(friction)
        & auto_name(LL)
-       & auto_name(CC);
+       & auto_name(CC)
+       & auto_name(init_config);
   }
 
   /** Serialization of the current frame (time snapshot) */

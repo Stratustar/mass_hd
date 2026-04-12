@@ -54,11 +54,30 @@ void Nematic::Initialize()
 
 void Nematic::ConfigureAtNode(unsigned k)
 {
-  // add noise (for meta-stable configs)
-  // theta is the angle of the director
+  double nematicOrder = 1.;
+  const unsigned x = GetXPosition(k);
+  const unsigned y = GetYPosition(k);
+
+  if(init_config.empty() || init_config=="uniform")
+  {
+    nematicOrder = 1.;
+  }
+  else if(init_config=="circle")
+  {
+    nematicOrder = (pow(diff(x, LX/2), 2) + pow(diff(y, LY/2), 2)
+                   <= radius*radius) ? 1. : 0.;
+  }
+  else if(init_config=="half")
+  {
+    nematicOrder = (y < level) ? 1. : 0.;
+  }
+  else
+    throw error_msg("error: initial configuration '", init_config, "' unknown.");
+
+  // theta is the angle of the director inside the nematic region
   const double theta = angle + noise*M_PI*(random_real()-.5);
-  QQxx[k] = cos(2*theta);
-  QQyx[k] = sin(2*theta);
+  QQxx[k] = nematicOrder*cos(2*theta);
+  QQyx[k] = nematicOrder*sin(2*theta);
   // equilibrium dist
   ux[k] = uy[k] = 0;
   n[k]  = rho;
@@ -84,8 +103,12 @@ void Nematic::UpdateQuantitiesAtNode(unsigned k)
 
   // compute velocities
   const double nn = f[0] + f[1] + f[2] + f[3] + f[4] + f[5] + f[6] + f[7] + f[8];
-  const double vx = (f[1] - f[2] + f[5] - f[6] - f[7] + f[8])/nn;
-  const double vy = (f[3] - f[4] + f[5] - f[6] + f[7] - f[8])/nn;
+  const double vx = nn>1e-12
+    ? (f[1] - f[2] + f[5] - f[6] - f[7] + f[8])/nn
+    : 0.;
+  const double vy = nn>1e-12
+    ? (f[3] - f[4] + f[5] - f[6] + f[7] - f[8])/nn
+    : 0.;
 
   // compute derivatives etc.
   const double del2Qxx  = laplacian(QQxx,  d, sD);
@@ -436,8 +459,14 @@ option_list Nematic::GetOptions()
 
   opt::options_description config_options("Initial configuration options");
   config_options.add_options()
+    ("config", opt::value<string>(&init_config)->default_value("uniform"),
+     "initial configuration: uniform, circle, half")
+    ("level", opt::value<double>(&level),
+     "height of the nematic region for config=half")
     ("angle", opt::value<double>(&angle_deg),
      "initial angle to x direction (in degrees)")
+    ("radius", opt::value<double>(&radius),
+     "radius of the initial circle for config=circle")
     ("noise", opt::value<double>(&noise),
      "size of initial variations");
 

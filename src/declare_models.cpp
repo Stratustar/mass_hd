@@ -15,6 +15,8 @@
 #include "models/phases.hpp"
 #include "models/lyotropic-free-boundary-with-division.hpp"
 #include "models/nematic-free-boundary.hpp"
+#include "models/nematic-compressible-division.hpp"
+#include "models/nematic-compressible-division-softpressure.hpp"
 
 void DeclareModels()
 {
@@ -89,6 +91,18 @@ void DeclareModels()
      "The nematic model with more complicated boundary conditions. In "
      "principle the implementation allows for arbitrary boundary conditions. "
      "In principle."
+     );
+
+   declare_model<NematicCompressibleDivision>(
+     "nematic_compressible_division",
+     "Compressible wet nematic model with patch-based proliferation and an "
+     "additional density-dependent pressure term."
+     );
+
+   declare_model<NematicCompressibleDivisionSoftPressure>(
+     "nematic_compressible_division_softpressure",
+     "Compressible wet nematic model with patch-based proliferation and a "
+     "softer rational density-dependent pressure term."
      );
    // add your models here....
 }
