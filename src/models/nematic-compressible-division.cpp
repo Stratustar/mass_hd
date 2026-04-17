@@ -127,30 +127,40 @@ void NematicCompressibleDivision::SetMasks()
         centers.push_back({ GetXPosition(k), GetYPosition(k) });
     }
 
-    for(unsigned k=0; k<DomainSize; ++k)
+    const int radius = static_cast<int>(ceil(division_radius));
+    const int radius_sq = static_cast<int>(ceil(division_radius*division_radius));
+
+    for(const auto& c : centers)
     {
-      const unsigned xk = GetXPosition(k);
-      const unsigned yk = GetYPosition(k);
-
-      for(const auto& c : centers)
+      for(int dx=-radius; dx<=radius; ++dx)
       {
-        unsigned dx = diff(xk, c[0]);
-        unsigned dy = diff(yk, c[1]);
+        for(int dy=-radius; dy<=radius; ++dy)
+        {
+          if(dx*dx + dy*dy > radius_sq)
+            continue;
 
-        if(BC == 0)
-        {
-          dx = wrap(dx, LX);
-          dy = wrap(dy, LY);
-        }
-        else if(BC == 1)
-        {
-          dx = wrap(dx, LX);
-        }
+          int x = static_cast<int>(c[0]) + dx;
+          int y = static_cast<int>(c[1]) + dy;
 
-        if(dx*dx + dy*dy <= ceil(division_radius*division_radius))
-        {
-          division_mask[k] = true;
-          break;
+          if(BC == 0)
+          {
+            x = modu(x, static_cast<int>(LX));
+            y = modu(y, static_cast<int>(LY));
+          }
+          else if(BC == 1)
+          {
+            x = modu(x, static_cast<int>(LX));
+            if(y < 0 || y >= static_cast<int>(LY))
+              continue;
+          }
+          else if(x < 0 || x >= static_cast<int>(LX)
+               || y < 0 || y >= static_cast<int>(LY))
+          {
+            continue;
+          }
+
+          division_mask[GetDomainIndex(static_cast<unsigned>(x),
+                                       static_cast<unsigned>(y))] = true;
         }
       }
     }
