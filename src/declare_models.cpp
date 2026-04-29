@@ -9,6 +9,7 @@
 #include "models/lyotropic-free-boundary.hpp"
 #include "models/lyotropic-with-division.hpp"
 #include "models/lyotropic-with-division-stress.hpp"
+#include "models/go-or-grow.hpp"
 #include "models/nematic.hpp"
 #include "models/dry.hpp"
 #include "models/polar.hpp"
@@ -52,6 +53,12 @@ void DeclareModels()
         "division model with cell division (and death) added. "
         "However, the division regions are now based on the local stress"
         );      
+
+  declare_model<GoOrGrow>(
+      "go-or-grow",
+      "Lyotropic model with cell division and a crowding/compressibility "
+      "free-energy penalty for phi above phi-critical."
+      );
 
   declare_model<Nematic>(
       "nematic",

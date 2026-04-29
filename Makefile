@@ -25,6 +25,7 @@ MODELS = \
          build/models/lyotropic-free-boundary.o \
          build/models/lyotropic-with-division.o \
 	 build/models/lyotropic-with-division-stress.o \
+         build/models/go-or-grow.o \
          build/models/phases.o \
          build/models/nematic.o \
          build/models/dry.o \
