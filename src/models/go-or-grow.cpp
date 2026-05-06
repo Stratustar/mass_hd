@@ -151,7 +151,7 @@ void GoOrGrow::UpdateQuantitiesAtNode(unsigned k)
   // computation of the chemical potential and molecular field...
   // ...term controlling the preferred nematic order magnitude
   const double q2 = Qxx*Qxx + Qyx*Qyx;
-  const double term = Snem - q2;
+  const double term = Snem*p - q2;
   // ...molecular field
   const double Hxx = 2*CC*term*Qxx + LL*del2Qxx;
   const double Hyx = 2*CC*term*Qyx + LL*del2Qyx;
@@ -160,7 +160,7 @@ void GoOrGrow::UpdateQuantitiesAtNode(unsigned k)
   const double f_compress = dp_critical > 0 ? .5*B*dp_critical*dp_critical : 0.;
   const double mu_compress = dp_critical > 0 ? B*dp_critical : 0.;
   // ...chemical potential
-  const double mu = AA*p*(1-p)*(1-2*p) + mu_compress - KK*del2p;
+  const double mu = AA*p*(1-p)*(1-2*p) + CC*Snem*term + mu_compress - KK*del2p;
 
   // computation of sigma...
   // ... on-diagonal stress components
