@@ -37,47 +37,63 @@ void GoOrGrow::Configure()
 
 void GoOrGrow::ConfigurePhenotype()
 {
-  for(unsigned k=0; k<DomainSize; ++k)
-    chi[k] = random_normal();
-
-  BoundaryConditionsFields();
-
-  constexpr double smooth_rate = 0.2;
-  const unsigned smooth_steps =
-    chi_length > 0 ? static_cast<unsigned>(ceil(chi_length*chi_length/(2*smooth_rate))) : 0u;
-
-  for(unsigned s=0; s<smooth_steps; ++s)
+  if(chi_config=="noise")
   {
     for(unsigned k=0; k<DomainSize; ++k)
+      chi[k] = random_normal();
+
+    BoundaryConditionsFields();
+
+    constexpr double smooth_rate = 0.2;
+    const unsigned smooth_steps =
+      chi_length > 0 ? static_cast<unsigned>(ceil(chi_length*chi_length/(2*smooth_rate))) : 0u;
+
+    for(unsigned s=0; s<smooth_steps; ++s)
     {
-      const auto& d = get_neighbours(k);
-      m_tmp[k] = chi[k] + smooth_rate*laplacian(chi, d, sD);
+      for(unsigned k=0; k<DomainSize; ++k)
+      {
+        const auto& d = get_neighbours(k);
+        m_tmp[k] = chi[k] + smooth_rate*laplacian(chi, d, sD);
+      }
+
+      swap(chi.get_data(), m_tmp.get_data());
+      BoundaryConditionsFields();
     }
 
-    swap(chi.get_data(), m_tmp.get_data());
-    BoundaryConditionsFields();
+    double mean = 0.;
+    for(unsigned k=0; k<DomainSize; ++k)
+      mean += chi[k];
+    mean /= DomainSize;
+
+    double variance = 0.;
+    for(unsigned k=0; k<DomainSize; ++k)
+    {
+      chi[k] -= mean;
+      variance += chi[k]*chi[k];
+    }
+    variance /= DomainSize;
+
+    const double amplitude = sqrt(chi_noise);
+    const double norm = variance > 0 ? amplitude/sqrt(variance) : 0.;
+    for(unsigned k=0; k<DomainSize; ++k)
+      chi[k] = chi0 + norm*chi[k];
   }
-
-  double mean = 0.;
-  for(unsigned k=0; k<DomainSize; ++k)
-    mean += chi[k];
-  mean /= DomainSize;
-
-  double variance = 0.;
-  for(unsigned k=0; k<DomainSize; ++k)
+  else if(chi_config=="front")
   {
-    chi[k] -= mean;
-    variance += chi[k]*chi[k];
+    const double length = chi_length > 0 ? chi_length : 1.;
+    const double center = .5*(LX-1);
+
+    for(unsigned k=0; k<DomainSize; ++k)
+    {
+      const double x = GetXPosition(k);
+      chi[k] = .5*(1. - tanh((x-center)/length));
+    }
   }
-  variance /= DomainSize;
+  else
+    throw error_msg("error: chi configuration '", chi_config, "' unknown.");
 
-  const double amplitude = sqrt(chi_noise);
-  const double norm = variance > 0 ? amplitude/sqrt(variance) : 0.;
   for(unsigned k=0; k<DomainSize; ++k)
-  {
-    chi[k] = chi0 + norm*chi[k];
     m[k] = phi[k]*chi[k];
-  }
 
   ProjectM();
   UpdatePhenotypeQuantities();
@@ -133,11 +149,12 @@ void GoOrGrow::UpdateQuantitiesAtNode(unsigned k)
   const double dyPhi    = derivY   (phi, d, sB);
 
   // computation of the chemical potential and molecular field...
-  // ...term that couples the binary phase to the degree of nematic order
-  const double term = 0 - Qxx*Qxx - Qyx*Qyx;
+  // ...term controlling the preferred nematic order magnitude
+  const double q2 = Qxx*Qxx + Qyx*Qyx;
+  const double term = Snem - q2;
   // ...molecular field
-  const double Hxx = CC*term*Qxx + LL*del2Qxx;
-  const double Hyx = CC*term*Qyx + LL*del2Qyx;
+  const double Hxx = 2*CC*term*Qxx + LL*del2Qxx;
+  const double Hyx = 2*CC*term*Qyx + LL*del2Qyx;
   // ...compressibility/crowding contribution
   const double dp_critical = p - phi_critical;
   const double f_compress = dp_critical > 0 ? .5*B*dp_critical*dp_critical : 0.;
@@ -149,7 +166,7 @@ void GoOrGrow::UpdateQuantitiesAtNode(unsigned k)
   // ... on-diagonal stress components
   const double sigmaB = .5*AA*p*p*(1-p)*(1-p)
     + f_compress + .5*CC*term*term - mu*p;
-  const double active_prefactor = zeta*(1-chi[k])*(1-p);
+  const double active_prefactor = zeta*p*(1-chi[k]);
   const double sigmaF = 2*xi*( (Qxx*Qxx-1)*Hxx + Qxx*Qyx*Hyx )
     - active_prefactor*Qxx + .5*KK*(dyPhi*dyPhi-dxPhi*dxPhi)
     + LL*(dyQxx*dyQxx+dyQyx*dyQyx-dxQxx*dxQxx-dxQyx*dxQyx);
@@ -214,8 +231,8 @@ void GoOrGrow::UpdateFields(bool first)
     const double division_m = ( 1. ? division_mask[k] : 0. );
     const double death_m = ( 1. ? death_mask[k] : 0. );
     const double growth_rate = alpha*division_m - beta*death_m;
-    const double R = phi[k]*growth_rate;
     const double chi_eff = chi[k];
+    const double R = chi_eff*phi[k]*growth_rate;
 
     const double mFlux =
       .5*(ux[d[1]]*m[d[1]] - ux[d[2]]*m[d[2]])
@@ -295,6 +312,10 @@ option_list GoOrGrow::GetOptions()
   options[0].add_options()
     ("B", opt::value<double>(&B),
      "crowding/compressibility penalty strength")
+    ("Snem", opt::value<double>(&Snem),
+     "preferred value of one half Tr(Q^2)")
+    ("chi-config", opt::value<string>(&chi_config),
+     "phenotype initialization mode: noise or front")
     ("chi0", opt::value<double>(&chi0),
      "initial phenotype mean")
     ("chi-noise", opt::value<double>(&chi_noise),
