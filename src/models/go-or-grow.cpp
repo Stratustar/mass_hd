@@ -247,7 +247,12 @@ void GoOrGrow::UpdateFields(bool first)
     - .5*(chi_eff + chi_mx)*(MU[k] - MU[d[2]])
     + .5*(chi_py + chi_eff)*(MU[d[3]] - MU[k])
     - .5*(chi_eff + chi_my)*(MU[k] - MU[d[4]]);
-    const double Dm = GammaP*diffusiveMFlux - mFlux + chi_eff*R;
+    const double phenotypeDiffusion =
+      .5*(phi[d[1]] + phi[k])*(chi_px - chi_eff)
+    - .5*(phi[k] + phi[d[2]])*(chi_eff - chi_mx)
+    + .5*(phi[d[3]] + phi[k])*(chi_py - chi_eff)
+    - .5*(phi[k] + phi[d[4]])*(chi_eff - chi_my);
+    const double Dm = GammaP*diffusiveMFlux + Dchi*phenotypeDiffusion - mFlux + chi_eff*R;
 
     // normal lyotropic update
     Lyotropic::UpdateFieldsAtNode(k, first);
@@ -314,6 +319,8 @@ option_list GoOrGrow::GetOptions()
      "crowding/compressibility penalty strength")
     ("Snem", opt::value<double>(&Snem),
      "preferred value of one half Tr(Q^2)")
+    ("Dchi", opt::value<double>(&Dchi),
+     "phenotype diffusion coefficient")
     ("chi-config", opt::value<string>(&chi_config),
      "phenotype initialization mode: noise or front")
     ("chi0", opt::value<double>(&chi0),

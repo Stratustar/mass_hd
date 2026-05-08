@@ -10,6 +10,8 @@ protected:
   double B = 0.;
   /** Preferred value of 1/2 Tr(Q^2) in the nematic bulk free energy */
   double Snem = 1.;
+  /** Phenotype diffusion coefficient */
+  double Dchi = 0.;
   /** Grow-type density and derived phenotype fraction */
   ScalarField m, mN, m_tmp, chi;
   /** Phenotype initial mean, variance and correlation length */
@@ -50,6 +52,7 @@ public:
     // serialize new parameters
     ar & auto_name(B)
        & auto_name(Snem)
+       & auto_name(Dchi)
        & auto_name(chi0)
        & auto_name(chi_noise)
        & auto_name(chi_length)
