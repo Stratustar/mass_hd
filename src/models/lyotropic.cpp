@@ -77,7 +77,7 @@ void Lyotropic::ConfigureAtNode(unsigned k)
   ytemp=y;
   if(init_config=="circle")
   {
-    if(pow(diff(x, LX/2), 2) + pow(diff(y, LY/2), 2) <= radius*radius&&pow(diff(x, LX/2), 2) + pow(diff(y, LY/2), 2) >= ((45)*(45)))
+    if(pow(diff(x, LX/2), 2) + pow(diff(y, LY/2), 2) <= radius*radius)
       nematicOrder = 1;
   }
   else if(init_config=="square")
@@ -143,8 +143,7 @@ void Lyotropic::ConfigureAtNode(unsigned k)
 
   // add   (for meta-stable configs)
   // theta is the angle of the director
-  theta = M_PI*random_real();
-  // theta   = atan2(ytemp-LY/2,xtemp-LX/2)+angle + noise*M_PI*(random_real() - .5);
+  theta = angle + noise*M_PI*(random_real() - .5);
 	//printf("coord is %u and %u, coordtemp is %f and %f, theta is %f\n",y,x,ytemp-LY/2,xtemp-LX/2,theta);
   //nematicOrder += noise*random_real();
   QQxx[k] = nematicOrder*(cos(2*theta));
