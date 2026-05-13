@@ -252,7 +252,12 @@ void GoOrGrow::UpdateFields(bool first)
     - .5*(phi[k] + phi[d[2]])*(chi_eff - chi_mx)
     + .5*(phi[d[3]] + phi[k])*(chi_py - chi_eff)
     - .5*(phi[k] + phi[d[4]])*(chi_eff - chi_my);
-    const double Dm = GammaP*diffusiveMFlux + Dchi*phenotypeDiffusion - mFlux + chi_eff*R;
+    const double dVdChi =
+      2*Achi*chi_eff*(1-chi_eff)*(1-2*chi_eff)
+    + Ochi*(phi[k]-phiswitch);
+    const double Sswitch = -phi[k]*dVdChi;
+    const double mGrowth = growTogether ? chi_eff*R : R;
+    const double Dm = GammaP*diffusiveMFlux + Dchi*phenotypeDiffusion - mFlux + Sswitch + mGrowth;
 
     // normal lyotropic update
     Lyotropic::UpdateFieldsAtNode(k, first);
@@ -321,6 +326,14 @@ option_list GoOrGrow::GetOptions()
      "preferred value of one half Tr(Q^2)")
     ("Dchi", opt::value<double>(&Dchi),
      "phenotype diffusion coefficient")
+    ("Achi", opt::value<double>(&Achi),
+     "phenotype switching double-well barrier")
+    ("Ochi", opt::value<double>(&Ochi),
+     "phenotype switching bias strength")
+    ("phiswitch", opt::value<double>(&phiswitch),
+     "phi threshold for phenotype switching bias")
+    ("growTogether", opt::value<int>(&growTogether),
+     "m growth source: 0 uses R, 1 uses chi*R")
     ("chi-config", opt::value<string>(&chi_config),
      "phenotype initialization mode: noise or front")
     ("chi0", opt::value<double>(&chi0),

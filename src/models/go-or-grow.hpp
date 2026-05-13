@@ -12,6 +12,10 @@ protected:
   double Snem = 1.;
   /** Phenotype diffusion coefficient */
   double Dchi = 0.;
+  /** Phenotype switching potential parameters */
+  double Achi = 0., Ochi = 0., phiswitch = 0.;
+  /** Whether m growth follows the local grow fraction */
+  int growTogether = 0;
   /** Grow-type density and derived phenotype fraction */
   ScalarField m, mN, m_tmp, chi;
   /** Phenotype initial mean, variance and correlation length */
@@ -53,6 +57,10 @@ public:
     ar & auto_name(B)
        & auto_name(Snem)
        & auto_name(Dchi)
+       & auto_name(Achi)
+       & auto_name(Ochi)
+       & auto_name(phiswitch)
+       & auto_name(growTogether)
        & auto_name(chi0)
        & auto_name(chi_noise)
        & auto_name(chi_length)
