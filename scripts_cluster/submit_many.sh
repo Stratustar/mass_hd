@@ -22,7 +22,7 @@ count=0
 while IFS= read -r -d '' dat_file; do
   echo "Submitting: ${dat_file}"
   sbatch "${SCRIPT_DIR}/submit_case.sh" "${SIF_NAME}" "${dat_file}"
-  ((count++))
+  ((count += 1))
 done < <(find "${SEARCH_ROOT}" -type f -name '*.dat' -print0 | sort -z)
 
 if [[ ${count} -eq 0 ]]; then
