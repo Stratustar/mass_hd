@@ -21,7 +21,6 @@ CMakeFiles/
 __pycache__/
 *.py[cod]
 *.pyo
-*.so
 .ipynb_checkpoints/
 
 # IDE / OS

@@ -65,9 +65,10 @@ fi
 
 mkdir -p "${OUTPUT_PATH}"
 
-# Plot folder mirrors scratch output path for easy traceability.
+# Plot folder mirrors the project-relative scratch output path.
 if [[ "${OUTPUT_PATH}" == ${SCRATCH_ROOT}/* ]]; then
   REL_OUTPUT_DIR="${OUTPUT_PATH#${SCRATCH_ROOT}/}"
+  REL_OUTPUT_DIR="${REL_OUTPUT_DIR#mass_hd/}"
 else
   REL_OUTPUT_DIR="$(basename "${OUTPUT_PATH}")"
 fi
@@ -77,10 +78,6 @@ mkdir -p "${PLOT_DIR}"
 export OMP_NUM_THREADS="${THREADS}"
 export OMP_PLACES=cores
 export OMP_PROC_BIND=spread
-
-if [[ -z "${OUTPUT_ARG}" && "${INPUT_PATH}" == /home/helu/* ]]; then
-  OUTPUT_PATH="${SCRATCH_ROOT}/${INPUT_DIR#/home/helu/}"
-fi
 
 find "${OUTPUT_PATH}" -maxdepth 1 -type f -name '*.json' -delete
 find "${PLOT_DIR}" -maxdepth 1 -type f \( -name '*.png' -o -name '*.gif' \) -delete
