@@ -1,0 +1,66 @@
+#
+# Go-or-grow lyotropic model with passive phenotype field chi
+#
+
+model    = go-or-grow
+config   = circle
+
+nsteps   = 8000
+nstart   = 0000
+ninfo    = 50
+LX       = 100
+LY       = 100
+bc       = 0
+
+# Hydrodynamics / nematic
+GammaQ   = 0.3
+GammaP   = 5e-2
+zeta     = 0.1
+zetaI    = 0
+friction = 0.0
+tauNem   = 1.0
+tauIso   = 1.0
+# AA       = 0.15
+AA       = 0.03
+CC       = 0.1
+LL       = 0.002
+#KK       = 0.3
+KK       = 0.06
+rho      = 40
+xi       = 0.3
+
+# Crowding penalty
+B        = 0.1
+
+# Initial configuration
+Snem = 1
+level    = 50
+radius   = 20
+conc     = 1
+noise    = 1
+angle    = 0
+
+
+
+# Phenotype field: chi=0 go, chi=1 grow
+chi-config = noise
+chi0       = 0.5
+chi-noise  = 0.04
+chi-length = 5
+Dchi = 0.005
+
+# Phenotype switching, all 0 to turn off
+Achi = 0.0001
+Ochi = 0.0001
+phiswitch = 1.0
+
+# Division / death
+growTogether = 0
+beta = 0
+
+division-rate   = 1e-2
+division-time   = 5
+#alpha           = 0.001
+alpha           = 0.02
+phi-critical    = 1.2
+division-radius = 3
