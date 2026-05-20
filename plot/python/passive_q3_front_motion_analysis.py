@@ -3,8 +3,10 @@ matplotlib.use("Agg")
 
 import argparse
 import csv
+import json
 import os
 import sys
+import zipfile
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -164,6 +166,85 @@ def field_set(frame):
     return {"phi": phi, "m": m, "chi": chi}
 
 
+def read_text_from_archive(path, stem):
+    fname = stem + ".json"
+    direct = os.path.join(path, fname)
+    if os.path.isfile(direct):
+        with open(direct) as handle:
+            return handle.read()
+
+    zipped = direct + ".zip"
+    if os.path.isfile(zipped):
+        with zipfile.ZipFile(zipped) as handle:
+            return handle.read(fname).decode()
+
+    if path.endswith(".zip") and os.path.isfile(path):
+        with zipfile.ZipFile(path) as handle:
+            return handle.read(fname).decode()
+
+    raise FileNotFoundError(f"Cannot find {fname} in {path}")
+
+
+def field_object_from_text(text, name):
+    pattern = f'"{name}"'
+    key_start = text.find(pattern)
+    if key_start < 0:
+        return None
+
+    colon = text.find(":", key_start + len(pattern))
+    object_start = text.find("{", colon)
+    if colon < 0 or object_start < 0:
+        raise ValueError(f"Malformed field object for {name}")
+
+    depth = 0
+    in_string = False
+    escape = False
+    for idx in range(object_start, len(text)):
+        char = text[idx]
+        if in_string:
+            if escape:
+                escape = False
+            elif char == "\\":
+                escape = True
+            elif char == '"':
+                in_string = False
+            continue
+
+        if char == '"':
+            in_string = True
+        elif char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                return json.loads(text[object_start : idx + 1])
+
+    raise ValueError(f"Unterminated field object for {name}")
+
+
+def array_field_from_text(text, name, shape, fallback=None):
+    entry = field_object_from_text(text, name)
+    if entry is None:
+        if fallback is None:
+            raise KeyError(f"Missing field {name}")
+        return np.array(fallback, dtype=float, copy=True)
+    return np.asarray(entry["value"], dtype=float).reshape(shape)
+
+
+def read_frame_fields(ar, path, frame_index):
+    step = int(ar.nstart + frame_index * ar.ninfo)
+    text = read_text_from_archive(path, f"frame{step}")
+    shape = (int(param(ar, "LX")), int(param(ar, "LY")))
+    phi = array_field_from_text(text, "phi", shape)
+    m = array_field_from_text(text, "m", shape, fallback=np.zeros(shape, dtype=float))
+    chi_entry = field_object_from_text(text, "chi")
+    if chi_entry is None:
+        chi = np.divide(m, phi, out=np.zeros_like(phi), where=phi > PHI_VISIBLE_THRESHOLD)
+    else:
+        chi = np.asarray(chi_entry["value"], dtype=float).reshape(shape)
+    return {"phi": phi, "m": m, "chi": np.clip(chi, 0.0, 1.0)}
+
+
 def strip_mask(ly, half_width):
     y = np.arange(ly, dtype=float)
     center = 0.5 * (ly - 1)
@@ -291,8 +372,7 @@ def finite_gradient(values, times):
     return out
 
 
-def frame_metrics(ar, label, frame_index, half_width, first_mass):
-    fields = field_set(ar.read_frame(frame_index))
+def frame_metrics(ar, label, frame_index, half_width, first_mass, fields):
     profiles = strip_profiles(fields, half_width)
     left, right = material_edges(profiles["phi_x"])
     x_chi = front_crossing(profiles["chi_phi_x"], left, right)
@@ -330,13 +410,15 @@ def frame_metrics(ar, label, frame_index, half_width, first_mass):
 
 def analyze_case(label, path, frame_stride, half_width, xi_grid):
     ar = loadarchive(path)
-    first_mass = float(np.sum(field_set(ar.read_frame(0))["phi"]))
+    first_fields = read_frame_fields(ar, path, 0)
+    first_mass = float(np.sum(first_fields["phi"]))
     rows = []
     lab_kymo = []
     material_kymo = []
 
     for frame_index in frame_indices(ar, frame_stride):
-        row, profiles = frame_metrics(ar, label, frame_index, half_width, first_mass)
+        fields = first_fields if frame_index == 0 else read_frame_fields(ar, path, frame_index)
+        row, profiles = frame_metrics(ar, label, frame_index, half_width, first_mass, fields)
         rows.append(row)
         lab_profile = np.array(profiles["chi_phi_x"], dtype=float, copy=True)
         lab_profile[profiles["phi_x"] < PHI_VISIBLE_THRESHOLD] = np.nan
@@ -573,7 +655,7 @@ def plot_snapshots(cases, outfile, dpi, half_width):
     for col, case in enumerate(cases):
         ar = case["ar"]
         for row_idx, frame_index in enumerate(snapshot_indices(ar)):
-            fields = field_set(ar.read_frame(frame_index))
+            fields = read_frame_fields(ar, case["path"], frame_index)
             row = nearest_row(case["rows"], frame_index)
             ax = axes[row_idx, col]
             ax.set_facecolor(BACKGROUND_COLOR)
@@ -621,10 +703,10 @@ def main():
     if not archive_paths:
         raise SystemExit(f"No simulation archives found under {args.input_root}")
 
-    cases = [
-        analyze_case(label, path, args.frame_stride, args.strip_half_width, xi_grid)
-        for label, path in archive_paths
-    ]
+    cases = []
+    for label, path in archive_paths:
+        print(f"Analyzing {label}...", flush=True)
+        cases.append(analyze_case(label, path, args.frame_stride, args.strip_half_width, xi_grid))
     cases.sort(key=lambda case: (case_id(case["label"]), case["label"]))
 
     all_rows = []
