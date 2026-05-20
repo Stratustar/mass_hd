@@ -41,7 +41,16 @@ def parse_args():
         nargs="+",
         type=int,
         default=[0, 5, 50, 120, 180],
-        help="Frame indices to export as PNG files. Default: 0 1 2 3 5 30 60 90 120",
+        help="Frame indices to export as PNG files. Default: 0 5 50 120 180",
+    )
+    parser.add_argument(
+        "--fields",
+        nargs="+",
+        default=None,
+        help=(
+            "Field names to render. Default: all standard fields. "
+            "Use '--fields visualization' for only the chi-phi composite."
+        ),
     )
     parser.add_argument(
         "--skip-png",
@@ -70,7 +79,12 @@ def parse_args():
         "--dpi",
         type=int,
         default=600,
-        help="PNG output resolution. Default: 200",
+        help="PNG output resolution. Default: 600",
+    )
+    parser.add_argument(
+        "--skip-counts",
+        action="store_true",
+        help="Skip the N0/N1 time-series plot.",
     )
     return parser.parse_args()
 
@@ -448,6 +462,9 @@ def save_field_gif(ar, field_name, outdir, cmap, clim, nframes, frame_start, fra
     frames = []
     n_available = available_frame_count(ar)
     frame_indices = list(range(frame_start, n_available, frame_step))[:nframes]
+    final_frame = n_available - 1
+    if frame_indices and frame_indices[-1] != final_frame and final_frame >= frame_start:
+        frame_indices.append(final_frame)
     for frame_index in frame_indices:
         print(f"Rendering {field_name} GIF frame {frame_index}", flush=True)
         frames.append(render_field_image(ar, frame_index, field_name, cmap, clim))
@@ -516,6 +533,13 @@ def main():
         "pressure": {"cmap": "coolwarm", "clim": None},
     }
 
+    if args.fields is not None:
+        unknown = [field for field in args.fields if field not in fields]
+        if unknown:
+            known = ", ".join(fields.keys())
+            raise SystemExit(f"Unknown plot field(s): {unknown}. Known fields: {known}")
+        fields = {field: fields[field] for field in args.fields}
+
     if args.skip_png:
         print("Skipping PNG export.", flush=True)
     else:
@@ -555,9 +579,12 @@ def main():
         )
         print(f"Saved GIF: {outfile}", flush=True)
 
-    print("Preparing N0/N1 time-series plot...", flush=True)
-    outfile = save_counts_timeseries(ar, args.outdir, args.dpi)
-    print(f"Saved N0/N1 time-series plot: {outfile}", flush=True)
+    if args.skip_counts:
+        print("Skipping N0/N1 time-series plot.", flush=True)
+    else:
+        print("Preparing N0/N1 time-series plot...", flush=True)
+        outfile = save_counts_timeseries(ar, args.outdir, args.dpi)
+        print(f"Saved N0/N1 time-series plot: {outfile}", flush=True)
 
     print("All done.", flush=True)
 

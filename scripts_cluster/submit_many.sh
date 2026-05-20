@@ -21,11 +21,7 @@ fi
 count=0
 while IFS= read -r -d '' dat_file; do
   echo "Submitting: ${dat_file}"
-  if [[ "${SKIP_PLOTS:-0}" == "0" ]]; then
-    sbatch "${SCRIPT_DIR}/submit_case.sh" "${SIF_NAME}" "${dat_file}"
-  else
-    sbatch --export=ALL,SKIP_PLOTS="${SKIP_PLOTS}" "${SCRIPT_DIR}/submit_case.sh" "${SIF_NAME}" "${dat_file}"
-  fi
+  sbatch --export=ALL "${SCRIPT_DIR}/submit_case.sh" "${SIF_NAME}" "${dat_file}"
   ((count += 1))
 done < <(find "${SEARCH_ROOT}" -type f -name '*.dat' -print0 | sort -z)
 
