@@ -1,0 +1,71 @@
+#
+# Passive proliferation Q2: strong differential growth
+#
+
+model    = go-or-grow
+config   = circle
+
+nsteps   = 15000
+nstart   = 0000
+ninfo    = 100
+LX       = 500
+LY       = 500
+bc       = 0
+seed     = 1001
+
+# Hydrodynamics / nematic
+GammaQ   = 0.3
+GammaP   = 5e-2
+zeta     = 0
+zetaI    = 0
+friction = 0.0
+tauNem   = 1.0
+tauIso   = 1.0
+AA       = 0.03
+CC       = 0.1
+LL       = 0.002
+KK       = 0.06
+rho      = 40
+xi       = 0.3
+
+# Crowding penalty
+B        = 0.1
+
+# Initial configuration
+Snem     = 1
+level    = 250
+radius   = 60
+conc     = 1
+noise    = 1
+angle    = 0
+
+# Dry free-energy relaxation before official dynamics
+relax-steps = 2000
+relax-dt    = 1.0
+relax-phi   = 1
+relax-Q     = 1
+
+# Phenotype field: noisy grow fraction
+chi-config = noise
+chi0       = 0.5
+chi-noise  = 0.04
+chi-length = 12
+Dchi       = 0
+
+# Phenotype switching off
+Achi      = 0
+Ochi      = 0
+phiswitch = 0
+
+# Division / death
+growTogether = 1
+beta         = 0
+death-rate   = 0
+death-time   = 1
+death-radius = 0
+
+division-rate   = 1e-1
+division-time   = 2
+division-radius = 3
+alpha           = 0.004
+phi-critical    = 1.2
