@@ -22,6 +22,10 @@ protected:
   double chi0 = 0., chi_noise = 0., chi_length = 0.;
   /** Phenotype initialization mode */
   std::string chi_config = "noise";
+  /** Dry free-energy relaxation before official dynamics */
+  unsigned relax_steps = 0;
+  double relax_dt = 1.;
+  int relax_phi = 0, relax_Q = 0;
 
   /** Compute chemical potential, stress and derivatives */
   virtual void UpdateQuantities();
@@ -37,6 +41,10 @@ protected:
   void UpdatePhenotypeQuantities();
   /** Project m back to a density consistent with phi */
   void ProjectM();
+  /** Dry free-energy relaxation of phi and Q without hydrodynamics or growth */
+  void RelaxFreeEnergy();
+  /** Reset LB and velocity fields after dry relaxation */
+  void ResetHydrodynamics();
 
 public:
   GoOrGrow(unsigned, unsigned, unsigned);
@@ -64,7 +72,11 @@ public:
        & auto_name(chi0)
        & auto_name(chi_noise)
        & auto_name(chi_length)
-       & auto_name(chi_config);
+       & auto_name(chi_config)
+       & auto_name(relax_steps)
+       & auto_name(relax_dt)
+       & auto_name(relax_phi)
+       & auto_name(relax_Q);
   }
 
   /** Serialization of the current frame (time snapshot) */

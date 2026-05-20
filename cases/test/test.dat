@@ -38,8 +38,14 @@ Snem = 1
 level    = 50
 radius   = 20
 conc     = 1
-noise    = 0
+noise    = 1
 angle    = 0
+
+# Dry free-energy relaxation before official dynamics
+relax-steps = 2000
+relax-dt    = 1.0
+relax-phi   = 1
+relax-Q     = 1
 
 
 

@@ -36,8 +36,14 @@ Snem     = 1
 level    = 250
 radius   = 60
 conc     = 1
-noise    = 0
+noise    = 1
 angle    = 0
+
+# Dry free-energy relaxation before official dynamics
+relax-steps = 2000
+relax-dt    = 1.0
+relax-phi   = 1
+relax-Q     = 1
 
 # Phenotype field: chi=0 go, chi=1 grow
 chi-config = noise
