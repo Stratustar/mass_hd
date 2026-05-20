@@ -22,6 +22,7 @@ SCRATCH_ROOT="/scratch/helu"
 CONDA_BIN="/home/helu/miniconda3/bin/conda"
 CONDA_ENV="env1"
 PLOT_SCRIPT="${REPO_ROOT}/plot/python/plot_hd.py"
+PROLIFERATION_SUMMARY_SCRIPT="${REPO_ROOT}/plot/python/proliferation_summary.py"
 MASS_BINARY="/opt/mass_hd/mass"
 RESULTS_ROOT="${REPO_ROOT}/results"
 THREADS="${SLURM_CPUS_PER_TASK}"
@@ -80,7 +81,7 @@ export OMP_PLACES=cores
 export OMP_PROC_BIND=spread
 
 find "${OUTPUT_PATH}" -maxdepth 1 -type f -name '*.json' -delete
-find "${PLOT_DIR}" -maxdepth 1 -type f \( -name '*.png' -o -name '*.gif' \) -delete
+find "${PLOT_DIR}" -maxdepth 1 -type f \( -name '*.png' -o -name '*.gif' -o -name '*.csv' \) -delete
 
 echo "Job started on $(date)"
 echo "Image:       ${IMAGE_PATH}"
@@ -113,6 +114,17 @@ PLOT_STATUS=$?
 if [[ ${PLOT_STATUS} -ne 0 ]]; then
   echo "Plotting failed with status ${PLOT_STATUS} on $(date)"
   exit ${PLOT_STATUS}
+fi
+
+echo "Running proliferation summary..."
+
+"${CONDA_BIN}" run --no-capture-output -n "${CONDA_ENV}" \
+  python "${PROLIFERATION_SUMMARY_SCRIPT}" "${OUTPUT_PATH}" "${PLOT_DIR}"
+
+SUMMARY_STATUS=$?
+if [[ ${SUMMARY_STATUS} -ne 0 ]]; then
+  echo "Proliferation summary failed with status ${SUMMARY_STATUS} on $(date)"
+  exit ${SUMMARY_STATUS}
 fi
 
 echo "Plotting finished on $(date)"

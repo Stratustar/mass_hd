@@ -5,6 +5,9 @@
 slurm-*.out
 slurm-*.err
 
+# Generated analysis output
+results/
+
 # Build artifacts
 build/
 cmake-build-*/
