@@ -7,7 +7,7 @@ config   = circle
 
 nsteps   = 20000
 nstart   = 0000
-ninfo    = 500
+ninfo    = 100
 LX       = 500
 LY       = 500
 bc       = 0
