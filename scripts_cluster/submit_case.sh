@@ -26,6 +26,7 @@ PROLIFERATION_SUMMARY_SCRIPT="${REPO_ROOT}/plot/python/proliferation_summary.py"
 MASS_BINARY="/opt/mass_hd/mass"
 RESULTS_ROOT="${REPO_ROOT}/results"
 THREADS="${SLURM_CPUS_PER_TASK}"
+SKIP_PLOTS="${SKIP_PLOTS:-0}"
 # ----------------------------------------------------------------------
 
 if [[ "${SIF_NAME}" == *.sif ]]; then
@@ -89,6 +90,7 @@ echo "Input:       ${INPUT_PATH}"
 echo "Sim output:  ${OUTPUT_PATH}"
 echo "Plot output: ${PLOT_DIR}"
 echo "Threads:     ${THREADS}"
+echo "Skip plots:  ${SKIP_PLOTS}"
 
 apptainer exec \
   --bind "${INPUT_DIR}":/input \
@@ -104,6 +106,13 @@ if [[ ${SIM_STATUS} -ne 0 ]]; then
 fi
 
 echo "Simulation finished on $(date)"
+
+case "${SKIP_PLOTS}" in
+  1|true|TRUE|yes|YES)
+    echo "Skipping plotting on request."
+    exit 0
+    ;;
+esac
 
 echo "Running plotting..."
 
