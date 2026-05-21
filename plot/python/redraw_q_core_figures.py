@@ -52,6 +52,9 @@ def configure_plot_style():
             "mathtext.rm": "Arial",
             "mathtext.it": "Arial:italic",
             "mathtext.bf": "Arial:bold",
+            "mathtext.cal": "Arial",
+            "mathtext.sf": "Arial",
+            "mathtext.tt": "Arial",
             "axes.grid": False,
             "axes.titlepad": 6,
         }
