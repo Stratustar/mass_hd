@@ -141,16 +141,8 @@ def plot_q1_core(csv_path, outdir, dpi):
         )
 
     for ax in axes:
-        ax.axvline(1.2, color="#9ca3af", linestyle="--", linewidth=1.2)
         ax.spines[["top", "right"]].set_visible(True)
 
-    axes[0].annotate(
-        "matched\ncomparison",
-        xy=(1.2, grouped["strong"][2]["p_rms"]),
-        xytext=(1.34, 0.0066),
-        arrowprops={"arrowstyle": "->", "linewidth": 1.2, "color": "black"},
-        fontsize=11,
-    )
     strong_final = max(grouped["strong"], key=lambda row: row["Mnorm"])
     axes[1].annotate(
         "final strong-alpha\nbuildup",
