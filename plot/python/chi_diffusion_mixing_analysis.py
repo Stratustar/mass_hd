@@ -87,7 +87,8 @@ def available_frame_count(ar):
 
 
 def simulation_time(ar, frame_index):
-    return float((ar.nstart + frame_index * ar.ninfo) * ar.dt)
+    step = ar.nstart + frame_index * ar.ninfo
+    return step * float(getattr(ar, "time_step", 1.0))
 
 
 def weighted_mean(values, weights):
