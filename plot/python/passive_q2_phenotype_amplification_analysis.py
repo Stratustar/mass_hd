@@ -8,14 +8,28 @@ import sys
 
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib import font_manager
 
-plt.rcParams.update(
-    {
-        "mathtext.fontset": "stix",
-        "font.family": "STIXGeneral",
-        "axes.titlepad": 6,
-    }
-)
+
+def configure_plot_style():
+    arial_font = os.environ.get("MASS_HD_ARIAL_FONT")
+    if arial_font and os.path.exists(arial_font):
+        font_manager.fontManager.addfont(arial_font)
+    plt.rcParams.update(
+        {
+            "font.family": "sans-serif",
+            "font.sans-serif": ["Arial"],
+            "mathtext.fontset": "custom",
+            "mathtext.rm": "Arial",
+            "mathtext.it": "Arial:italic",
+            "mathtext.bf": "Arial:bold",
+            "axes.titlepad": 6,
+            "axes.grid": False,
+        }
+    )
+
+
+configure_plot_style()
 
 
 SCRIPT_DIR = os.path.abspath(os.path.dirname(__file__))
@@ -252,7 +266,6 @@ def style_axis(ax, ylabel, xlabel=None):
     ax.set_ylabel(ylabel)
     if xlabel:
         ax.set_xlabel(xlabel)
-    ax.grid(True, alpha=0.25, linewidth=0.6)
 
 
 def plot_core(cases, outfile, dpi):
@@ -314,7 +327,6 @@ def plot_chi_distributions(cases, outfile, dpi, nbins):
             centers, hist = histogram_data(ar, frame_index, nbins)
             ax.plot(centers, hist, linestyle=linestyle, linewidth=2.0, label=label)
         ax.set_title(display_label(case), fontsize=12)
-        ax.grid(True, alpha=0.25, linewidth=0.6)
         ax.set_xlabel(r"$\chi$")
         ax.set_ylabel(r"$P_{\phi}(\chi)$")
         ax.legend(frameon=False, fontsize=8, loc="best")
@@ -394,7 +406,6 @@ def plot_density_chi_coupling(cases, outfile, dpi, nbins):
             centers, mean_phi = chi_bin_phi_curve(phi, chi, material, nbins)
             ax.plot(centers, mean_phi, linestyle=linestyle, linewidth=2.0, label=label)
         ax.set_title(display_label(case), fontsize=12)
-        ax.grid(True, alpha=0.25, linewidth=0.6)
         ax.set_xlabel(r"$\chi$ bin")
         ax.set_ylabel(r"$\langle\phi\rangle$ in bin")
         ax.legend(frameon=False, fontsize=8, loc="best")
