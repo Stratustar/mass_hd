@@ -160,7 +160,7 @@ def plot_mixing(rows, outdir, dpi):
         case_rows = sorted(case_rows, key=lambda row: row["frame"])
         dchi = float(case_rows[0]["Dchi"])
         color = COLORS.get(dchi, None)
-        label = rf"$D_\chi={fmt_dchi(dchi)}$"
+        label = f"Dchi={fmt_dchi(dchi)}"
         mnorm = np.array([row["M_phi_norm"] for row in case_rows], dtype=float)
         time = np.array([row["time"] for row in case_rows], dtype=float)
         mixing = np.array([row["H_chi"] for row in case_rows], dtype=float)
@@ -191,13 +191,13 @@ def plot_mixing(rows, outdir, dpi):
         axes[0].set_xlim(center - 0.004, center + 0.004)
 
     axes[0].set_title("Mixing at fixed mass", fontsize=16)
-    axes[0].set_xlabel(r"$M_\phi/M_\phi(0)$")
-    axes[0].set_ylabel(r"mixing  $H_\chi=\langle\chi(1-\chi)\rangle_\phi$")
+    axes[0].set_xlabel("M/M0")
+    axes[0].set_ylabel("mixing  Hchi = <chi(1-chi)>_phi")
     axes[0].legend(frameon=False, fontsize=10, loc="upper left")
 
     axes[1].set_title("Diffusion increases mixing", fontsize=16)
     axes[1].set_xlabel(r"time")
-    axes[1].set_ylabel(r"mixing  $H_\chi$")
+    axes[1].set_ylabel("mixing  Hchi")
     axes[1].legend(frameon=False, fontsize=10, loc="upper left")
 
     fig.suptitle("Diffusion-only chi dynamics: no mass growth, increasing phenotype mixing", fontsize=18, y=1.02)
