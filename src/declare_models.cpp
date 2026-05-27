@@ -10,6 +10,7 @@
 #include "models/lyotropic-with-division.hpp"
 #include "models/lyotropic-with-division-stress.hpp"
 #include "models/go-or-grow.hpp"
+#include "models/dry-go-or-grow.hpp"
 #include "models/nematic.hpp"
 #include "models/dry.hpp"
 #include "models/polar.hpp"
@@ -58,6 +59,13 @@ void DeclareModels()
       "go-or-grow",
       "Lyotropic model with cell division and a crowding/compressibility "
       "free-energy penalty for phi above phi-critical."
+      );
+
+  declare_model<DryGoOrGrow>(
+      "dry-go-or-grow",
+      "Go-or-grow model with the same Q, phi, and phenotype dynamics, but "
+      "with velocity solved from overdamped force balance instead of LB "
+      "hydrodynamics."
       );
 
   declare_model<Nematic>(
