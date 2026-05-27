@@ -44,6 +44,18 @@ Type `./mass -h` or `./mass -m model-name -h` for a list of available options.
 Plotting is supported with both matlab and python (using matplotlib). Take a
 look at the example in plot/.
 
+### Cluster workflow entrypoints (local)
+
+From `mass_hd`, use the script set under `scripts/` and `scripts_cluster/`:
+
+- `scripts/build-image.sh` — build local docker image (default `mass_hd:latest`).
+- `scripts/run-local.sh` — run a small case in docker, outputs to `results/`.
+- `scripts/push-image.sh` — push image to remote registry (`REMOTE_IMAGE` is required).
+- `scripts/sync-cluster.sh` — sync `cases/`, `analysis/` and `scripts_cluster/`.
+- `scripts/submit-cluster.sh` — submit one case via cluster `scripts_cluster/submit_remote.sh`.
+- `scripts/fetch-results.sh` — pull `${run_name}` outputs from cluster `results/`.
+In cluster, keep runtime directories under `CLUSTER_RUNTIME` (for example `/scratch/helu/mass_hd_runtime`) and run with `scripts_cluster/run_sim.sbatch`.
+
 ### Contributing ###
 
 For simplicity the master branch is not protected such that everybody can directly

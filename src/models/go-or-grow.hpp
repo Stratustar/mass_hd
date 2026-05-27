@@ -12,12 +12,20 @@ protected:
   double Snem = 1.;
   /** Phenotype diffusion coefficient */
   double Dchi = 0.;
+  /** Phenotype switching potential parameters */
+  double Achi = 0., Ochi = 0., phiswitch = 0.;
+  /** Whether m growth follows the local grow fraction */
+  int growTogether = 0;
   /** Grow-type density and derived phenotype fraction */
   ScalarField m, mN, m_tmp, chi;
   /** Phenotype initial mean, variance and correlation length */
   double chi0 = 0., chi_noise = 0., chi_length = 0.;
   /** Phenotype initialization mode */
   std::string chi_config = "noise";
+  /** Dry free-energy relaxation before official dynamics */
+  unsigned relax_steps = 0;
+  double relax_dt = 1.;
+  int relax_phi = 0, relax_Q = 0;
 
   /** Compute chemical potential, stress and derivatives */
   virtual void UpdateQuantities();
@@ -33,6 +41,10 @@ protected:
   void UpdatePhenotypeQuantities();
   /** Project m back to a density consistent with phi */
   void ProjectM();
+  /** Dry free-energy relaxation of phi and Q without hydrodynamics or growth */
+  void RelaxFreeEnergy();
+  /** Reset LB and velocity fields after dry relaxation */
+  void ResetHydrodynamics();
 
 public:
   GoOrGrow(unsigned, unsigned, unsigned);
@@ -53,10 +65,18 @@ public:
     ar & auto_name(B)
        & auto_name(Snem)
        & auto_name(Dchi)
+       & auto_name(Achi)
+       & auto_name(Ochi)
+       & auto_name(phiswitch)
+       & auto_name(growTogether)
        & auto_name(chi0)
        & auto_name(chi_noise)
        & auto_name(chi_length)
-       & auto_name(chi_config);
+       & auto_name(chi_config)
+       & auto_name(relax_steps)
+       & auto_name(relax_dt)
+       & auto_name(relax_phi)
+       & auto_name(relax_Q);
   }
 
   /** Serialization of the current frame (time snapshot) */

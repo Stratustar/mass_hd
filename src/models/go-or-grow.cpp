@@ -22,6 +22,8 @@ void GoOrGrow::Initialize()
     throw error_msg("chi-noise must be non-negative.");
   if(chi_length < 0)
     throw error_msg("chi-length must be non-negative.");
+  if(relax_dt < 0)
+    throw error_msg("relax-dt must be non-negative.");
 
   chi.SetSize(LX, LY, Type);
   m.SetSize(LX, LY, Type);
@@ -32,7 +34,110 @@ void GoOrGrow::Initialize()
 void GoOrGrow::Configure()
 {
   LyotropicWithDivision::Configure();
+  RelaxFreeEnergy();
+  ResetHydrodynamics();
   ConfigurePhenotype();
+}
+
+void GoOrGrow::RelaxFreeEnergy()
+{
+  if(relax_steps == 0 || (!relax_phi && !relax_Q))
+    return;
+
+  for(unsigned step=0; step<relax_steps; ++step)
+  {
+    Lyotropic::BoundaryConditionsFields();
+
+    #pragma omp parallel for num_threads(nthreads) if(nthreads)
+    for(unsigned k=0; k<DomainSize; ++k)
+    {
+      const auto& d = get_neighbours(k);
+      const double Qxx = QQxx[k];
+      const double Qyx = QQyx[k];
+      const double p = phi[k];
+      const double q2 = Qxx*Qxx + Qyx*Qyx;
+      const double term = Snem - q2;
+      const double dp_critical = p - phi_critical;
+      const double mu_compress = dp_critical > 0 ? B*dp_critical : 0.;
+
+      HHxx[k] = 2*CC*term*Qxx + LL*laplacian(QQxx, d, sD);
+      HHyx[k] = 2*CC*term*Qyx + LL*laplacian(QQyx, d, sD);
+      MU[k] = AA*p*(1-p)*(1-2*p) + mu_compress - KK*laplacian(phi, d, sD);
+    }
+
+    switch(BC)
+    {
+      case 0:
+        break;
+      case 1:
+      case 2:
+        MU.ApplyNeumannChannel();
+        break;
+      case 3:
+      case 4:
+        MU.ApplyNeumann();
+        break;
+      default:
+        MU.ApplyPBC();
+    }
+
+    #pragma omp parallel for num_threads(nthreads) if(nthreads)
+    for(unsigned k=0; k<DomainSize; ++k)
+    {
+      const auto& d = get_neighbours(k);
+
+      if(relax_phi)
+        phi_tmp[k] = phi[k] + relax_dt*GammaP*laplacian(MU, d, sD);
+      else
+        phi_tmp[k] = phi[k];
+
+      if(relax_Q)
+      {
+        QNxx[k] = QQxx[k] + relax_dt*GammaQ*HHxx[k];
+        QNyx[k] = QQyx[k] + relax_dt*GammaQ*HHyx[k];
+      }
+      else
+      {
+        QNxx[k] = QQxx[k];
+        QNyx[k] = QQyx[k];
+      }
+    }
+
+    swap(phi.get_data(), phi_tmp.get_data());
+    swap(QQxx.get_data(), QNxx.get_data());
+    swap(QQyx.get_data(), QNyx.get_data());
+  }
+
+  Lyotropic::BoundaryConditionsFields();
+
+  double relaxed_phi = 0.;
+  for(unsigned k=0; k<DomainSize; ++k)
+    relaxed_phi += phi[k];
+  totalphi = relaxed_phi;
+  countphi = relaxed_phi;
+  ptot = relaxed_phi;
+}
+
+void GoOrGrow::ResetHydrodynamics()
+{
+  double ftotal = 0.;
+
+  #pragma omp parallel for reduction(+:ftotal) num_threads(nthreads) if(nthreads)
+  for(unsigned k=0; k<DomainSize; ++k)
+  {
+    ux[k] = uy[k] = ux_phi[k] = uy_phi[k] = 0.;
+    n[k] = rho;
+
+    const auto fe = GetEquilibriumDistribution(0., 0., rho);
+    ff[k] = fe;
+    fn[k] = fe;
+    ff_tmp[k] = fe;
+    fn_tmp[k] = fe;
+
+    ftotal = accumulate(begin(fe), end(fe), ftotal);
+  }
+
+  ftot = ftotal;
 }
 
 void GoOrGrow::ConfigurePhenotype()
@@ -252,7 +357,12 @@ void GoOrGrow::UpdateFields(bool first)
     - .5*(phi[k] + phi[d[2]])*(chi_eff - chi_mx)
     + .5*(phi[d[3]] + phi[k])*(chi_py - chi_eff)
     - .5*(phi[k] + phi[d[4]])*(chi_eff - chi_my);
-    const double Dm = GammaP*diffusiveMFlux + Dchi*phenotypeDiffusion - mFlux + chi_eff*R;
+    const double dVdChi =
+      2*Achi*chi_eff*(1-chi_eff)*(1-2*chi_eff)
+    + Ochi*(phi[k]-phiswitch);
+    const double Sswitch = -phi[k]*dVdChi;
+    const double mGrowth = growTogether ? chi_eff*R : R;
+    const double Dm = GammaP*diffusiveMFlux + Dchi*phenotypeDiffusion - mFlux + Sswitch + mGrowth;
 
     // normal lyotropic update
     Lyotropic::UpdateFieldsAtNode(k, first);
@@ -321,6 +431,14 @@ option_list GoOrGrow::GetOptions()
      "preferred value of one half Tr(Q^2)")
     ("Dchi", opt::value<double>(&Dchi),
      "phenotype diffusion coefficient")
+    ("Achi", opt::value<double>(&Achi),
+     "phenotype switching double-well barrier")
+    ("Ochi", opt::value<double>(&Ochi),
+     "phenotype switching bias strength")
+    ("phiswitch", opt::value<double>(&phiswitch),
+     "phi threshold for phenotype switching bias")
+    ("growTogether", opt::value<int>(&growTogether),
+     "m growth source: 0 uses R, 1 uses chi*R")
     ("chi-config", opt::value<string>(&chi_config),
      "phenotype initialization mode: noise or front")
     ("chi0", opt::value<double>(&chi0),
@@ -328,7 +446,15 @@ option_list GoOrGrow::GetOptions()
     ("chi-noise", opt::value<double>(&chi_noise),
      "initial phenotype variance")
     ("chi-length", opt::value<double>(&chi_length),
-     "initial phenotype correlation length");
+     "initial phenotype correlation length")
+    ("relax-steps", opt::value<unsigned>(&relax_steps),
+     "dry free-energy relaxation steps before official dynamics")
+    ("relax-dt", opt::value<double>(&relax_dt),
+     "time step multiplier for dry free-energy relaxation")
+    ("relax-phi", opt::value<int>(&relax_phi),
+     "relax phi by Cahn-Hilliard free-energy descent before official dynamics")
+    ("relax-Q", opt::value<int>(&relax_Q),
+     "relax Q by molecular-field free-energy descent before official dynamics");
 
   return options;
 }

@@ -1,2 +1,35 @@
-*.DS_Store
+# Slurm/log outputs
+*.out
+*.err
+*.log
+slurm-*.out
+slurm-*.err
+
+# Generated analysis output
+results/
+
+# Build artifacts
+build/
+cmake-build-*/
+CMakeFiles/
+*.o
+*.obj
+*.so
+*.a
+*.lib
+*.dll
+*.exe
+
+# Python runtime/cache
+__pycache__/
+*.py[cod]
+*.pyo
+.ipynb_checkpoints/
+
+# IDE / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*~
 handoff.md
