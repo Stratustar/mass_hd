@@ -92,6 +92,7 @@ void DryGoOrGrow::UpdateDryFieldsAtNode(unsigned k, bool first)
   const double growth_rate = alpha*division_m - beta*death_m;
   const double chi_eff = chi[k];
   const double R = chi_eff*p*growth_rate;
+  const double Dphi = Dp + R;
 
   const double mFlux =
     .5*(ux[d[1]]*m[d[1]] - ux[d[2]]*m[d[2]])
@@ -123,11 +124,11 @@ void DryGoOrGrow::UpdateDryFieldsAtNode(unsigned k, bool first)
   {
     QNxx[k] = QQxx[k] + .5*Dxx;
     QNyx[k] = QQyx[k] + .5*Dyx;
-    phn[k] = phi[k] + .5*Dp;
+    phn[k] = phi[k] + .5*Dphi;
 
     QQxx[k] = QQxx[k] + Dxx;
     QQyx[k] = QQyx[k] + Dyx;
-    phi_tmp[k] = phi[k] + Dp;
+    phi_tmp[k] = phi[k] + Dphi;
 
     mN[k] = m[k] + .5*Dm;
     m_tmp[k] = m[k] + Dm;
@@ -136,11 +137,9 @@ void DryGoOrGrow::UpdateDryFieldsAtNode(unsigned k, bool first)
   {
     QQxx[k] = QNxx[k] + .5*Dxx;
     QQyx[k] = QNyx[k] + .5*Dyx;
-    phi_tmp[k] = phn[k] + .5*Dp;
+    phi_tmp[k] = phn[k] + .5*Dphi;
     m_tmp[k] = mN[k] + .5*Dm;
   }
-
-  phi_tmp[k] += R;
 
   const double upper = phi_tmp[k] > 0 ? phi_tmp[k] : 0.;
   if(m_tmp[k] < 0)

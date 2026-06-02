@@ -369,8 +369,14 @@ void GoOrGrow::UpdateFields(bool first)
     // normal lyotropic update
     Lyotropic::UpdateFieldsAtNode(k, first);
 
-    // same division/death correction as LyotropicWithDivision
-    phi_tmp[k] += R;
+    // Apply growth with the same predictor-corrector timing used for m.
+    if(first)
+    {
+      phn[k] += .5*R;
+      phi_tmp[k] += R;
+    }
+    else
+      phi_tmp[k] += .5*R;
 
     if(first)
     {
