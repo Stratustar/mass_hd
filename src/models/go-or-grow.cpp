@@ -208,12 +208,86 @@ void GoOrGrow::ConfigurePhenotype()
 
 void GoOrGrow::UpdatePhenotypeQuantities()
 {
-  constexpr double phi_epsilon = 1e-12;
-
   for(unsigned k=0; k<DomainSize; ++k)
-    chi[k] = phi[k] > phi_epsilon ? m[k]/phi[k] : 0.;
+  {
+    if(!HasPhenotypeMaterial(k))
+    {
+      phi[k] = 0.;
+      m[k] = 0.;
+      chi[k] = 0.;
+    }
+    else
+      chi[k] = m[k]/phi[k];
+  }
 
   BoundaryConditionsFields();
+}
+
+double GoOrGrow::PhenotypePhiEpsilon() const
+{
+  return 1e-12;
+}
+
+bool GoOrGrow::HasPhenotypeMaterial(unsigned k) const
+{
+  return phi[k] > PhenotypePhiEpsilon();
+}
+
+bool GoOrGrow::HasMaterialFace(unsigned k, unsigned neighbour) const
+{
+  return HasPhenotypeMaterial(k) || HasPhenotypeMaterial(neighbour);
+}
+
+double GoOrGrow::MaskedPhiFaceIncrement(unsigned k, unsigned neighbour, double increment) const
+{
+  return HasMaterialFace(k, neighbour) ? increment : 0.;
+}
+
+double GoOrGrow::LocalMaterialChi(unsigned k, bool& found) const
+{
+  if(HasPhenotypeMaterial(k))
+  {
+    found = true;
+    return chi[k];
+  }
+
+  const auto& d = get_neighbours(k);
+  double sum = 0.;
+  unsigned count = 0;
+
+  for(unsigned q=1; q<9; ++q)
+    if(HasPhenotypeMaterial(d[q]))
+    {
+      sum += chi[d[q]];
+      ++count;
+    }
+
+  found = count > 0;
+  return found ? sum/count : 0.;
+}
+
+double GoOrGrow::MaterialChi(unsigned preferred, unsigned fallback) const
+{
+  if(HasPhenotypeMaterial(preferred))
+    return chi[preferred];
+  if(HasPhenotypeMaterial(fallback))
+    return chi[fallback];
+
+  bool found = false;
+  const double preferred_chi = LocalMaterialChi(preferred, found);
+  if(found)
+    return preferred_chi;
+
+  const double fallback_chi = LocalMaterialChi(fallback, found);
+  if(found)
+    return fallback_chi;
+
+  return 0.;
+}
+
+double GoOrGrow::TransportFaceChi(unsigned k, unsigned neighbour, double dphi_k) const
+{
+  return dphi_k >= 0 ? MaterialChi(neighbour, k) : MaterialChi(k, neighbour);
 }
 
 void GoOrGrow::ProjectM()
@@ -273,7 +347,7 @@ void GoOrGrow::UpdateQuantitiesAtNode(unsigned k)
   // ... on-diagonal stress components
   const double sigmaB = .5*AA*p*p*(1-p)*(1-p)
     + f_compress + .5*CC*term*term - mu*p;
-  const double active_prefactor = zeta*p*(1-chi[k]);
+  const double active_prefactor = zeta*p*(1-MaterialChi(k, k));
   const double sigmaF = 2*xi*( (Qxx*Qxx-1)*Hxx + Qxx*Qyx*Hyx )
     - active_prefactor*Qxx + .5*KK*(dyPhi*dyPhi-dxPhi*dxPhi)
     + LL*(dyQxx*dyQxx+dyQyx*dyQyx-dxQxx*dxQxx-dxQyx*dxQyx);
@@ -338,22 +412,33 @@ void GoOrGrow::UpdateFields(bool first)
     const double division_m = ( 1. ? division_mask[k] : 0. );
     const double death_m = ( 1. ? death_mask[k] : 0. );
     const double growth_rate = alpha*division_m - beta*death_m;
-    const double chi_eff = chi[k];
+    const double chi_eff = MaterialChi(k, k);
     const double R = chi_eff*phi[k]*growth_rate;
 
-    const double mFlux =
-      .5*(ux[d[1]]*m[d[1]] - ux[d[2]]*m[d[2]])
-    + .5*(uy[d[3]]*m[d[3]] - uy[d[4]]*m[d[4]]);
+    const double dphi_px_raw = GammaP*(MU[d[1]] - MU[k]) - .5*ux_phi[d[1]];
+    const double dphi_mx_raw = GammaP*(MU[d[2]] - MU[k]) + .5*ux_phi[d[2]];
+    const double dphi_py_raw = GammaP*(MU[d[3]] - MU[k]) - .5*uy_phi[d[3]];
+    const double dphi_my_raw = GammaP*(MU[d[4]] - MU[k]) + .5*uy_phi[d[4]];
+    const double dphi_px = MaskedPhiFaceIncrement(k, d[1], dphi_px_raw);
+    const double dphi_mx = MaskedPhiFaceIncrement(k, d[2], dphi_mx_raw);
+    const double dphi_py = MaskedPhiFaceIncrement(k, d[3], dphi_py_raw);
+    const double dphi_my = MaskedPhiFaceIncrement(k, d[4], dphi_my_raw);
+    const double phiRawTransport = dphi_px_raw + dphi_mx_raw + dphi_py_raw + dphi_my_raw
+      - (conserve_phi ? (countphi-totalphi)/DomainSize : 0.);
+    const double phiTransport = dphi_px + dphi_mx + dphi_py + dphi_my
+      - (conserve_phi ? (countphi-totalphi)/DomainSize : 0.);
+    const double phiTransportCorrection = phiTransport - phiRawTransport;
+    const double mTransport =
+      TransportFaceChi(k, d[1], dphi_px)*dphi_px
+    + TransportFaceChi(k, d[2], dphi_mx)*dphi_mx
+    + TransportFaceChi(k, d[3], dphi_py)*dphi_py
+    + TransportFaceChi(k, d[4], dphi_my)*dphi_my
+    - chi_eff*(conserve_phi ? (countphi-totalphi)/DomainSize : 0.);
 
-    const double chi_px = chi[d[1]];
-    const double chi_mx = chi[d[2]];
-    const double chi_py = chi[d[3]];
-    const double chi_my = chi[d[4]];
-    const double diffusiveMFlux =
-      .5*(chi_px + chi_eff)*(MU[d[1]] - MU[k])
-    - .5*(chi_eff + chi_mx)*(MU[k] - MU[d[2]])
-    + .5*(chi_py + chi_eff)*(MU[d[3]] - MU[k])
-    - .5*(chi_eff + chi_my)*(MU[k] - MU[d[4]]);
+    const double chi_px = MaterialChi(d[1], k);
+    const double chi_mx = MaterialChi(d[2], k);
+    const double chi_py = MaterialChi(d[3], k);
+    const double chi_my = MaterialChi(d[4], k);
     const double phenotypeDiffusion =
       .5*(phi[d[1]] + phi[k])*(chi_px - chi_eff)
     - .5*(phi[k] + phi[d[2]])*(chi_eff - chi_mx)
@@ -364,7 +449,7 @@ void GoOrGrow::UpdateFields(bool first)
     + Ochi*(phi[k]-phiswitch);
     const double Sswitch = -phi[k]*dVdChi;
     const double mGrowth = growTogether ? chi_eff*R : R;
-    const double Dm = GammaP*diffusiveMFlux + Dchi*phenotypeDiffusion - mFlux + Sswitch + mGrowth;
+    const double Dm = mTransport + Dchi*phenotypeDiffusion + Sswitch + mGrowth;
 
     // normal lyotropic update
     Lyotropic::UpdateFieldsAtNode(k, first);
@@ -372,11 +457,11 @@ void GoOrGrow::UpdateFields(bool first)
     // Apply growth with the same predictor-corrector timing used for m.
     if(first)
     {
-      phn[k] += .5*R;
-      phi_tmp[k] += R;
+      phn[k] += .5*(phiTransportCorrection + R);
+      phi_tmp[k] += phiTransportCorrection + R;
     }
     else
-      phi_tmp[k] += .5*R;
+      phi_tmp[k] += .5*(phiTransportCorrection + R);
 
     if(first)
     {

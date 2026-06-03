@@ -39,6 +39,20 @@ protected:
   void ConfigurePhenotype();
   /** Update derived phenotype fraction */
   void UpdatePhenotypeQuantities();
+  /** Density threshold below which chi is only an unphysical placeholder */
+  double PhenotypePhiEpsilon() const;
+  /** Whether this lattice node contains phenotype-carrying material */
+  bool HasPhenotypeMaterial(unsigned) const;
+  /** Whether a face can carry phi/m transport because either side has material */
+  bool HasMaterialFace(unsigned, unsigned) const;
+  /** Remove numerical phi transport across vacuum-vacuum faces */
+  double MaskedPhiFaceIncrement(unsigned, unsigned, double) const;
+  /** Material chi in the local neighbourhood, if one exists */
+  double LocalMaterialChi(unsigned, bool&) const;
+  /** Use preferred chi only if it carries material; otherwise fall back */
+  double MaterialChi(unsigned, unsigned) const;
+  /** Phenotype carried by a phi transport increment into/out of a face */
+  double TransportFaceChi(unsigned, unsigned, double) const;
   /** Project m back to a density consistent with phi */
   void ProjectM();
   /** Dry free-energy relaxation of phi and Q without hydrodynamics or growth */

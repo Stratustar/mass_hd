@@ -68,12 +68,10 @@ void DryGoOrGrow::UpdateDryFieldsAtNode(unsigned k, bool first)
   const double dxQyx = dxQQyx[k];
   const double dyQyx = dyQQyx[k];
 
-  const double del2mu = laplacian(MU, d, sD);
   const double dxux = derivX(ux, d, sB);
   const double dyux = derivY(ux, d, sB);
   const double dxuy = derivX(uy, d, sB);
   const double dyuy = derivY(uy, d, sB);
-  const double pFlux = derivX(ux_phi, d, sB) + derivY(uy_phi, d, sB);
 
   const double expansion = dxux + dyuy;
   const double shear = .5*(dxuy + dyux);
@@ -84,29 +82,35 @@ void DryGoOrGrow::UpdateDryFieldsAtNode(unsigned k, bool first)
     + xi*((Qxx+1)*(2*dxux-traceQL) + 2*Qyx*shear - expansion);
   const double Dyx = GammaQ*Hyx - vx*dxQyx - vy*dyQyx + 2*vorticity*Qxx
     + xi*(Qyx*(expansion-traceQL) + 2*shear);
-  const double Dp = GammaP*del2mu - pFlux
+  const double dphi_px_raw = GammaP*(MU[d[1]] - MU[k]) - .5*ux_phi[d[1]];
+  const double dphi_mx_raw = GammaP*(MU[d[2]] - MU[k]) + .5*ux_phi[d[2]];
+  const double dphi_py_raw = GammaP*(MU[d[3]] - MU[k]) - .5*uy_phi[d[3]];
+  const double dphi_my_raw = GammaP*(MU[d[4]] - MU[k]) + .5*uy_phi[d[4]];
+  const double dphi_px = MaskedPhiFaceIncrement(k, d[1], dphi_px_raw);
+  const double dphi_mx = MaskedPhiFaceIncrement(k, d[2], dphi_mx_raw);
+  const double dphi_py = MaskedPhiFaceIncrement(k, d[3], dphi_py_raw);
+  const double dphi_my = MaskedPhiFaceIncrement(k, d[4], dphi_my_raw);
+  const double Dp = dphi_px + dphi_mx + dphi_py + dphi_my
     - (conserve_phi ? (countphi-totalphi)/DomainSize : 0);
 
   const double division_m = division_mask[k] ? 1. : 0.;
   const double death_m = death_mask[k] ? 1. : 0.;
   const double growth_rate = alpha*division_m - beta*death_m;
-  const double chi_eff = chi[k];
+  const double chi_eff = MaterialChi(k, k);
   const double R = chi_eff*p*growth_rate;
   const double Dphi = Dp + R;
 
-  const double mFlux =
-    .5*(ux[d[1]]*m[d[1]] - ux[d[2]]*m[d[2]])
-  + .5*(uy[d[3]]*m[d[3]] - uy[d[4]]*m[d[4]]);
+  const double mTransport =
+    TransportFaceChi(k, d[1], dphi_px)*dphi_px
+  + TransportFaceChi(k, d[2], dphi_mx)*dphi_mx
+  + TransportFaceChi(k, d[3], dphi_py)*dphi_py
+  + TransportFaceChi(k, d[4], dphi_my)*dphi_my
+  - chi_eff*(conserve_phi ? (countphi-totalphi)/DomainSize : 0.);
 
-  const double chi_px = chi[d[1]];
-  const double chi_mx = chi[d[2]];
-  const double chi_py = chi[d[3]];
-  const double chi_my = chi[d[4]];
-  const double diffusiveMFlux =
-    .5*(chi_px + chi_eff)*(MU[d[1]] - MU[k])
-  - .5*(chi_eff + chi_mx)*(MU[k] - MU[d[2]])
-  + .5*(chi_py + chi_eff)*(MU[d[3]] - MU[k])
-  - .5*(chi_eff + chi_my)*(MU[k] - MU[d[4]]);
+  const double chi_px = MaterialChi(d[1], k);
+  const double chi_mx = MaterialChi(d[2], k);
+  const double chi_py = MaterialChi(d[3], k);
+  const double chi_my = MaterialChi(d[4], k);
   const double phenotypeDiffusion =
     .5*(phi[d[1]] + p)*(chi_px - chi_eff)
   - .5*(p + phi[d[2]])*(chi_eff - chi_mx)
@@ -117,8 +121,7 @@ void DryGoOrGrow::UpdateDryFieldsAtNode(unsigned k, bool first)
   + Ochi*(p-phiswitch);
   const double Sswitch = -p*dVdChi;
   const double mGrowth = growTogether ? chi_eff*R : R;
-  const double Dm = GammaP*diffusiveMFlux + Dchi*phenotypeDiffusion
-    - mFlux + Sswitch + mGrowth;
+  const double Dm = mTransport + Dchi*phenotypeDiffusion + Sswitch + mGrowth;
 
   if(first)
   {

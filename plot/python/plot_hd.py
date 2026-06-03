@@ -526,6 +526,7 @@ def main():
     fields = {
         "visualization": {"cmap": None, "clim": None},
         "m": {"cmap": "viridis", "clim": None},
+        "phi": {"cmap": "viridis", "clim": None},
         "phi_director": {"cmap": None, "clim": None},
         "phi_velocity": {"cmap": None, "clim": None},
         "chi": {"cmap": "magma", "clim": (0.0, 1.0)},
