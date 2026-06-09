@@ -1,0 +1,118 @@
+model    = go-or-grow
+
+# Initial material geometry.
+config   = circle
+nsteps   = 10000
+nstart   = 0
+ninfo    = 100
+
+# Lattice size and boundary condition.
+LX       = 100
+LY       = 100
+bc       = 0
+
+# Random seed.
+seed     = 1001
+
+# Predictor-corrector substeps.
+nsubsteps = 1
+
+# GammaP is the mobility for chemical-potential flux in the conserved phi equation.
+GammaP   = 5e-2
+
+# GammaQ is the mobility of nematic order Q under the molecular field H.
+GammaQ   = 0.3
+
+zeta     = 0.05
+zetaI    = 0
+friction = 0.0
+tauNem   = 1.0
+tauIso   = 1.0
+rho      = 40
+xi       = 0.3
+npc      = 1
+
+
+# Free-energy parameters
+# Surface tension.
+AA       = 0.03
+KK       = 0.06
+
+# CC couples phi and nematic magnitude through (Snem*phi - |Q|^2)^2.
+CC       = 0.1
+
+# LL controls the nematic elastic gradient penalty.
+LL       = 0.002
+
+# B is the crowding penalty for phi > phi-critical.
+B        = 0.1
+phi-critical = 1.2
+
+# Snem is the preferred nematic magnitude inside material.
+Snem     = 1
+
+# surface-stress=1 lets surface tension drive stress and velocity.
+# surface-stress=0 keeps surface tension only in the chemical-potential flux.
+surface-stress = 1
+
+
+# Initial phi and director/Q configuration
+# Parameters for geometry
+level    = 50
+radius   = 20
+
+# Initial phi concentration inside the material region.
+conc     = 1
+
+# Director angle in degrees and random angular noise amplitude.
+angle    = 0
+noise    = 1
+initial-order = 1
+
+
+# Optional dry free-energy relaxation before official dynamics
+# These steps relax phi and Q without growth or hydrodynamics before the run starts.
+relax-steps = 1000
+relax-dt    = 1.0
+relax-phi   = 1
+relax-Q     = 1
+
+
+# Phenotype field
+# chi-config=noise creates a spatially correlated random field around chi0.
+# chi-config=front creates a sharp left/right front.
+chi-config = noise
+chi0       = 1
+chi-noise  = 0
+chi-length = 0
+
+# Dchi diffuses phenotype material m. Set Dchi=0 to keep phenotype sharp.
+Dchi       = 0
+
+# Phenotype switching potential.
+Achi      = 0
+Ochi      = 0
+phiswitch = 0
+
+#   0: proliferation causes local chi increase
+#   1: proliferation does not change local phenotype
+growTogether = 0
+
+
+# Division and death
+# alpha and beta are source strengths inside division/death masks.
+alpha = 0.001
+beta  = 0
+
+division-rate   = 1e-1
+division-time   = 2
+division-radius = 3
+
+death-rate   = 0
+death-time   = 1
+death-radius = 0
+
+# Whether division is sharply suppressed above phi-critical.
+# division-phi-critical-factor=1 samples division with (1 - phi/phi-critical).
+# Set to 0 to remove that crowding factor from mask sampling.
+division-phi-critical-factor = 0

@@ -7,6 +7,9 @@ slurm-*.err
 
 # Generated analysis output
 results/
+output/
+analysis_outputs/
+figs/
 
 # Build artifacts
 build/
@@ -33,3 +36,4 @@ __pycache__/
 *.swp
 *~
 handoff.md
+run_log.md
