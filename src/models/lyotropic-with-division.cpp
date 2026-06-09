@@ -44,7 +44,9 @@ void LyotropicWithDivision::SetMasks()
     {
       if(phi[k]>=.5)
       {
-        const double adjusted_division_rate = division_rate * phi[k] * (1 - phi[k]/phi_critical);
+        const double crowding_factor = division_phi_critical_factor
+          ? (1 - phi[k]/phi_critical) : 1.;
+        const double adjusted_division_rate = division_rate * phi[k] * crowding_factor;
         if(random_real()<adjusted_division_rate)
           centers.emplace_back(array<unsigned,2>{GetXPosition(k), GetYPosition(k)});
       }
@@ -113,8 +115,8 @@ void LyotropicWithDivision::UpdateFields(bool first)
   #pragma omp parallel for num_threads(nthreads) if(nthreads)
   for(unsigned k=0; k<DomainSize; ++k)
   {
-    const double division_m = ( 1. ? division_mask[k] : 0. );
-    const double death_m = ( 1. ? death_mask[k] : 0. );
+    const double division_m = division_mask[k] ? 1. : 0.;
+    const double death_m = death_mask[k] ? 1. : 0.;
 
     // normal update
     Lyotropic::UpdateFieldsAtNode(k, first);
@@ -141,7 +143,9 @@ option_list LyotropicWithDivision::GetOptions()
     ("death-rate", opt::value<double>(&death_rate), "death rate")
     ("death-time", opt::value<double>(&death_time), "death life time")
     ("death-radius", opt::value<double>(&death_radius), "death radius")
-    ("phi-critical", opt::value<double>(&phi_critical), "phi critical");
+    ("phi-critical", opt::value<double>(&phi_critical), "phi critical")
+    ("division-phi-critical-factor", opt::value<int>(&division_phi_critical_factor),
+     "whether division sampling uses the (1 - phi/phi-critical) factor");
 
   return options;
 }

@@ -56,13 +56,14 @@ void GoOrGrow::RelaxFreeEnergy()
       const double Qyx = QQyx[k];
       const double p = phi[k];
       const double q2 = Qxx*Qxx + Qyx*Qyx;
-      const double term = Snem - q2;
+      const double term = Snem*p - q2;
       const double dp_critical = p - phi_critical;
       const double mu_compress = dp_critical > 0 ? B*dp_critical : 0.;
 
       HHxx[k] = 2*CC*term*Qxx + LL*laplacian(QQxx, d, sD);
       HHyx[k] = 2*CC*term*Qyx + LL*laplacian(QQyx, d, sD);
-      MU[k] = AA*p*(1-p)*(1-2*p) + mu_compress - KK*laplacian(phi, d, sD);
+      MU[k] = AA*p*(1-p)*(1-2*p) + mu_compress
+        + CC*Snem*term - KK*laplacian(phi, d, sD);
     }
 
     switch(BC)
@@ -207,12 +208,86 @@ void GoOrGrow::ConfigurePhenotype()
 
 void GoOrGrow::UpdatePhenotypeQuantities()
 {
-  constexpr double phi_epsilon = 1e-12;
-
   for(unsigned k=0; k<DomainSize; ++k)
-    chi[k] = phi[k] > phi_epsilon ? m[k]/phi[k] : 0.;
+  {
+    if(!HasPhenotypeMaterial(k))
+    {
+      phi[k] = 0.;
+      m[k] = 0.;
+      chi[k] = 0.;
+    }
+    else
+      chi[k] = m[k]/phi[k];
+  }
 
   BoundaryConditionsFields();
+}
+
+double GoOrGrow::PhenotypePhiEpsilon() const
+{
+  return 1e-12;
+}
+
+bool GoOrGrow::HasPhenotypeMaterial(unsigned k) const
+{
+  return phi[k] > PhenotypePhiEpsilon();
+}
+
+bool GoOrGrow::HasMaterialFace(unsigned k, unsigned neighbour) const
+{
+  return HasPhenotypeMaterial(k) || HasPhenotypeMaterial(neighbour);
+}
+
+double GoOrGrow::MaskedPhiFaceIncrement(unsigned k, unsigned neighbour, double increment) const
+{
+  return HasMaterialFace(k, neighbour) ? increment : 0.;
+}
+
+double GoOrGrow::LocalMaterialChi(unsigned k, bool& found) const
+{
+  if(HasPhenotypeMaterial(k))
+  {
+    found = true;
+    return chi[k];
+  }
+
+  const auto& d = get_neighbours(k);
+  double sum = 0.;
+  unsigned count = 0;
+
+  for(unsigned q=1; q<9; ++q)
+    if(HasPhenotypeMaterial(d[q]))
+    {
+      sum += chi[d[q]];
+      ++count;
+    }
+
+  found = count > 0;
+  return found ? sum/count : 0.;
+}
+
+double GoOrGrow::MaterialChi(unsigned preferred, unsigned fallback) const
+{
+  if(HasPhenotypeMaterial(preferred))
+    return chi[preferred];
+  if(HasPhenotypeMaterial(fallback))
+    return chi[fallback];
+
+  bool found = false;
+  const double preferred_chi = LocalMaterialChi(preferred, found);
+  if(found)
+    return preferred_chi;
+
+  const double fallback_chi = LocalMaterialChi(fallback, found);
+  if(found)
+    return fallback_chi;
+
+  return 0.;
+}
+
+double GoOrGrow::TransportFaceChi(unsigned k, unsigned neighbour, double dphi_k) const
+{
+  return dphi_k >= 0 ? MaterialChi(neighbour, k) : MaterialChi(k, neighbour);
 }
 
 void GoOrGrow::ProjectM()
@@ -256,28 +331,34 @@ void GoOrGrow::UpdateQuantitiesAtNode(unsigned k)
   // computation of the chemical potential and molecular field...
   // ...term controlling the preferred nematic order magnitude
   const double q2 = Qxx*Qxx + Qyx*Qyx;
-  const double term = Snem - q2;
+  const double term = Snem*p - q2;
   // ...molecular field
   const double Hxx = 2*CC*term*Qxx + LL*del2Qxx;
   const double Hyx = 2*CC*term*Qyx + LL*del2Qyx;
   // ...compressibility/crowding contribution
   const double dp_critical = p - phi_critical;
+  const double f_surface = .5*AA*p*p*(1-p)*(1-p);
+  const double mu_surface = AA*p*(1-p)*(1-2*p) - KK*del2p;
   const double f_compress = dp_critical > 0 ? .5*B*dp_critical*dp_critical : 0.;
   const double mu_compress = dp_critical > 0 ? B*dp_critical : 0.;
   // ...chemical potential
-  const double mu = AA*p*(1-p)*(1-2*p) + mu_compress - KK*del2p;
+  const double mu = mu_surface + mu_compress + CC*Snem*term;
 
   // computation of sigma...
   // ... on-diagonal stress components
-  const double sigmaB = .5*AA*p*p*(1-p)*(1-p)
-    + f_compress + .5*CC*term*term - mu*p;
-  const double active_prefactor = zeta*p*(1-chi[k]);
+  const double sigma_surface_bulk = f_surface - mu_surface*p;
+  const double sigmaB = f_compress + .5*CC*term*term
+    - (mu_compress + CC*Snem*term)*p
+    + (surface_stress ? sigma_surface_bulk : 0.);
+  const double active_prefactor = zeta*p*(1-MaterialChi(k, k));
+  const double phase_xx = surface_stress ? .5*KK*(dyPhi*dyPhi-dxPhi*dxPhi) : 0.;
+  const double phase_yx = surface_stress ? -KK*dxPhi*dyPhi : 0.;
   const double sigmaF = 2*xi*( (Qxx*Qxx-1)*Hxx + Qxx*Qyx*Hyx )
-    - active_prefactor*Qxx + .5*KK*(dyPhi*dyPhi-dxPhi*dxPhi)
+    - active_prefactor*Qxx + phase_xx
     + LL*(dyQxx*dyQxx+dyQyx*dyQyx-dxQxx*dxQxx-dxQyx*dxQyx);
   // .. off-diagonal stress components
   const double sigmaS = 2*xi*(Qyx*Qxx*Hxx + (Qyx*Qyx-1)*Hyx)
-    - active_prefactor*Qyx  - KK*dxPhi*dyPhi
+    - active_prefactor*Qyx + phase_yx
     - 2*LL*(dxQxx*dyQxx+dxQyx*dyQyx);
   const double sigmaA = 2*(Qxx*Hyx - Qyx*Hxx);
 
@@ -299,10 +380,10 @@ void GoOrGrow::UpdateQuantitiesAtNode(unsigned k)
   sigmaXY[k] =  sigmaS + sigmaA;
   sigmaYX[k] =  sigmaS - sigmaA;
   sigma_bulk[k] = sigmaB + zetaI * (conc-p);
-  sigma_elastic_xx[k] = sigmaF - .5*KK*(dyPhi*dyPhi-dxPhi*dxPhi) + active_prefactor*Qxx;
-  sigma_elastic_yx[k] = sigmaS + KK*dxPhi*dyPhi + active_prefactor*Qyx;
-  sigma_phase_field_xx[k] = .5*KK*(dyPhi*dyPhi-dxPhi*dxPhi);
-  sigma_phase_field_yx[k] = -KK*dxPhi*dyPhi;
+  sigma_elastic_xx[k] = sigmaF - phase_xx + active_prefactor*Qxx;
+  sigma_elastic_yx[k] = sigmaS - phase_yx + active_prefactor*Qyx;
+  sigma_phase_field_xx[k] = phase_xx;
+  sigma_phase_field_yx[k] = phase_yx;
   sigma_active_xx[k] = -active_prefactor*Qxx;
   sigma_active_yx[k] = -active_prefactor*Qyx;
 }
@@ -333,25 +414,36 @@ void GoOrGrow::UpdateFields(bool first)
   {
     const auto& d = get_neighbours(k);
 
-    const double division_m = ( 1. ? division_mask[k] : 0. );
-    const double death_m = ( 1. ? death_mask[k] : 0. );
+    const double division_m = division_mask[k] ? 1. : 0.;
+    const double death_m = death_mask[k] ? 1. : 0.;
     const double growth_rate = alpha*division_m - beta*death_m;
-    const double chi_eff = chi[k];
+    const double chi_eff = MaterialChi(k, k);
     const double R = chi_eff*phi[k]*growth_rate;
 
-    const double mFlux =
-      .5*(ux[d[1]]*m[d[1]] - ux[d[2]]*m[d[2]])
-    + .5*(uy[d[3]]*m[d[3]] - uy[d[4]]*m[d[4]]);
+    const double dphi_px_raw = GammaP*(MU[d[1]] - MU[k]) - .5*ux_phi[d[1]];
+    const double dphi_mx_raw = GammaP*(MU[d[2]] - MU[k]) + .5*ux_phi[d[2]];
+    const double dphi_py_raw = GammaP*(MU[d[3]] - MU[k]) - .5*uy_phi[d[3]];
+    const double dphi_my_raw = GammaP*(MU[d[4]] - MU[k]) + .5*uy_phi[d[4]];
+    const double dphi_px = MaskedPhiFaceIncrement(k, d[1], dphi_px_raw);
+    const double dphi_mx = MaskedPhiFaceIncrement(k, d[2], dphi_mx_raw);
+    const double dphi_py = MaskedPhiFaceIncrement(k, d[3], dphi_py_raw);
+    const double dphi_my = MaskedPhiFaceIncrement(k, d[4], dphi_my_raw);
+    const double phiRawTransport = dphi_px_raw + dphi_mx_raw + dphi_py_raw + dphi_my_raw
+      - (conserve_phi ? (countphi-totalphi)/DomainSize : 0.);
+    const double phiTransport = dphi_px + dphi_mx + dphi_py + dphi_my
+      - (conserve_phi ? (countphi-totalphi)/DomainSize : 0.);
+    const double phiTransportCorrection = phiTransport - phiRawTransport;
+    const double mTransport =
+      TransportFaceChi(k, d[1], dphi_px)*dphi_px
+    + TransportFaceChi(k, d[2], dphi_mx)*dphi_mx
+    + TransportFaceChi(k, d[3], dphi_py)*dphi_py
+    + TransportFaceChi(k, d[4], dphi_my)*dphi_my
+    - chi_eff*(conserve_phi ? (countphi-totalphi)/DomainSize : 0.);
 
-    const double chi_px = chi[d[1]];
-    const double chi_mx = chi[d[2]];
-    const double chi_py = chi[d[3]];
-    const double chi_my = chi[d[4]];
-    const double diffusiveMFlux =
-      .5*(chi_px + chi_eff)*(MU[d[1]] - MU[k])
-    - .5*(chi_eff + chi_mx)*(MU[k] - MU[d[2]])
-    + .5*(chi_py + chi_eff)*(MU[d[3]] - MU[k])
-    - .5*(chi_eff + chi_my)*(MU[k] - MU[d[4]]);
+    const double chi_px = MaterialChi(d[1], k);
+    const double chi_mx = MaterialChi(d[2], k);
+    const double chi_py = MaterialChi(d[3], k);
+    const double chi_my = MaterialChi(d[4], k);
     const double phenotypeDiffusion =
       .5*(phi[d[1]] + phi[k])*(chi_px - chi_eff)
     - .5*(phi[k] + phi[d[2]])*(chi_eff - chi_mx)
@@ -362,13 +454,19 @@ void GoOrGrow::UpdateFields(bool first)
     + Ochi*(phi[k]-phiswitch);
     const double Sswitch = -phi[k]*dVdChi;
     const double mGrowth = growTogether ? chi_eff*R : R;
-    const double Dm = GammaP*diffusiveMFlux + Dchi*phenotypeDiffusion - mFlux + Sswitch + mGrowth;
+    const double Dm = mTransport + Dchi*phenotypeDiffusion + Sswitch + mGrowth;
 
     // normal lyotropic update
     Lyotropic::UpdateFieldsAtNode(k, first);
 
-    // same division/death correction as LyotropicWithDivision
-    phi_tmp[k] += R;
+    // Apply growth with the same predictor-corrector timing used for m.
+    if(first)
+    {
+      phn[k] += .5*(phiTransportCorrection + R);
+      phi_tmp[k] += phiTransportCorrection + R;
+    }
+    else
+      phi_tmp[k] += .5*(phiTransportCorrection + R);
 
     if(first)
     {
@@ -439,6 +537,8 @@ option_list GoOrGrow::GetOptions()
      "phi threshold for phenotype switching bias")
     ("growTogether", opt::value<int>(&growTogether),
      "m growth source: 0 uses R, 1 uses chi*R")
+    ("surface-stress", opt::value<int>(&surface_stress),
+     "whether phase-field surface terms contribute to stress and velocity")
     ("chi-config", opt::value<string>(&chi_config),
      "phenotype initialization mode: noise or front")
     ("chi0", opt::value<double>(&chi0),

@@ -32,6 +32,8 @@ protected:
   double death_radius;
   /** Critical phi at which division stops */
   double phi_critical;
+  /** Whether division-rate sampling includes (1 - phi/phi_critical) */
+  int division_phi_critical_factor = 1;
 
   /** Time counters for shuffeling the patches */
   unsigned division_count, death_count;
@@ -69,7 +71,8 @@ public:
        & auto_name(death_rate)
        & auto_name(death_time)
        & auto_name(death_radius)
-       & auto_name(phi_critical);
+       & auto_name(phi_critical)
+       & auto_name(division_phi_critical_factor);
   }
 
   /** Serialization of the current frame (time snapshot) */
