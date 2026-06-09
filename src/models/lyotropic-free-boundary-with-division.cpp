@@ -158,8 +158,8 @@ void LyotropicFreeBoundaryWithDivision::UpdateFields(bool first)
   {
     if(outside[k]) continue;
 
-    const double division_m = ( 1. ? division_mask[k] : 0. );
-    const double death_m = ( 1. ? death_mask[k] : 0. );
+    const double division_m = division_mask[k] ? 1. : 0.;
+    const double death_m = death_mask[k] ? 1. : 0.;
 
     // normal update
     Lyotropic::UpdateFieldsAtNode(k, first);

@@ -146,8 +146,8 @@ void Lyotropic::ConfigureAtNode(unsigned k)
   theta = angle + noise*M_PI*(random_real() - .5);
 	//printf("coord is %u and %u, coordtemp is %f and %f, theta is %f\n",y,x,ytemp-LY/2,xtemp-LX/2,theta);
   //nematicOrder += noise*random_real();
-  QQxx[k] = nematicOrder*(cos(2*theta));
-  QQyx[k] = nematicOrder*(sin(2*theta));
+  QQxx[k] = init_order*nematicOrder*(cos(2*theta));
+  QQyx[k] = init_order*nematicOrder*(sin(2*theta));
   phi[k]  = nematicOrder*conc;
   totalphi += phi[k];
   // equilibrium dist
@@ -596,7 +596,9 @@ option_list Lyotropic::GetOptions()
     ("angle", opt::value<double>(&angle_deg),
      "initial angle to x direction (in degrees)")
     ("noise", opt::value<double>(&noise),
-     "size of initial variations");
+     "size of initial variations")
+    ("initial-order", opt::value<double>(&init_order),
+     "initial nematic order amplitude");
 
   return { model_options, config_options };
 }

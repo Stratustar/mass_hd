@@ -16,6 +16,8 @@ protected:
   double Achi = 0., Ochi = 0., phiswitch = 0.;
   /** Whether m growth follows the local grow fraction */
   int growTogether = 0;
+  /** Whether phase-field surface terms contribute to stress and velocity */
+  int surface_stress = 1;
   /** Grow-type density and derived phenotype fraction */
   ScalarField m, mN, m_tmp, chi;
   /** Phenotype initial mean, variance and correlation length */
@@ -83,6 +85,7 @@ public:
        & auto_name(Ochi)
        & auto_name(phiswitch)
        & auto_name(growTogether)
+       & auto_name(surface_stress)
        & auto_name(chi0)
        & auto_name(chi_noise)
        & auto_name(chi_length)

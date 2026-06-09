@@ -28,6 +28,8 @@ protected:
   /** Nematic region level, concentration, director inclination, inital noise,
    * intial radius of the circle */
   double level, conc, angle_deg, angle, noise, radius;
+  /** Initial nematic order amplitude inside the configured material region */
+  double init_order = 1.;
   /** Total binary phase value*/
   double totalphi=0., countphi=0.;
   /** Fluid density */
@@ -99,6 +101,7 @@ public:
        & auto_name(conc)
        & auto_name(angle)
        & auto_name(noise)
+       & auto_name(init_order)
        & auto_name(totalphi)
        & auto_name(rho)
        & auto_name(GammaP)

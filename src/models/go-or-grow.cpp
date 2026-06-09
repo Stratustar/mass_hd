@@ -337,23 +337,28 @@ void GoOrGrow::UpdateQuantitiesAtNode(unsigned k)
   const double Hyx = 2*CC*term*Qyx + LL*del2Qyx;
   // ...compressibility/crowding contribution
   const double dp_critical = p - phi_critical;
+  const double f_surface = .5*AA*p*p*(1-p)*(1-p);
+  const double mu_surface = AA*p*(1-p)*(1-2*p) - KK*del2p;
   const double f_compress = dp_critical > 0 ? .5*B*dp_critical*dp_critical : 0.;
   const double mu_compress = dp_critical > 0 ? B*dp_critical : 0.;
   // ...chemical potential
-  const double mu = AA*p*(1-p)*(1-2*p) + mu_compress
-    + CC*Snem*term - KK*del2p;
+  const double mu = mu_surface + mu_compress + CC*Snem*term;
 
   // computation of sigma...
   // ... on-diagonal stress components
-  const double sigmaB = .5*AA*p*p*(1-p)*(1-p)
-    + f_compress + .5*CC*term*term - mu*p;
+  const double sigma_surface_bulk = f_surface - mu_surface*p;
+  const double sigmaB = f_compress + .5*CC*term*term
+    - (mu_compress + CC*Snem*term)*p
+    + (surface_stress ? sigma_surface_bulk : 0.);
   const double active_prefactor = zeta*p*(1-MaterialChi(k, k));
+  const double phase_xx = surface_stress ? .5*KK*(dyPhi*dyPhi-dxPhi*dxPhi) : 0.;
+  const double phase_yx = surface_stress ? -KK*dxPhi*dyPhi : 0.;
   const double sigmaF = 2*xi*( (Qxx*Qxx-1)*Hxx + Qxx*Qyx*Hyx )
-    - active_prefactor*Qxx + .5*KK*(dyPhi*dyPhi-dxPhi*dxPhi)
+    - active_prefactor*Qxx + phase_xx
     + LL*(dyQxx*dyQxx+dyQyx*dyQyx-dxQxx*dxQxx-dxQyx*dxQyx);
   // .. off-diagonal stress components
   const double sigmaS = 2*xi*(Qyx*Qxx*Hxx + (Qyx*Qyx-1)*Hyx)
-    - active_prefactor*Qyx  - KK*dxPhi*dyPhi
+    - active_prefactor*Qyx + phase_yx
     - 2*LL*(dxQxx*dyQxx+dxQyx*dyQyx);
   const double sigmaA = 2*(Qxx*Hyx - Qyx*Hxx);
 
@@ -375,10 +380,10 @@ void GoOrGrow::UpdateQuantitiesAtNode(unsigned k)
   sigmaXY[k] =  sigmaS + sigmaA;
   sigmaYX[k] =  sigmaS - sigmaA;
   sigma_bulk[k] = sigmaB + zetaI * (conc-p);
-  sigma_elastic_xx[k] = sigmaF - .5*KK*(dyPhi*dyPhi-dxPhi*dxPhi) + active_prefactor*Qxx;
-  sigma_elastic_yx[k] = sigmaS + KK*dxPhi*dyPhi + active_prefactor*Qyx;
-  sigma_phase_field_xx[k] = .5*KK*(dyPhi*dyPhi-dxPhi*dxPhi);
-  sigma_phase_field_yx[k] = -KK*dxPhi*dyPhi;
+  sigma_elastic_xx[k] = sigmaF - phase_xx + active_prefactor*Qxx;
+  sigma_elastic_yx[k] = sigmaS - phase_yx + active_prefactor*Qyx;
+  sigma_phase_field_xx[k] = phase_xx;
+  sigma_phase_field_yx[k] = phase_yx;
   sigma_active_xx[k] = -active_prefactor*Qxx;
   sigma_active_yx[k] = -active_prefactor*Qyx;
 }
@@ -409,8 +414,8 @@ void GoOrGrow::UpdateFields(bool first)
   {
     const auto& d = get_neighbours(k);
 
-    const double division_m = ( 1. ? division_mask[k] : 0. );
-    const double death_m = ( 1. ? death_mask[k] : 0. );
+    const double division_m = division_mask[k] ? 1. : 0.;
+    const double death_m = death_mask[k] ? 1. : 0.;
     const double growth_rate = alpha*division_m - beta*death_m;
     const double chi_eff = MaterialChi(k, k);
     const double R = chi_eff*phi[k]*growth_rate;
@@ -532,6 +537,8 @@ option_list GoOrGrow::GetOptions()
      "phi threshold for phenotype switching bias")
     ("growTogether", opt::value<int>(&growTogether),
      "m growth source: 0 uses R, 1 uses chi*R")
+    ("surface-stress", opt::value<int>(&surface_stress),
+     "whether phase-field surface terms contribute to stress and velocity")
     ("chi-config", opt::value<string>(&chi_config),
      "phenotype initialization mode: noise or front")
     ("chi0", opt::value<double>(&chi0),
