@@ -35,5 +35,5 @@ __pycache__/
 .vscode/
 *.swp
 *~
-handoff.md
+dev_log.md
 run_log.md

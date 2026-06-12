@@ -116,9 +116,10 @@ void DryGoOrGrow::UpdateDryFieldsAtNode(unsigned k, bool first)
   - .5*(p + phi[d[2]])*(chi_eff - chi_mx)
   + .5*(phi[d[3]] + p)*(chi_py - chi_eff)
   - .5*(p + phi[d[4]])*(chi_eff - chi_my);
+  const double press = -sigma_bulk[k];
   const double dVdChi =
     2*Achi*chi_eff*(1-chi_eff)*(1-2*chi_eff)
-  + Ochi*(p-phiswitch);
+  + Ochi*(press-pswitch);
   const double Sswitch = -p*dVdChi;
   const double mGrowth = growTogether ? chi_eff*R : R;
   const double Dm = mTransport + Dchi*phenotypeDiffusion + Sswitch + mGrowth;

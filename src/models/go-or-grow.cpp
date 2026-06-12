@@ -449,9 +449,10 @@ void GoOrGrow::UpdateFields(bool first)
     - .5*(phi[k] + phi[d[2]])*(chi_eff - chi_mx)
     + .5*(phi[d[3]] + phi[k])*(chi_py - chi_eff)
     - .5*(phi[k] + phi[d[4]])*(chi_eff - chi_my);
+    const double press = -sigma_bulk[k];
     const double dVdChi =
       2*Achi*chi_eff*(1-chi_eff)*(1-2*chi_eff)
-    + Ochi*(phi[k]-phiswitch);
+    + Ochi*(press-pswitch);
     const double Sswitch = -phi[k]*dVdChi;
     const double mGrowth = growTogether ? chi_eff*R : R;
     const double Dm = mTransport + Dchi*phenotypeDiffusion + Sswitch + mGrowth;
@@ -533,8 +534,8 @@ option_list GoOrGrow::GetOptions()
      "phenotype switching double-well barrier")
     ("Ochi", opt::value<double>(&Ochi),
      "phenotype switching bias strength")
-    ("phiswitch", opt::value<double>(&phiswitch),
-     "phi threshold for phenotype switching bias")
+    ("pswitch", opt::value<double>(&pswitch),
+     "pressure threshold for phenotype switching bias")
     ("growTogether", opt::value<int>(&growTogether),
      "m growth source: 0 uses R, 1 uses chi*R")
     ("surface-stress", opt::value<int>(&surface_stress),

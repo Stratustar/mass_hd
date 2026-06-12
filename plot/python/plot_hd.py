@@ -40,32 +40,6 @@ def require_frame_fields(frame, field_name, required):
         )
 
 
-def periodic_laplacian(field):
-    return (
-        np.roll(field, 1, axis=0)
-        + np.roll(field, -1, axis=0)
-        + np.roll(field, 1, axis=1)
-        + np.roll(field, -1, axis=1)
-        - 4.0 * field
-    )
-
-
-def pressure_without_surface(frame):
-    require_frame_fields(frame, "pressure_no_surface", ("phi", "sigma_bulk"))
-    lx = frame.parameters["LX"]
-    ly = frame.parameters["LY"]
-    phi = np.array(frame.phi).reshape((lx, ly))
-    sigma_bulk = np.array(frame.sigma_bulk).reshape((lx, ly))
-    aa = float(frame.parameters.get("AA", 0.0))
-    kk = float(frame.parameters.get("KK", 0.0))
-
-    f_surface = 0.5 * aa * phi * phi * (1.0 - phi) * (1.0 - phi)
-    mu_surface = aa * phi * (1.0 - phi) * (1.0 - 2.0 * phi)
-    mu_surface -= kk * periodic_laplacian(phi)
-    sigma_surface_bulk = f_surface - mu_surface * phi
-    return -(sigma_bulk - sigma_surface_bulk)
-
-
 def parse_args():
     parser = argparse.ArgumentParser(
         description="Plot m, chi, phi, and pressure fields from a MASS archive."
@@ -161,9 +135,6 @@ def field_as_grid(frame, field_name):
             lx = frame.parameters["LX"]
             ly = frame.parameters["LY"]
             return -np.array(frame.sigma_bulk).reshape((lx, ly))
-
-    if field_name == "pressure_no_surface":
-        return pressure_without_surface(frame)
 
     if not hasattr(frame, field_name):
         available = sorted(
@@ -571,7 +542,6 @@ def main():
         "chi": {"cmap": "magma", "clim": (0.0, 1.0)},
         "phi_one_minus_chi": {"cmap": "viridis", "clim": None},
         "pressure": {"cmap": "coolwarm", "clim": None},
-        "pressure_no_surface": {"cmap": "coolwarm", "clim": None},
     }
 
     if args.fields is not None:

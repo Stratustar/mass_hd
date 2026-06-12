@@ -1,5 +1,6 @@
-# Cluster smoke test: dry-go-or-grow, circle, all-grow (chi0=1, growTogether=1)
-# 2026-06-10. Mirror of the local smoke test, run on jed to exercise the cluster path.
+# Local B-scan for pressure calibration: dry-go-or-grow, circle, all-grow, switching OFF
+# 2026-06-11. phi-critical=1.0, vary B. Goal: test P vs B scaling and phi_max response.
+# switching threshold params omitted on purpose (default 0) for image compatibility.
 
 model    = dry-go-or-grow
 config   = circle
@@ -42,7 +43,6 @@ chi-length = 0
 Dchi       = 0
 Achi      = 0
 Ochi      = 0
-pswitch  = 0
 growTogether = 1
 beta         = 0
 death-rate   = 0
@@ -51,7 +51,7 @@ death-radius = 0
 division-rate   = 1e-1
 division-time   = 2
 alpha           = 0.0002
-phi-critical    = 1.2
+phi-critical    = 1.0
 division-phi-critical-factor = 0
 division-radius = 3
 surface-stress = 0

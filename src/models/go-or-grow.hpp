@@ -13,7 +13,7 @@ protected:
   /** Phenotype diffusion coefficient */
   double Dchi = 0.;
   /** Phenotype switching potential parameters */
-  double Achi = 0., Ochi = 0., phiswitch = 0.;
+  double Achi = 0., Ochi = 0., pswitch = 0.;
   /** Whether m growth follows the local grow fraction */
   int growTogether = 0;
   /** Whether phase-field surface terms contribute to stress and velocity */
@@ -83,7 +83,7 @@ public:
        & auto_name(Dchi)
        & auto_name(Achi)
        & auto_name(Ochi)
-       & auto_name(phiswitch)
+       & auto_name(pswitch)
        & auto_name(growTogether)
        & auto_name(surface_stress)
        & auto_name(chi0)

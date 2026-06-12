@@ -1,9 +1,9 @@
-# Cluster smoke test: dry-go-or-grow, circle, all-grow (chi0=1, growTogether=1)
-# 2026-06-10. Mirror of the local smoke test, run on jed to exercise the cluster path.
+# Switching scan: dry-go-or-grow circle. growth -> pressure -> go -> escape -> grow
+# 2026-06-12. B=1, phi_c=1.0, pswitch=0.3, vary Ochi/Achi.
 
 model    = dry-go-or-grow
 config   = circle
-nsteps   = 10000
+nsteps   = 20000
 nstart   = 0000
 ninfo    = 100
 LX       = 100
@@ -40,9 +40,9 @@ chi0       = 1
 chi-noise  = 0
 chi-length = 0
 Dchi       = 0
-Achi      = 0
-Ochi      = 0
-pswitch  = 0
+Achi      = 0.01
+Ochi      = 0.02
+pswitch   = 0.3
 growTogether = 1
 beta         = 0
 death-rate   = 0
@@ -51,7 +51,7 @@ death-radius = 0
 division-rate   = 1e-1
 division-time   = 2
 alpha           = 0.0002
-phi-critical    = 1.2
+phi-critical    = 1.0
 division-phi-critical-factor = 0
 division-radius = 3
 surface-stress = 0

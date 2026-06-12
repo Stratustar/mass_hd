@@ -1,5 +1,5 @@
-# Cluster smoke test: dry-go-or-grow, circle, all-grow (chi0=1, growTogether=1)
-# 2026-06-10. Mirror of the local smoke test, run on jed to exercise the cluster path.
+# Local smoke test: dry-go-or-grow, circle, all-grow (chi0=1, growTogether=1)
+# 2026-06-10. Purpose: verify local run + plot library pressure/visualization gifs.
 
 model    = dry-go-or-grow
 config   = circle
