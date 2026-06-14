@@ -36,6 +36,7 @@ void GoOrGrow::Configure()
   LyotropicWithDivision::Configure();
   RelaxFreeEnergy();
   ResetHydrodynamics();
+  ConfigurePhiNoise();
   ConfigurePhenotype();
 }
 
@@ -139,6 +140,63 @@ void GoOrGrow::ResetHydrodynamics()
   }
 
   ftot = ftotal;
+}
+
+void GoOrGrow::ConfigurePhiNoise()
+{
+  // Overlay a multiplicative, spatially correlated modulation phi *= max(1+xi, 0)
+  // on the relaxed initial phi, where xi is a zero-mean Gaussian field of standard
+  // deviation phi_noise smoothed to correlation length phi_length. Reuses the chi
+  // noise recipe; chi is used as workspace (overwritten by ConfigurePhenotype next).
+  if(phi_noise <= 0.)
+    return;
+
+  for(unsigned k=0; k<DomainSize; ++k)
+    chi[k] = random_normal();
+
+  BoundaryConditionsFields();
+
+  constexpr double smooth_rate = 0.2;
+  const unsigned smooth_steps =
+    phi_length > 0 ? static_cast<unsigned>(ceil(phi_length*phi_length/(2*smooth_rate))) : 0u;
+
+  for(unsigned s=0; s<smooth_steps; ++s)
+  {
+    for(unsigned k=0; k<DomainSize; ++k)
+    {
+      const auto& d = get_neighbours(k);
+      m_tmp[k] = chi[k] + smooth_rate*laplacian(chi, d, sD);
+    }
+
+    swap(chi.get_data(), m_tmp.get_data());
+    BoundaryConditionsFields();
+  }
+
+  double mean = 0.;
+  for(unsigned k=0; k<DomainSize; ++k)
+    mean += chi[k];
+  mean /= DomainSize;
+
+  double variance = 0.;
+  for(unsigned k=0; k<DomainSize; ++k)
+  {
+    chi[k] -= mean;
+    variance += chi[k]*chi[k];
+  }
+  variance /= DomainSize;
+
+  const double norm = variance > 0 ? phi_noise/sqrt(variance) : 0.;
+
+  for(unsigned k=0; k<DomainSize; ++k)
+  {
+    const double factor = 1. + norm*chi[k];
+    phi[k] *= factor > 0 ? factor : 0.;
+  }
+
+  // The modulation changes the total mass; retarget the conserve_phi reference.
+  totalphi = 0.;
+  for(unsigned k=0; k<DomainSize; ++k)
+    totalphi += phi[k];
 }
 
 void GoOrGrow::ConfigurePhenotype()
@@ -548,6 +606,10 @@ option_list GoOrGrow::GetOptions()
      "initial phenotype variance")
     ("chi-length", opt::value<double>(&chi_length),
      "initial phenotype correlation length")
+    ("phi-noise", opt::value<double>(&phi_noise),
+     "std of multiplicative correlated-noise phi modulation")
+    ("phi-length", opt::value<double>(&phi_length),
+     "correlation length of phi noise modulation")
     ("relax-steps", opt::value<unsigned>(&relax_steps),
      "dry free-energy relaxation steps before official dynamics")
     ("relax-dt", opt::value<double>(&relax_dt),

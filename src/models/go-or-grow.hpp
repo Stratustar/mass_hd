@@ -22,6 +22,8 @@ protected:
   ScalarField m, mN, m_tmp, chi;
   /** Phenotype initial mean, variance and correlation length */
   double chi0 = 0., chi_noise = 0., chi_length = 0.;
+  /** Correlated-noise phi init: std of multiplicative modulation and its length */
+  double phi_noise = 0., phi_length = 0.;
   /** Phenotype initialization mode */
   std::string chi_config = "noise";
   /** Dry free-energy relaxation before official dynamics */
@@ -39,6 +41,8 @@ protected:
   virtual void BoundaryConditionsFields();
   /** Setup the spatially correlated phenotype field */
   void ConfigurePhenotype();
+  /** Overlay a multiplicative correlated-noise modulation on the initial phi */
+  void ConfigurePhiNoise();
   /** Update derived phenotype fraction */
   void UpdatePhenotypeQuantities();
   /** Density threshold below which chi is only an unphysical placeholder */
@@ -93,7 +97,9 @@ public:
        & auto_name(relax_steps)
        & auto_name(relax_dt)
        & auto_name(relax_phi)
-       & auto_name(relax_Q);
+       & auto_name(relax_Q)
+       & auto_name(phi_noise)
+       & auto_name(phi_length);
   }
 
   /** Serialization of the current frame (time snapshot) */

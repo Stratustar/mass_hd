@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #SBATCH --job-name=mass
-#SBATCH --time=12:00:00
+#SBATCH --time=24:00:00
 #SBATCH --output=%x-%j.out
 #SBATCH --error=%x-%j.err
 #SBATCH --partition=standard
