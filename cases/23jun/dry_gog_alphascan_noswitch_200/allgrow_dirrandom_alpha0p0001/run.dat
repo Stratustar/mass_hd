@@ -1,0 +1,64 @@
+# 23jun alpha-scan, proliferation-driven pressure baseline.
+# all-grow (chi0=1) + no switch (Achi=0, Ochi=0, Dchi=0) => chi==1 everywhere,
+#   active stress prefactor zeta*p*(1-chi)=0, so flow is driven purely by
+#   proliferation + crowding (B). Pure passive proliferation pressure baseline.
+# director purely random (noise=1). 200x200, radius 15, phi-noise 0 (clean).
+# Batch will vary alpha in {0.0002, 0.00015, 0.0001, 0.00005}; this is alpha=0.0001.
+# Derived from 14jun/dry_gog_initscan_phinoise/allgrow_diraligned_Achi0_alpha0p0002.
+
+model    = dry-go-or-grow
+config   = circle
+nsteps   = 10000
+nstart   = 0000
+ninfo    = 100
+LX       = 200
+LY       = 200
+bc       = 0
+seed     = 1001
+GammaQ   = 0.3
+GammaP   = 0.05
+zeta     = 0.05
+zetaI    = 0
+friction = 10
+tauNem   = 1.0
+tauIso   = 1.0
+AA       = 0.03
+CC       = 0.1
+LL       = 0.002
+KK       = 0.06
+rho      = 40
+xi       = 0.3
+B        = 1.0
+Snem     = 1
+level    = 50
+radius   = 15
+conc     = 1
+noise    = 1
+initial-order = 1
+angle    = 0
+relax-steps = 500
+relax-dt    = 1.0
+relax-phi   = 1
+relax-Q     = 1
+chi-config = noise
+chi0       = 1
+chi-noise  = 0
+chi-length = 0
+phi-noise  = 0
+phi-length = 5
+Dchi       = 0
+Achi      = 0
+Ochi      = 0
+pswitch   = 0.2
+growTogether = 1
+beta         = 0
+death-rate   = 0
+death-time   = 1
+death-radius = 0
+division-rate   = 1e-1
+division-time   = 2
+alpha           = 0.0001
+phi-critical    = 1.0
+division-phi-critical-factor = 0
+division-radius = 3
+surface-stress = 0
