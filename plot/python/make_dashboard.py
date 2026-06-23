@@ -56,9 +56,13 @@ def collect_figures(vdir):
             continue
         if f.endswith(".png"):
             singles.append(f)
+    last_png = {field: f for field, (n, f) in frames.items()}
     figs = []
     for field, f in sorted(gifs):
-        figs.append({"kind": "gif", "group": field, "label": field + " (gif)", "file": f})
+        fig = {"kind": "gif", "group": field, "label": field + " (gif)", "file": f}
+        if field in last_png:
+            fig["poster"] = last_png[field]   # lightweight cover; gif itself loads on click
+        figs.append(fig)
     for field, (n, f) in sorted(frames.items()):
         figs.append({"kind": "png", "group": field, "label": "%s (frame %d)" % (field, n), "file": f})
     for f in sorted(singles):
@@ -143,8 +147,10 @@ TEMPLATE = r"""<!doctype html>
   .card h2 { font-size:13px; margin:0 0 8px; font-variant-numeric: tabular-nums; }
   .card h2 .k { color:var(--muted); font-weight:500; }
   .grid { display:grid; grid-template-columns: repeat(auto-fill, minmax(220px,1fr)); gap:10px; }
-  figure { margin:0; border:1px solid var(--line); border-radius:8px; overflow:hidden; background:#f3f3f3; }
+  figure { position:relative; margin:0; border:1px solid var(--line); border-radius:8px; overflow:hidden; background:#f3f3f3; }
   figure img { width:100%; height:170px; object-fit:contain; display:block; background:#7e7e7e; cursor:zoom-in; }
+  .badge { position:absolute; top:6px; left:6px; background:rgba(0,0,0,.6); color:#fff; font-size:11px; padding:1px 6px; border-radius:10px; pointer-events:none; }
+  .noposter { height:170px; display:flex; align-items:center; justify-content:center; color:#fff; background:#555; cursor:pointer; font-size:13px; }
   figcaption { font-size:11px; color:var(--muted); padding:4px 6px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .empty { color:var(--muted); font-size:13px; padding:20px 0; }
   #lb { position:fixed; inset:0; background:rgba(0,0,0,.85); display:none; align-items:center; justify-content:center; z-index:20; cursor:zoom-out; }
@@ -202,13 +208,23 @@ function matches(v){
   return DATA.order.every(k => sel[k].size === 0 || sel[k].has(v.params[k]));
 }
 
+function tile(v, f){
+  const cap = v.name + " — " + f.label;
+  if(f.kind === "gif"){
+    const gif = enc(v.name+"/"+f.file);
+    const inner = f.poster
+      ? '<img loading="lazy" src="'+enc(v.name+"/"+f.poster)+'" data-gif="'+gif+'" data-cap="'+cap+'" alt="'+f.label+'">'
+      : '<div class="noposter" data-gif="'+gif+'" data-cap="'+cap+'">&#9654; load gif</div>';
+    return '<figure><span class="badge">&#9654; gif</span>'+inner+'<figcaption>'+f.label+'</figcaption></figure>';
+  }
+  return '<figure><img loading="lazy" src="'+enc(v.name+"/"+f.file)+'" data-cap="'+cap+'" alt="'+f.label+'">'+
+         '<figcaption>'+f.label+'</figcaption></figure>';
+}
+
 function card(v){
   const figs = v.figures.filter(f => !figOff.has(f.group));
   const pstr = DATA.order.map(k => '<span class="k">'+k+'</span> '+(v.params[k]??'-')).join(" &nbsp; ");
-  const tiles = figs.map(f =>
-    '<figure><img loading="lazy" src="'+enc(v.name+"/"+f.file)+'" '+
-    'data-cap="'+v.name+' — '+f.label+'" alt="'+f.label+'">'+
-    '<figcaption>'+f.label+'</figcaption></figure>').join("");
+  const tiles = figs.map(f => tile(v, f)).join("");
   return '<div class="card"><h2>'+pstr+'</h2><div class="grid">'+
          (tiles||'<span class="empty">no figures for selected types</span>')+'</div></div>';
 }
@@ -230,7 +246,14 @@ document.getElementById("reset").onclick = () => {
 
 const lb = document.getElementById("lb"), lbimg = lb.querySelector("img"), lbcap = lb.querySelector(".cap");
 document.getElementById("results").addEventListener("click", e => {
-  if(e.target.tagName === "IMG"){ lbimg.src = e.target.src; lbcap.textContent = e.target.dataset.cap || ""; lb.style.display = "flex"; }
+  const t = e.target;
+  const src = t.dataset.gif || (t.tagName === "IMG" ? t.getAttribute("src") : null);
+  if(!src) return;
+  const cap = t.dataset.cap || "";
+  lbcap.textContent = t.dataset.gif ? cap + "  (loading gif…)" : cap;
+  lbimg.onload = () => { lbcap.textContent = cap; };
+  lbimg.src = src;            // gif fetched here, only on click
+  lb.style.display = "flex";
 });
 lb.onclick = () => { lb.style.display = "none"; lbimg.src = ""; };
 document.addEventListener("keydown", e => { if(e.key === "Escape"){ lb.style.display = "none"; lbimg.src = ""; }});
