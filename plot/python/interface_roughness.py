@@ -38,8 +38,8 @@ from archive.archive import loadarchive
 
 TOKEN = re.compile(r"^([A-Za-z]+)([-0-9pe.]+)$")
 KEYMAP = {"a": "alpha", "z": "zeta", "O": "Ochi", "LL": "LL", "xi": "xi"}
-COLS = ["variant", "alpha", "zeta", "Ochi", "R_eff", "w", "w_rel", "lam",
-        "lam_rel", "xi", "xi_rel", "n_dom", "n_mean", "Q", "solidity",
+COLS = ["variant", "alpha", "zeta", "Ochi", "LL", "xi_align", "R_eff", "w", "w_rel",
+        "lam", "lam_rel", "xi", "xi_rel", "n_dom", "n_mean", "Q", "solidity",
         "n_contours", "n_pts"]
 
 
@@ -150,7 +150,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("studydir")
     ap.add_argument("outdir")
-    ap.add_argument("--pattern", default="*LL0p002_xi0p3")
+    ap.add_argument("--pattern", default="*")
     ap.add_argument("--dpi", type=int, default=150)
     args = ap.parse_args()
     os.makedirs(args.outdir, exist_ok=True)
@@ -168,7 +168,9 @@ def main():
             m = extract_interface(grid(frame, "chi"), grid(frame, "phi"))
         except Exception as e:
             print("FAIL", name, repr(e))
-        row = dict(variant=name, **{k: parse_params(name).get(k) for k in ("alpha", "zeta", "Ochi")})
+        pp = parse_params(name)
+        row = dict(variant=name, alpha=pp.get("alpha"), zeta=pp.get("zeta"),
+                   Ochi=pp.get("Ochi"), LL=pp.get("LL"), xi_align=pp.get("xi"))
         if m:
             row.update(m)
         rows.append(row)
@@ -180,16 +182,21 @@ def main():
         for r in rows:
             wr.writerow({k: r.get(k) for k in COLS})
 
-    def col(k):
-        return np.array([(r.get(k) if r.get(k) is not None else np.nan) for r in rows], float)
+    def col(k, rl):
+        return np.array([(r.get(k) if r.get(k) is not None else np.nan) for r in rl], float)
 
-    params = {"alpha": col("alpha"), "zeta": col("zeta"), "Ochi": col("Ochi")}
+    def is_main(r):
+        return (r.get("LL") is not None and abs(r["LL"] - 0.002) < 1e-9
+                and r.get("xi_align") is not None and abs(r["xi_align"] - 0.3) < 1e-9)
+    MAIN = [r for r in rows if is_main(r)]
+
+    params = {"alpha": col("alpha", MAIN), "zeta": col("zeta", MAIN), "Ochi": col("Ochi", MAIN)}
     metric_keys = ["w", "w_rel", "lam", "lam_rel", "xi", "n_dom", "Q", "solidity"]
-    metrics = {k: col(k) for k in metric_keys}
+    metrics = {k: col(k, MAIN) for k in metric_keys}
 
     # Spearman correlations
     rho_mat = np.full((len(metric_keys), 3), np.nan)
-    lines = ["Spearman rho (p) of metric vs parameter (n=%d cases):" % len(rows)]
+    lines = ["Spearman rho (p) of metric vs parameter (main grid, n=%d cases):" % len(MAIN)]
     for i, mk in enumerate(metric_keys):
         cells = []
         for j, pk in enumerate(params):
@@ -229,38 +236,49 @@ def main():
     fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
     fig.tight_layout(); fig.savefig(os.path.join(args.outdir, "corr_heatmap.png"), dpi=args.dpi); plt.close(fig)
 
-    # 2) marginal trends: metric vs each param, mean +/- std over the other two axes
-    trend = [("lam", "wavelength lam"), ("w_rel", "rel. amplitude w/<r>"),
-             ("Q", "isoperimetric Q-1"), ("solidity", "solidity A/A_hull")]
-    fig, axs = plt.subplots(len(trend), 3, figsize=(11.5, 2.5 * len(trend)), squeeze=False)
-    for ri, (mk, ml) in enumerate(trend):
+    # 2) representative slices: metric vs each param, 4 lines = 2x2 extremes of the other two
+    def lohi(arr):
+        u = sorted({v for v in arr if np.isfinite(v)})
+        return [u[0], u[-1]] if len(u) >= 2 else u
+    pvals = {p: lohi(params[p]) for p in params}
+    colors = ["#1f77b4", "#d62728", "#2ca02c", "#9467bd"]
+    for mk, ml in [("lam", "wavelength lam"), ("w_rel", "rel. amplitude w/<r>"),
+                   ("Q", "isoperimetric Q-1"), ("solidity", "solidity A/A_hull")]:
         y = metrics[mk]
-        for cj, pk in enumerate(params):
-            ax = axs[ri][cj]
-            pv = params[pk]
-            xs, mu, sd = [], [], []
-            for v in sorted({u for u in pv if np.isfinite(u)}):
-                sub = y[(pv == v) & np.isfinite(y)]
-                if len(sub):
-                    xs.append(v); mu.append(sub.mean()); sd.append(sub.std())
-            ax.errorbar(xs, mu, yerr=sd, marker="o", ms=5, capsize=3, lw=1.6, color="#255c99")
-            ax.set_xscale("log"); ax.grid(True, alpha=0.3)
-            if ri == 0:
-                ax.set_title(pk, fontsize=11)
-            if ri == len(trend) - 1:
-                ax.set_xlabel(pk, fontsize=10)
+        fig, axs = plt.subplots(1, 3, figsize=(13, 3.6), squeeze=False)
+        for cj, xp in enumerate(params):
+            ax = axs[0][cj]
+            others = [p for p in params if p != xp]
+            xvals = sorted({v for v in params[xp] if np.isfinite(v)})
+            ci = 0
+            for a_ in pvals[others[0]]:
+                for b_ in pvals[others[1]]:
+                    xs, ys = [], []
+                    for xv in xvals:
+                        sel = ((np.abs(params[xp] - xv) < 1e-12)
+                               & (np.abs(params[others[0]] - a_) < 1e-12)
+                               & (np.abs(params[others[1]] - b_) < 1e-12) & np.isfinite(y))
+                        idx = np.where(sel)[0]
+                        if len(idx):
+                            xs.append(xv); ys.append(float(np.mean(y[idx])))
+                    if xs:
+                        ax.plot(xs, ys, "o-", color=colors[ci], lw=1.6, ms=5,
+                                label="%s=%g, %s=%g" % (others[0], a_, others[1], b_))
+                    ci += 1
+            ax.set_xscale("log"); ax.set_xlabel(xp, fontsize=10); ax.grid(True, alpha=0.3)
             if cj == 0:
                 ax.set_ylabel(ml, fontsize=10)
-    fig.suptitle("Roughness vs parameter (mean +/- std over the other two axes)", fontsize=13)
-    fig.tight_layout(rect=(0, 0, 1, 0.97))
-    fig.savefig(os.path.join(args.outdir, "trends.png"), dpi=args.dpi); plt.close(fig)
+            ax.legend(fontsize=7, framealpha=0.6)
+        fig.suptitle("%s vs parameters (4 representative slices = extremes of the other two)" % ml, fontsize=12)
+        fig.tight_layout(rect=(0, 0, 1, 0.94))
+        fig.savefig(os.path.join(args.outdir, "trend_%s.png" % mk), dpi=args.dpi); plt.close(fig)
 
     # 3) alpha x zeta heatmaps per Ochi: shared color scale + cell annotations
-    fin = lambda k: sorted({v for v in col(k) if np.isfinite(v)})
+    fin = lambda k: sorted({v for v in col(k, MAIN) if np.isfinite(v)})
     alphas, zetas, ochis = fin("alpha"), fin("zeta"), fin("Ochi")
 
     def heatmaps(yk, label, lognorm):
-        vals = col(yk); vals = vals[np.isfinite(vals)]
+        vals = col(yk, MAIN); vals = vals[np.isfinite(vals)]
         if not len(vals):
             return
         vmin, vmax = np.percentile(vals, 5), np.percentile(vals, 95)
@@ -269,7 +287,7 @@ def main():
         im = None
         for k, oc in enumerate(ochis):
             M = np.full((len(zetas), len(alphas)), np.nan)
-            for r in rows:
+            for r in MAIN:
                 yv = r.get(yk)
                 if r.get("Ochi") == oc and yv is not None and np.isfinite(yv):
                     M[zetas.index(r["zeta"]), alphas.index(r["alpha"])] = yv
@@ -294,6 +312,43 @@ def main():
 
     heatmaps("lam", "characteristic wavelength lam (lattice units; log color, shared scale)", True)
     heatmaps("w_rel", "relative amplitude w/<r> (shared scale)", False)
+
+    # 4) LL / xi study at the reference points (groups with multiple LL,xi)
+    from collections import defaultdict
+    groups = defaultdict(list)
+    for r in rows:
+        groups[(r.get("alpha"), r.get("zeta"), r.get("Ochi"))].append(r)
+    refpts = [(key, rs) for key, rs in sorted(groups.items())
+              if len({(rr.get("LL"), rr.get("xi_align")) for rr in rs}) > 1]
+    if refpts:
+        for mk, ml in [("lam", "wavelength lam"), ("w", "amplitude w"),
+                       ("w_rel", "rel. amplitude w/<r>"), ("Q", "isoperimetric Q-1")]:
+            fig, axs = plt.subplots(1, len(refpts), figsize=(5.2 * len(refpts), 4), squeeze=False)
+            for ci, (key, rs) in enumerate(refpts):
+                ax = axs[0][ci]
+                for xv in sorted({rr.get("xi_align") for rr in rs if rr.get("xi_align") is not None}):
+                    pts = sorted((rr.get("LL"), rr.get(mk)) for rr in rs
+                                 if rr.get("xi_align") == xv and rr.get("LL") is not None
+                                 and rr.get(mk) is not None and np.isfinite(rr.get(mk, np.nan)))
+                    if pts:
+                        ax.plot([p[0] for p in pts], [p[1] for p in pts], "o-", lw=1.7, ms=6, label="xi=%g" % xv)
+                if mk == "lam":
+                    LLs = sorted({rr.get("LL") for rr in rs if rr.get("LL")})
+                    b = [rr.get(mk) for rr in rs if rr.get("LL") == LLs[0] and rr.get("xi_align") == 0.3
+                         and rr.get(mk) is not None and np.isfinite(rr.get(mk, np.nan))]
+                    if b and len(LLs) > 1:
+                        ax.plot(LLs, [b[0] * np.sqrt(L / LLs[0]) for L in LLs], "k--", alpha=0.5, label="~sqrt(LL)")
+                a_, z_, o_ = key
+                ax.set_xscale("log"); ax.set_xlabel("LL"); ax.grid(True, alpha=0.3)
+                if ci == 0:
+                    ax.set_ylabel(ml)
+                ax.set_title("alpha=%g, zeta=%g, Ochi=%g" % (a_, z_, o_), fontsize=9)
+                ax.legend(fontsize=8)
+            fig.suptitle("%s vs LL (lines: xi) at the reference points" % ml, fontsize=12)
+            fig.tight_layout(rect=(0, 0, 1, 0.94))
+            fig.savefig(os.path.join(args.outdir, "llxi_%s.png" % mk), dpi=args.dpi); plt.close(fig)
+    else:
+        print("(no LL/xi reference groups found)")
 
     n_ok = sum(1 for r in rows if r.get("lam") is not None and np.isfinite(r.get("lam", np.nan)))
     print("\nprocessed %d cases (%d with a measurable interface). wrote to %s" % (len(rows), n_ok, args.outdir))
