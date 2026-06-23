@@ -172,14 +172,15 @@ TEMPLATE = r"""<!doctype html>
     <button class="act" id="reset">Reset</button>
     <span class="count" id="count"></span>
   </div>
-  <details class="figtypes"><summary>figure types</summary><div id="figtypes" class="axis"></div></details>
+  <div id="figfilters"></div>
 </header>
 <main><div id="results"></div></main>
 <div id="lb"><img alt=""><div class="cap"></div></div>
 <script>
 const DATA = /*DATA*/;
 const sel = {};                 // axis -> Set of selected value strings
-const figOff = new Set();       // figure groups toggled OFF (empty = all shown)
+const figOff = new Set();       // field groups toggled OFF (empty = all shown)
+const kindOff = new Set();      // kinds toggled OFF: "static" and/or "gif"
 
 document.getElementById("title").textContent = DATA.title;
 
@@ -198,16 +199,30 @@ function buildFilters(){
     });
     host.appendChild(row);
   });
-  // figure-type toggles
+  // figure filters (visible buttons): which field groups + which kinds to show
   const groups = [];
   const seen = new Set();
   DATA.variants.forEach(v => v.figures.forEach(f => { if(!seen.has(f.group)){ seen.add(f.group); groups.push(f.group); }}));
-  const fh = document.getElementById("figtypes");
+  const ff = document.getElementById("figfilters");
+
+  const grow = document.createElement("div"); grow.className = "axis";
+  const gnm = document.createElement("span"); gnm.className = "name"; gnm.textContent = "fields"; grow.appendChild(gnm);
   groups.forEach(g => {
     const b = document.createElement("button"); b.className = "v on"; b.textContent = g;
     b.onclick = () => { b.classList.toggle("on"); if(figOff.has(g)) figOff.delete(g); else figOff.add(g); render(); };
-    fh.appendChild(b);
+    grow.appendChild(b);
   });
+  ff.appendChild(grow);
+
+  const krow = document.createElement("div"); krow.className = "axis";
+  const knm = document.createElement("span"); knm.className = "name"; knm.textContent = "show"; krow.appendChild(knm);
+  [["static", "static frame"], ["gif", "gif"]].forEach(pair => {
+    const k = pair[0], label = pair[1];
+    const b = document.createElement("button"); b.className = "v on"; b.textContent = label;
+    b.onclick = () => { b.classList.toggle("on"); if(kindOff.has(k)) kindOff.delete(k); else kindOff.add(k); render(); };
+    krow.appendChild(b);
+  });
+  ff.appendChild(krow);
 }
 
 function matches(v){
@@ -228,7 +243,7 @@ function tile(v, f){
 }
 
 function card(v){
-  const figs = v.figures.filter(f => !figOff.has(f.group));
+  const figs = v.figures.filter(f => !figOff.has(f.group) && !kindOff.has(f.kind === "gif" ? "gif" : "static"));
   const pstr = DATA.order.map(k => '<span class="k">'+k+'</span> '+(v.params[k]??'-')).join(" &nbsp; ");
   const tiles = figs.map(f => tile(v, f)).join("");
   return '<div class="card"><h2>'+pstr+'</h2><div class="grid">'+
@@ -244,9 +259,9 @@ function render(){
 
 document.getElementById("reset").onclick = () => {
   Object.values(sel).forEach(s => s.clear());
-  figOff.clear();
+  figOff.clear(); kindOff.clear();
   document.querySelectorAll("#filters button.v").forEach(b => b.classList.remove("on"));
-  document.querySelectorAll("#figtypes button.v").forEach(b => b.classList.add("on"));
+  document.querySelectorAll("#figfilters button.v").forEach(b => b.classList.add("on"));
   render();
 };
 
