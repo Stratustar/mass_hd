@@ -329,10 +329,12 @@ def draw_field(ax, frame, field_name, cmap, clim=None):
             linewidths=0.8,
             origin="lower",
         )
-        # go-grow phenotype boundary
+        # go-grow phenotype boundary, restricted to the colony interior (phi>0.5)
+        # so chi=m/phi noise outside the colony does not spawn spurious contours.
         chi = field_as_grid(frame, "chi")
+        chi_interior = np.ma.masked_where(phi <= 0.5, chi)
         ax.contour(
-            chi.T,
+            chi_interior.T,
             levels=[0.5],
             colors=["black"],
             linewidths=1.0,
@@ -439,10 +441,12 @@ def save_field_png(ar, frame_index, field_name, outdir, cmap, clim, dpi):
     if field_name == "visualization":
         fig.subplots_adjust(right=0.75)
 
+    # visualization snapshots at high dpi for boundary inspection
+    save_dpi = 600 if field_name == "visualization" else dpi
     outfile = os.path.join(outdir, f"{field_name}_frame{frame_index}.png")
     fig.savefig(
         outfile,
-        dpi=dpi,
+        dpi=save_dpi,
         transparent=getattr(im, "transparent_output", False),
         bbox_inches="tight" if field_name == "visualization" else None,
     )
