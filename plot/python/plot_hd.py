@@ -50,8 +50,8 @@ def parse_args():
         "--frames",
         nargs="+",
         type=int,
-        default=[0, 5, 50, 120, 180],
-        help="Frame indices to export as PNG files. Default: 0 5 50 120 180",
+        default=None,
+        help="Frame indices to export as PNG. Default: first, middle and last frame.",
     )
     parser.add_argument(
         "--fields",
@@ -70,8 +70,8 @@ def parse_args():
     parser.add_argument(
         "--gif-frames",
         type=int,
-        default=67,
-        help="Number of frames to render into each GIF. Default: 67",
+        default=None,
+        help="Max frames per GIF. Default: auto (all available).",
     )
     parser.add_argument(
         "--gif-frame-start",
@@ -82,8 +82,8 @@ def parse_args():
     parser.add_argument(
         "--gif-frame-step",
         type=int,
-        default=3,
-        help="Frame index step for GIF rendering. Default: 3",
+        default=None,
+        help="Frame index step for GIF. Default: auto (~40 frames over the run).",
     )
     parser.add_argument(
         "--dpi",
@@ -325,7 +325,8 @@ def draw_field(ax, frame, field_name, cmap, clim=None):
         ax.contour(
             phi.T,
             levels=[0.5],
-            colors=["#d9468f"],
+            colors=["black"],
+            linestyles="dashed",
             linewidths=0.8,
             origin="lower",
         )
@@ -441,12 +442,10 @@ def save_field_png(ar, frame_index, field_name, outdir, cmap, clim, dpi):
     if field_name == "visualization":
         fig.subplots_adjust(right=0.75)
 
-    # visualization snapshots at high dpi for boundary inspection
-    save_dpi = 600 if field_name == "visualization" else dpi
     outfile = os.path.join(outdir, f"{field_name}_frame{frame_index}.png")
     fig.savefig(
         outfile,
-        dpi=save_dpi,
+        dpi=dpi,
         transparent=getattr(im, "transparent_output", False),
         bbox_inches="tight" if field_name == "visualization" else None,
     )
@@ -548,13 +547,9 @@ def main():
 
     fields = {
         "visualization": {"cmap": None, "clim": None},
-        "m": {"cmap": "viridis", "clim": None},
-        "phi": {"cmap": "viridis", "clim": None},
-        "phi_director": {"cmap": None, "clim": None},
-        "phi_velocity": {"cmap": None, "clim": None},
-        "chi": {"cmap": "magma", "clim": (0.0, 1.0)},
-        "phi_one_minus_chi": {"cmap": "viridis", "clim": None},
         "pressure": {"cmap": "coolwarm", "clim": None},
+        "phi_velocity": {"cmap": None, "clim": None},
+        "phi_director": {"cmap": None, "clim": None},
     }
 
     if args.fields is not None:
@@ -564,11 +559,19 @@ def main():
             raise SystemExit(f"Unknown plot field(s): {unknown}. Known fields: {known}")
         fields = {field: fields[field] for field in args.fields}
 
+    if args.frames is not None:
+        frames_to_plot = args.frames
+    elif n_available > 0:
+        mid = int(round(0.5 * (n_available - 1)))
+        frames_to_plot = sorted({0, mid, n_available - 1})
+    else:
+        frames_to_plot = []
+
     if args.skip_png:
         print("Skipping PNG export.", flush=True)
     else:
         print("Starting PNG export...", flush=True)
-        for frame_index in args.frames:
+        for frame_index in frames_to_plot:
             if frame_index >= n_available:
                 print(
                     f"Skipping frame {frame_index}; archive only has {n_available} frames.",
@@ -589,6 +592,8 @@ def main():
                 )
                 print(f"Saved: {outfile}", flush=True)
 
+    gif_step = args.gif_frame_step if args.gif_frame_step is not None else max(1, int(round(n_available / 40.0)))
+    gif_count = args.gif_frames if args.gif_frames is not None else n_available
     print("Preparing GIFs...", flush=True)
     for field_name, style in fields.items():
         outfile = save_field_gif(
@@ -597,9 +602,9 @@ def main():
             args.outdir,
             style["cmap"],
             style["clim"],
-            args.gif_frames,
+            gif_count,
             args.gif_frame_start,
-            args.gif_frame_step,
+            gif_step,
         )
         print(f"Saved GIF: {outfile}", flush=True)
 
