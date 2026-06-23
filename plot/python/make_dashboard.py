@@ -21,6 +21,12 @@ PARAM_ORDER = ["alpha", "zeta", "Ochi", "LL", "xi", "Dchi", "Achi", "friction"]
 KEY_LABEL = {"a": "alpha", "z": "zeta", "O": "Ochi", "LL": "LL", "xi": "xi",
              "Dchi": "Dchi", "Achi": "Achi", "fr": "friction"}
 
+# Figure groups not shown in the dashboard (files stay on disk, just not listed).
+EXCLUDE_GROUPS = {
+    "field_snapshots", "final_state_diagnostics", "mask_diagnostics",
+    "proliferation_dashboard", "radial_kymographs", "radial_profiles",
+}
+
 GIF_RE = re.compile(r"^(?P<field>.+)_(?P<a>\d+)-(?P<b>\d+)_step(?P<k>\d+)\.gif$")
 FRAME_RE = re.compile(r"^(?P<field>.+)_frame(?P<n>\d+)\.png$")
 TOKEN_RE = re.compile(r"^([A-Za-z]+)([-0-9pe.]+)$")
@@ -67,7 +73,7 @@ def collect_figures(vdir):
         figs.append({"kind": "png", "group": field, "label": "%s (frame %d)" % (field, n), "file": f})
     for f in sorted(singles):
         figs.append({"kind": "png", "group": f[:-4], "label": f[:-4], "file": f})
-    return figs
+    return [f for f in figs if f["group"] not in EXCLUDE_GROUPS]
 
 
 def sort_key(s):
