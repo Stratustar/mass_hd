@@ -1,0 +1,61 @@
+# 23jun go-grow boundary scan (dry-go-or-grow), 600x600, 40000 steps.
+# correlated-random chi (chi0=0.5, chi-noise=0.04, chi-length=5) + random director; Achi=0, Dchi=2e-4.
+# axes: alpha x zeta x Ochi main grid (LL=0.002, xi=0.3); LL x xi full grid at 2 ref points.
+# pswitch per-alpha = t=5000 center pressure from 23jun 200^2/r15 all-grow pilot (ballpark).
+
+model    = dry-go-or-grow
+config   = circle
+nsteps   = 40000
+nstart   = 0000
+ninfo    = 200
+LX       = 600
+LY       = 600
+bc       = 0
+seed     = 1001
+GammaQ   = 0.3
+GammaP   = 0.05
+zeta     = 0.1
+zetaI    = 0
+friction = 10
+tauNem   = 1.0
+tauIso   = 1.0
+AA       = 0.03
+CC       = 0.1
+LL       = 0.002
+KK       = 0.06
+rho      = 40
+xi       = 0.3
+B        = 1.0
+Snem     = 1
+level    = 50
+radius   = 20
+conc     = 1
+noise    = 1
+initial-order = 1
+angle    = 0
+relax-steps = 500
+relax-dt    = 1.0
+relax-phi   = 1
+relax-Q     = 1
+chi-config = noise
+chi0       = 0.5
+chi-noise  = 0.04
+chi-length = 5
+phi-noise  = 0
+phi-length = 5
+Dchi       = 0.0002
+Achi      = 0
+Ochi      = 0.02
+pswitch   = 0.17
+growTogether = 1
+beta         = 0
+death-rate   = 0
+death-time   = 1
+death-radius = 0
+division-rate   = 1e-1
+division-time   = 2
+alpha           = 0.0002
+phi-critical    = 1.0
+division-phi-critical-factor = 0
+division-radius = 3
+surface-stress = 0
