@@ -12,7 +12,7 @@ from PIL import Image
 DIRECTOR_STRIDE = 5
 VELOCITY_STRIDE = 10
 DIRECTOR_WIDTH = 0.0015
-VISUALIZATION_CMAP = plt.get_cmap("viridis")
+VISUALIZATION_CMAP = plt.get_cmap("bwr")  # go (chi=0)=blue, grow (chi=1)=red, boundary (chi=0.5)=white
 VISUALIZATION_BACKGROUND = "#7e7e7e"
 
 BASE_DIR = os.path.abspath(
@@ -225,7 +225,7 @@ def visualization_rgba(frame):
     chi = np.clip(field_as_grid(frame, "chi"), 0.0, 1.0)
     phi = np.clip(field_as_grid(frame, "phi"), 0.0, 1.0)
 
-    rgb = VISUALIZATION_CMAP(1.0 - chi)[..., :3]
+    rgb = VISUALIZATION_CMAP(chi)[..., :3]
 
     return np.dstack((rgb, phi))
 
@@ -327,6 +327,15 @@ def draw_field(ax, frame, field_name, cmap, clim=None):
             levels=[0.5],
             colors=["#d9468f"],
             linewidths=0.8,
+            origin="lower",
+        )
+        # go-grow phenotype boundary
+        chi = field_as_grid(frame, "chi")
+        ax.contour(
+            chi.T,
+            levels=[0.5],
+            colors=["black"],
+            linewidths=1.0,
             origin="lower",
         )
         ax.set_aspect("equal")
