@@ -9,8 +9,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 from PIL import Image
 
-DIRECTOR_STRIDE = 5
-VELOCITY_STRIDE = 10
+DIRECTOR_STRIDE = 3
+VELOCITY_STRIDE = 5
 DIRECTOR_WIDTH = 0.0015
 VISUALIZATION_CMAP = plt.get_cmap("bwr")  # go (chi=0)=blue, grow (chi=1)=red, boundary (chi=0.5)=white
 VISUALIZATION_BACKGROUND = "#7e7e7e"
@@ -312,35 +312,33 @@ def velocity_components(frame, stride=VELOCITY_STRIDE):
     return xx, yy, uu, vv, speed
 
 
+def draw_boundary_contours(ax, frame, lw_scale=1.0):
+    """Overlay phi=0.5 (black dashed) and chi=0.5 within phi>0.5 (black solid).
+
+    lw_scale scales both line widths (1.0 for visualization, 0.5 for the
+    pressure/velocity/director field panels).
+    """
+    if not (hasattr(frame, "phi") and hasattr(frame, "chi")):
+        return
+    phi = field_as_grid(frame, "phi")
+    chi = field_as_grid(frame, "chi")
+    ax.contour(phi.T, levels=[0.5], colors=["black"], linestyles="dashed",
+               linewidths=0.8 * lw_scale, origin="lower")
+    chi_interior = np.ma.masked_where(phi <= 0.5, chi)
+    ax.contour(chi_interior.T, levels=[0.5], colors=["black"],
+               linewidths=1.0 * lw_scale, origin="lower")
+
+
 def draw_field(ax, frame, field_name, cmap, clim=None):
     if field_name == "visualization":
         rgba = visualization_rgba(frame)
-        phi = field_as_grid(frame, "phi")
         ax.set_facecolor(VISUALIZATION_BACKGROUND)
         im = ax.imshow(
             np.transpose(rgba, (1, 0, 2)),
             origin="lower",
             interpolation="nearest",
         )
-        ax.contour(
-            phi.T,
-            levels=[0.5],
-            colors=["black"],
-            linestyles="dashed",
-            linewidths=0.8,
-            origin="lower",
-        )
-        # go-grow phenotype boundary, restricted to the colony interior (phi>0.5)
-        # so chi=m/phi noise outside the colony does not spawn spurious contours.
-        chi = field_as_grid(frame, "chi")
-        chi_interior = np.ma.masked_where(phi <= 0.5, chi)
-        ax.contour(
-            chi_interior.T,
-            levels=[0.5],
-            colors=["black"],
-            linewidths=1.0,
-            origin="lower",
-        )
+        draw_boundary_contours(ax, frame, 1.0)
         ax.set_aspect("equal")
         ax.set_xlabel("x")
         ax.set_ylabel("y")
@@ -379,6 +377,7 @@ def draw_field(ax, frame, field_name, cmap, clim=None):
             width=DIRECTOR_WIDTH,
             color="black",
         )
+        draw_boundary_contours(ax, frame, 0.5)
         ax.set_aspect("equal")
         ax.set_xlabel("x")
         ax.set_ylabel("y")
@@ -403,6 +402,7 @@ def draw_field(ax, frame, field_name, cmap, clim=None):
             width=0.003,
             color="red",
         )
+        draw_boundary_contours(ax, frame, 0.5)
         ax.set_aspect("equal")
         ax.set_xlabel("x")
         ax.set_ylabel("y")
@@ -420,6 +420,8 @@ def draw_field(ax, frame, field_name, cmap, clim=None):
         vmin=None if clim is None else clim[0],
         vmax=None if clim is None else clim[1],
     )
+    if field_name == "pressure":
+        draw_boundary_contours(ax, frame, 0.5)
     ax.set_aspect("equal")
     ax.set_xlabel("x")
     ax.set_ylabel("y")
@@ -430,11 +432,38 @@ def available_frame_count(ar):
     return int((ar.nsteps - ar.nstart) / ar.ninfo) + 1
 
 
-def save_field_png(ar, frame_index, field_name, outdir, cmap, clim, dpi):
+def compute_crop_box(ar, margin=30):
+    """View window: bbox of phi>0.5 at the LAST frame, expanded by `margin` per
+    side (clamped to the lattice). Returns (x0, x1, y0, y1) in plot coords, or None.
+    Applied to every field panel so all frames share one colony-tight view."""
+    n = available_frame_count(ar)
+    if n < 1:
+        return None
+    frame = ar.read_frame(n - 1)
+    if not hasattr(frame, "phi"):
+        return None
+    phi = field_as_grid(frame, "phi")
+    lx, ly = phi.shape
+    mask = phi > 0.5
+    if not mask.any():
+        return None
+    xs = np.where(mask.any(axis=1))[0]
+    ys = np.where(mask.any(axis=0))[0]
+    x0 = max(0, int(xs.min()) - margin)
+    x1 = min(lx - 1, int(xs.max()) + margin)
+    y0 = max(0, int(ys.min()) - margin)
+    y1 = min(ly - 1, int(ys.max()) + margin)
+    return (x0, x1, y0, y1)
+
+
+def save_field_png(ar, frame_index, field_name, outdir, cmap, clim, dpi, crop=None):
     frame = ar.read_frame(frame_index)
 
     fig, ax = plt.subplots(figsize=(6, 5))
     im = draw_field(ax, frame, field_name, cmap=cmap, clim=clim)
+    if crop is not None:
+        ax.set_xlim(crop[0], crop[1])
+        ax.set_ylim(crop[2], crop[3])
     ax.set_title(f"{field_name}, frame {frame_index}")
     if not getattr(im, "skip_colorbar", False):
         fig.colorbar(im, ax=ax, label=getattr(im, "colorbar_label", field_name))
@@ -453,11 +482,14 @@ def save_field_png(ar, frame_index, field_name, outdir, cmap, clim, dpi):
     return outfile
 
 
-def render_field_image(ar, frame_index, field_name, cmap, clim):
+def render_field_image(ar, frame_index, field_name, cmap, clim, crop=None):
     frame = ar.read_frame(frame_index)
 
     fig, ax = plt.subplots(figsize=(6, 5))
     im = draw_field(ax, frame, field_name, cmap=cmap, clim=clim)
+    if crop is not None:
+        ax.set_xlim(crop[0], crop[1])
+        ax.set_ylim(crop[2], crop[3])
     ax.set_title(f"{field_name}, frame {frame_index}")
     if not getattr(im, "skip_colorbar", False):
         fig.colorbar(im, ax=ax, label=getattr(im, "colorbar_label", field_name))
@@ -475,7 +507,7 @@ def render_field_image(ar, frame_index, field_name, cmap, clim):
     return image
 
 
-def save_field_gif(ar, field_name, outdir, cmap, clim, nframes, frame_start, frame_step):
+def save_field_gif(ar, field_name, outdir, cmap, clim, nframes, frame_start, frame_step, crop=None):
     if nframes < 1:
         raise RuntimeError(f"GIF needs at least one {field_name} frame.")
     if frame_step < 1:
@@ -489,7 +521,7 @@ def save_field_gif(ar, field_name, outdir, cmap, clim, nframes, frame_start, fra
         frame_indices.append(final_frame)
     for frame_index in frame_indices:
         print(f"Rendering {field_name} GIF frame {frame_index}", flush=True)
-        frames.append(render_field_image(ar, frame_index, field_name, cmap, clim))
+        frames.append(render_field_image(ar, frame_index, field_name, cmap, clim, crop))
 
     if not frames:
         raise RuntimeError(f"No {field_name} frames were rendered for GIF.")
@@ -545,6 +577,8 @@ def main():
     n_available = available_frame_count(ar)
     print(f"Archive loaded. Available frame count: {n_available}", flush=True)
 
+    crop = compute_crop_box(ar, margin=30)
+
     fields = {
         "visualization": {"cmap": None, "clim": None},
         "pressure": {"cmap": "coolwarm", "clim": None},
@@ -589,6 +623,7 @@ def main():
                     style["cmap"],
                     style["clim"],
                     args.dpi,
+                    crop,
                 )
                 print(f"Saved: {outfile}", flush=True)
 
@@ -605,6 +640,7 @@ def main():
             gif_count,
             args.gif_frame_start,
             gif_step,
+            crop,
         )
         print(f"Saved GIF: {outfile}", flush=True)
 
