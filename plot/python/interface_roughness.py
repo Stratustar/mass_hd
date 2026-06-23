@@ -213,51 +213,87 @@ def main():
     with open(os.path.join(args.outdir, "correlation_summary.txt"), "w") as fh:
         fh.write(summary + "\n")
 
-    # correlation heatmap
-    fig, ax = plt.subplots(figsize=(4.6, 5.2))
+    from matplotlib.colors import LogNorm
+
+    # 1) Spearman correlation heatmap
+    fig, ax = plt.subplots(figsize=(5.4, 5.8))
     im = ax.imshow(rho_mat, cmap="coolwarm", vmin=-1, vmax=1, aspect="auto")
-    ax.set_xticks(range(3)); ax.set_xticklabels(list(params))
-    ax.set_yticks(range(len(metric_keys))); ax.set_yticklabels(metric_keys)
+    ax.set_xticks(range(3)); ax.set_xticklabels(list(params), fontsize=12)
+    ax.set_yticks(range(len(metric_keys))); ax.set_yticklabels(metric_keys, fontsize=11)
     for i in range(len(metric_keys)):
         for j in range(3):
             if np.isfinite(rho_mat[i, j]):
-                ax.text(j, i, "%.2f" % rho_mat[i, j], ha="center", va="center", fontsize=8)
-    ax.set_title("Spearman rho: roughness metric vs parameter")
-    fig.colorbar(im, ax=ax, fraction=0.046)
+                ax.text(j, i, "%.2f" % rho_mat[i, j], ha="center", va="center",
+                        fontsize=11, color="white" if abs(rho_mat[i, j]) > 0.55 else "black")
+    ax.set_title("Spearman rho: roughness vs parameter")
+    fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
     fig.tight_layout(); fig.savefig(os.path.join(args.outdir, "corr_heatmap.png"), dpi=args.dpi); plt.close(fig)
 
-    # scatter lam, w vs each param (color = Ochi)
-    for yk in ["lam", "w"]:
-        fig, axs = plt.subplots(1, 3, figsize=(12, 3.6))
-        sc = None
-        for j, pk in enumerate(params):
-            sc = axs[j].scatter(params[pk], metrics[yk], c=np.log10(col("Ochi")), cmap="viridis", s=40)
-            axs[j].set_xscale("log"); axs[j].set_xlabel(pk); axs[j].set_ylabel(yk)
-        axs[0].set_title("%s vs parameters" % yk)
-        if sc is not None:
-            fig.colorbar(sc, ax=axs[-1], label="log10 Ochi")
-        fig.tight_layout(); fig.savefig(os.path.join(args.outdir, "scatter_%s.png" % yk), dpi=args.dpi); plt.close(fig)
+    # 2) marginal trends: metric vs each param, mean +/- std over the other two axes
+    trend = [("lam", "wavelength lam"), ("w_rel", "rel. amplitude w/<r>"),
+             ("Q", "isoperimetric Q-1"), ("solidity", "solidity A/A_hull")]
+    fig, axs = plt.subplots(len(trend), 3, figsize=(11.5, 2.5 * len(trend)), squeeze=False)
+    for ri, (mk, ml) in enumerate(trend):
+        y = metrics[mk]
+        for cj, pk in enumerate(params):
+            ax = axs[ri][cj]
+            pv = params[pk]
+            xs, mu, sd = [], [], []
+            for v in sorted({u for u in pv if np.isfinite(u)}):
+                sub = y[(pv == v) & np.isfinite(y)]
+                if len(sub):
+                    xs.append(v); mu.append(sub.mean()); sd.append(sub.std())
+            ax.errorbar(xs, mu, yerr=sd, marker="o", ms=5, capsize=3, lw=1.6, color="#255c99")
+            ax.set_xscale("log"); ax.grid(True, alpha=0.3)
+            if ri == 0:
+                ax.set_title(pk, fontsize=11)
+            if ri == len(trend) - 1:
+                ax.set_xlabel(pk, fontsize=10)
+            if cj == 0:
+                ax.set_ylabel(ml, fontsize=10)
+    fig.suptitle("Roughness vs parameter (mean +/- std over the other two axes)", fontsize=13)
+    fig.tight_layout(rect=(0, 0, 1, 0.97))
+    fig.savefig(os.path.join(args.outdir, "trends.png"), dpi=args.dpi); plt.close(fig)
 
-    # alpha x zeta heatmaps per Ochi
+    # 3) alpha x zeta heatmaps per Ochi: shared color scale + cell annotations
     fin = lambda k: sorted({v for v in col(k) if np.isfinite(v)})
     alphas, zetas, ochis = fin("alpha"), fin("zeta"), fin("Ochi")
-    for yk in ["lam", "w"]:
-        fig, axs = plt.subplots(1, len(ochis), figsize=(3.3 * len(ochis), 3.1), squeeze=False)
+
+    def heatmaps(yk, label, lognorm):
+        vals = col(yk); vals = vals[np.isfinite(vals)]
+        if not len(vals):
+            return
+        vmin, vmax = np.percentile(vals, 5), np.percentile(vals, 95)
+        norm = LogNorm(max(vmin, 1e-9), vmax) if lognorm else None
+        fig, axs = plt.subplots(1, len(ochis), figsize=(3.5 * len(ochis), 3.6), squeeze=False)
+        im = None
         for k, oc in enumerate(ochis):
             M = np.full((len(zetas), len(alphas)), np.nan)
             for r in rows:
-                if r.get("Ochi") == oc and r.get(yk) is not None and np.isfinite(r.get(yk, np.nan)):
-                    M[zetas.index(r["zeta"]), alphas.index(r["alpha"])] = r[yk]
+                yv = r.get(yk)
+                if r.get("Ochi") == oc and yv is not None and np.isfinite(yv):
+                    M[zetas.index(r["zeta"]), alphas.index(r["alpha"])] = yv
             ax = axs[0][k]
-            im = ax.imshow(M, origin="lower", aspect="auto", cmap="magma")
+            im = ax.imshow(M, origin="lower", aspect="auto", cmap="viridis", norm=norm,
+                           vmin=None if lognorm else vmin, vmax=None if lognorm else vmax)
+            for iy in range(len(zetas)):
+                for ix in range(len(alphas)):
+                    if np.isfinite(M[iy, ix]):
+                        txt = ("%.0f" % M[iy, ix]) if abs(M[iy, ix]) >= 10 else ("%.2g" % M[iy, ix])
+                        ax.text(ix, iy, txt, ha="center", va="center", fontsize=7, color="black",
+                                bbox=dict(facecolor="white", alpha=0.55, pad=0.4, edgecolor="none"))
             ax.set_xticks(range(len(alphas))); ax.set_xticklabels(["%g" % a for a in alphas], rotation=45, fontsize=7)
-            ax.set_yticks(range(len(zetas))); ax.set_yticklabels(["%g" % z for z in zetas], fontsize=7)
-            ax.set_title("Ochi=%g" % oc, fontsize=9); ax.set_xlabel("alpha", fontsize=8)
+            ax.set_yticks(range(len(zetas))); ax.set_yticklabels(["%g" % z for z in zetas], fontsize=8)
+            ax.set_title("Ochi=%g" % oc, fontsize=10); ax.set_xlabel("alpha", fontsize=9)
             if k == 0:
-                ax.set_ylabel("zeta", fontsize=8)
-            fig.colorbar(im, ax=ax, fraction=0.046)
-        fig.suptitle("%s on alpha x zeta" % yk)
-        fig.tight_layout(); fig.savefig(os.path.join(args.outdir, "heatmap_%s.png" % yk), dpi=args.dpi); plt.close(fig)
+                ax.set_ylabel("zeta", fontsize=9)
+        fig.suptitle(label, fontsize=12)
+        fig.subplots_adjust(left=0.06, right=0.9, top=0.85, bottom=0.18, wspace=0.35)
+        fig.colorbar(im, ax=list(axs[0]), fraction=0.025, pad=0.02)
+        fig.savefig(os.path.join(args.outdir, "heatmap_%s.png" % yk), dpi=args.dpi); plt.close(fig)
+
+    heatmaps("lam", "characteristic wavelength lam (lattice units; log color, shared scale)", True)
+    heatmaps("w_rel", "relative amplitude w/<r> (shared scale)", False)
 
     n_ok = sum(1 for r in rows if r.get("lam") is not None and np.isfinite(r.get("lam", np.nan)))
     print("\nprocessed %d cases (%d with a measurable interface). wrote to %s" % (len(rows), n_ok, args.outdir))
