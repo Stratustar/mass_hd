@@ -39,8 +39,8 @@ from archive.archive import loadarchive
 TOKEN = re.compile(r"^([A-Za-z]+)([-0-9pe.]+)$")
 KEYMAP = {"a": "alpha", "z": "zeta", "O": "Ochi", "LL": "LL", "xi": "xi"}
 COLS = ["variant", "alpha", "zeta", "Ochi", "LL", "xi_align", "R_eff", "w", "w_rel",
-        "lam", "lam_rel", "xi", "xi_rel", "n_dom", "n_mean", "Q", "solidity",
-        "n_contours", "n_pts"]
+        "w_dom", "w_dom_rel", "lam", "lam_rel", "xi", "xi_rel", "n_dom", "n_mean",
+        "Q", "solidity", "n_contours", "n_pts"]
 
 
 def parse_params(name):
@@ -109,16 +109,18 @@ def extract_interface(chi, phi):
     tg = np.linspace(-np.pi, np.pi, N, endpoint=False)
     rg = np.interp(tg, th[order], rr[order], period=2 * np.pi)
     h = rg - rg.mean()
-    P = np.abs(np.fft.rfft(h)) ** 2
+    F = np.fft.rfft(h)
+    P = np.abs(F) ** 2
     n = np.arange(len(P))
     nmax = max(3, int(rmean / 2))                 # pixel-resolution cutoff
     sel = (n >= 2) & (n <= nmax)
     if P[sel].sum() > 0:
         n_mean = float(np.sum(n[sel] * P[sel]) / np.sum(P[sel]))
         n_dom = int(n[sel][np.argmax(P[sel])])
-        lam = 2 * np.pi * rmean / n_mean
+        lam = 2 * np.pi * rmean / n_dom            # wavelength from the dominant (peak) mode
+        w_dom = float(2.0 * np.abs(F[n_dom]) / N)  # amplitude of the dominant mode
     else:
-        n_mean = n_dom = lam = np.nan
+        n_mean = n_dom = lam = w_dom = np.nan
 
     # angular autocorrelation -> lateral correlation length (arclength)
     ac = np.correlate(h, h, mode="full")[len(h) - 1:]
@@ -127,6 +129,7 @@ def extract_interface(chi, phi):
     xi = float(below[0] * (2 * np.pi / N) * rmean) if len(below) else np.nan
 
     return dict(R_eff=R_eff, w=w, w_rel=w / rmean,
+                w_dom=w_dom, w_dom_rel=(w_dom / rmean if np.isfinite(w_dom) else np.nan),
                 lam=lam, lam_rel=(lam / rmean if np.isfinite(lam) else np.nan),
                 xi=xi, xi_rel=(xi / rmean if np.isfinite(xi) else np.nan),
                 n_dom=n_dom, n_mean=n_mean, Q=Q, solidity=solidity,
@@ -191,7 +194,7 @@ def main():
     MAIN = [r for r in rows if is_main(r)]
 
     params = {"alpha": col("alpha", MAIN), "zeta": col("zeta", MAIN), "Ochi": col("Ochi", MAIN)}
-    metric_keys = ["w", "w_rel", "lam", "lam_rel", "xi", "n_dom", "Q", "solidity"]
+    metric_keys = ["w", "w_rel", "w_dom", "w_dom_rel", "lam", "lam_rel", "xi", "n_dom", "Q", "solidity"]
     metrics = {k: col(k, MAIN) for k in metric_keys}
 
     # Spearman correlations
@@ -242,7 +245,7 @@ def main():
         return [u[0], u[-1]] if len(u) >= 2 else u
     pvals = {p: lohi(params[p]) for p in params}
     colors = ["#1f77b4", "#d62728", "#2ca02c", "#9467bd"]
-    for mk, ml in [("lam", "wavelength lam"), ("w_rel", "rel. amplitude w/<r>"),
+    for mk, ml in [("lam", "wavelength lam (n*)"), ("w_dom", "dominant amplitude w_dom"),
                    ("Q", "isoperimetric Q-1"), ("solidity", "solidity A/A_hull")]:
         y = metrics[mk]
         fig, axs = plt.subplots(1, 3, figsize=(13, 3.6), squeeze=False)
@@ -321,8 +324,8 @@ def main():
     refpts = [(key, rs) for key, rs in sorted(groups.items())
               if len({(rr.get("LL"), rr.get("xi_align")) for rr in rs}) > 1]
     if refpts:
-        for mk, ml in [("lam", "wavelength lam"), ("w", "amplitude w"),
-                       ("w_rel", "rel. amplitude w/<r>"), ("Q", "isoperimetric Q-1")]:
+        for mk, ml in [("lam", "wavelength lam (n*)"), ("w_dom", "dominant amplitude w_dom"),
+                       ("Q", "isoperimetric Q-1")]:
             fig, axs = plt.subplots(1, len(refpts), figsize=(5.2 * len(refpts), 4), squeeze=False)
             for ci, (key, rs) in enumerate(refpts):
                 ax = axs[0][ci]
@@ -349,6 +352,38 @@ def main():
             fig.savefig(os.path.join(args.outdir, "llxi_%s.png" % mk), dpi=args.dpi); plt.close(fig)
     else:
         print("(no LL/xi reference groups found)")
+
+    # 5) characteristic length vs active length sqrt(LL/zeta), at fixed alpha=1e-4
+    ALA = [r for r in rows if r.get("alpha") is not None and abs(r["alpha"] - 1e-4) < 1e-12
+           and r.get("LL") and r.get("zeta")]
+    Lact = np.array([np.sqrt(r["LL"] / r["zeta"]) for r in ALA])
+    summ2 = []
+    for mk, ml in [("lam", "wavelength lam (n*)"), ("w_dom", "dominant amplitude w_dom")]:
+        yv = np.array([(r.get(mk) if r.get(mk) is not None else np.nan) for r in ALA], float)
+        ok = np.isfinite(yv) & np.isfinite(Lact) & (yv > 0) & (Lact > 0)
+        if ok.sum() < 4:
+            continue
+        slope, intc = np.polyfit(np.log10(Lact[ok]), np.log10(yv[ok]), 1)
+        rho, pp = spearmanr(Lact[ok], yv[ok])
+        summ2.append("%s ~ sqrt(LL/zeta) (alpha=1e-4, n=%d): log-log slope=%.2f, Spearman=%.2f (p=%.2g)"
+                     % (mk, int(ok.sum()), slope, rho, pp))
+        fig, ax = plt.subplots(figsize=(6, 5))
+        cc = np.log10(np.array([r["LL"] for r in ALA])[ok])
+        sc = ax.scatter(Lact[ok], yv[ok], c=cc, cmap="viridis", s=55, zorder=3)
+        xs = np.array(sorted(Lact[ok]))
+        ax.plot(xs, 10 ** intc * xs ** slope, "r-", lw=1.8, label="fit slope = %.2f" % slope)
+        y0, x0 = yv[ok][np.argmin(Lact[ok])], Lact[ok].min()
+        ax.plot(xs, y0 * (xs / x0), "k--", alpha=0.5, label="slope 1 (lam ~ active length)")
+        ax.set_xscale("log"); ax.set_yscale("log")
+        ax.set_xlabel("active length  sqrt(LL/zeta)"); ax.set_ylabel(ml)
+        ax.set_title("%s vs active length (alpha=1e-4)  Spearman=%.2f" % (ml, rho), fontsize=10)
+        ax.legend(fontsize=9); fig.colorbar(sc, ax=ax, label="log10 LL")
+        fig.tight_layout(); fig.savefig(os.path.join(args.outdir, "active_%s.png" % mk), dpi=args.dpi); plt.close(fig)
+    if summ2:
+        block = "\nActive-length scaling:\n  " + "\n  ".join(summ2)
+        print(block)
+        with open(os.path.join(args.outdir, "correlation_summary.txt"), "a") as fh:
+            fh.write(block + "\n")
 
     n_ok = sum(1 for r in rows if r.get("lam") is not None and np.isfinite(r.get("lam", np.nan)))
     print("\nprocessed %d cases (%d with a measurable interface). wrote to %s" % (len(rows), n_ok, args.outdir))

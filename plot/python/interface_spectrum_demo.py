@@ -67,13 +67,16 @@ def main():
     rmean = rg.mean()
     h = rg - rmean
     w = float(np.sqrt(np.mean(h ** 2)))
-    P = np.abs(np.fft.rfft(h)) ** 2
+    F = np.fft.rfft(h)
+    P = np.abs(F) ** 2
     n = np.arange(len(P))
     nmax = max(6, int(rmean / 2))
     sel = (n >= 2) & (n <= nmax)
     nmean = float(np.sum(n[sel] * P[sel]) / np.sum(P[sel]))
     ndom = int(n[sel][np.argmax(P[sel])])
-    lam = 2 * np.pi * rmean / nmean
+    lam = 2 * np.pi * rmean / ndom                # wavelength from the dominant (peak) mode
+    w_dom = float(2.0 * np.abs(F[ndom]) / N)      # amplitude of the dominant mode
+    phi_dom = float(np.angle(F[ndom]))
 
     cyc = plt.get_cmap("twilight")
     fig, axs = plt.subplots(1, 3, figsize=(16, 4.8))
@@ -100,15 +103,17 @@ def main():
     ax = axs[1]
     ax.scatter(tg, rg, c=(tg + np.pi) / (2 * np.pi), cmap=cyc, s=10)
     ax.axhline(rmean, ls="--", color="k", lw=1.2, label="<r> = %.1f" % rmean)
-    ax.fill_between(tg, rmean - w, rmean + w, color="gray", alpha=0.2)
-    ax.annotate("", xy=(2.6, rmean + w), xytext=(2.6, rmean - w),
+    ax.plot(tg, rmean + w_dom * np.cos(ndom * tg + phi_dom), "r-", lw=1.6,
+            label="dominant mode n* = %d" % ndom)
+    ax.fill_between(tg, rmean - w_dom, rmean + w_dom, color="red", alpha=0.12)
+    ax.annotate("", xy=(2.6, rmean + w_dom), xytext=(2.6, rmean - w_dom),
                 arrowprops=dict(arrowstyle="<->", color="k"))
-    ax.text(2.75, rmean, "2w", va="center", fontsize=10)
+    ax.text(2.72, rmean, "2 w_dom", va="center", fontsize=9)
     ax.set_xlabel("angle theta (loop unrolled)"); ax.set_ylabel("radius r(theta)")
     ax.set_title("(b) unroll the loop: radius vs angle")
-    ax.text(0.02, 0.04, "amplitude  w = RMS(r - <r>) = %.1f" % w, transform=ax.transAxes,
-            fontsize=10, bbox=dict(facecolor="white", alpha=0.7, edgecolor="0.6"))
-    ax.legend(loc="upper right", fontsize=9)
+    ax.text(0.02, 0.04, "dominant amplitude  w_dom = 2|F_n*|/N = %.1f" % w_dom, transform=ax.transAxes,
+            fontsize=9, bbox=dict(facecolor="white", alpha=0.7, edgecolor="0.6"))
+    ax.legend(loc="upper right", fontsize=8)
 
     # (c) spectrum
     ax = axs[2]
@@ -116,17 +121,17 @@ def main():
     PP = P[1:nmax + 1]
     bars = ax.bar(nn, PP, color="#1f77b4")
     bars[0].set_color("0.7")   # n=1 = centroid offset, not roughness
-    ax.axvline(nmean, color="#d62728", lw=2, label="<n> = %.1f" % nmean)
-    ax.axvline(ndom, color="#2ca02c", lw=1.2, ls=":", label="n_dom = %d" % ndom)
+    ax.axvline(ndom, color="#d62728", lw=2, label="n* (peak) = %d" % ndom)
+    ax.axvline(nmean, color="0.5", lw=1.0, ls=":", label="<n> (mean) = %.1f" % nmean)
     ax.set_xlabel("angular mode  n"); ax.set_ylabel("power  P(n)")
     ax.set_title("(c) Fourier spectrum of r(theta)")
     ax.legend(loc="upper right", fontsize=9)
     ax.text(0.97, 0.62,
-            "wavelength\nlam = 2*pi*<r>/<n>\n   = %.0f" % lam,
+            "wavelength\nlam = 2*pi*<r>/n*\n   = %.0f" % lam,
             transform=ax.transAxes, ha="right", fontsize=10,
             bbox=dict(facecolor="#fff3e0", alpha=0.95, edgecolor="#d62728"))
     ax.text(0.97, 0.40,
-            "amplitude\nw = sqrt(sum P(n>=2))\n   = %.1f" % w,
+            "amplitude\nw_dom = 2|F_n*|/N\n   = %.1f" % w_dom,
             transform=ax.transAxes, ha="right", fontsize=10,
             bbox=dict(facecolor="#e8f5e9", alpha=0.95, edgecolor="#2ca02c"))
 
