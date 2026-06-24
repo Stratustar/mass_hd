@@ -65,23 +65,56 @@ def spectrum(chi, phi, N=512):
     return rmean, S, h, ncut, len(main)
 
 
-def kpz_metrics(chi, phi):
-    sp = spectrum(chi, phi)
+def averaged_spectrum(ar, N=512, K=12):
+    """Average S(n), <r>, W over the last K frames to cut single-frame PSD noise."""
+    last = int((ar.nsteps - ar.nstart) / ar.ninfo)
+    Ssum = None; nS = 0; rmeans = []; Ws = []; npts = 0
+    for fi in range(max(0, last - K + 1), last + 1):
+        try:
+            fr = ar.read_frame(fi)
+            sp = spectrum(grid(fr, "chi"), grid(fr, "phi"), N=N)
+        except Exception:
+            sp = None
+        if sp is None:
+            continue
+        rmean, S, h, ncut, np_ = sp
+        Ssum = S if Ssum is None else Ssum + S
+        nS += 1; rmeans.append(rmean); Ws.append(np.sqrt(np.mean(h ** 2))); npts = np_
+    if nS == 0:
+        return None
+    rm = float(np.mean(rmeans))
+    ncut = int(max(8, min(rm / 3.0, len(Ssum) - 1)))
+    return rm, Ssum / nS, float(np.mean(Ws)), ncut, npts, nS
+
+
+def logbin(n, S, nmin=2, nmax=None, nbins=14):
+    nmax = nmax or n.max()
+    edges = np.logspace(np.log10(nmin), np.log10(nmax), nbins + 1)
+    nb, Sb = [], []
+    for a, b in zip(edges[:-1], edges[1:]):
+        sel = (n >= a) & (n < b) & (S > 0)
+        if sel.sum() > 0:
+            nb.append(np.exp(np.mean(np.log(n[sel])))); Sb.append(np.exp(np.mean(np.log(S[sel]))))
+    return np.array(nb), np.array(Sb)
+
+
+def kpz_metrics(ar):
+    sp = averaged_spectrum(ar)
     if sp is None:
         return None
-    rmean, S, h, ncut, npts = sp
-    W = float(np.sqrt(np.mean(h ** 2)))
+    rmean, S, W, ncut, npts, nframes = sp
     n = np.arange(len(S))
-    sel = (n >= 2) & (n <= ncut) & (S > 0)
-    if sel.sum() < 4:
+    nb, Sb = logbin(n, S, 2, ncut)
+    if len(nb) < 4:
         return None
-    slope, intc = np.polyfit(np.log(n[sel]), np.log(S[sel]), 1)
-    fit = np.exp(intc) * n[sel] ** slope
-    ss_res = np.sum((np.log(S[sel]) - np.log(fit)) ** 2)
-    ss_tot = np.sum((np.log(S[sel]) - np.log(S[sel]).mean()) ** 2)
+    slope, intc = np.polyfit(np.log(nb), np.log(Sb), 1)
+    fit = np.exp(intc) * nb ** slope
+    ss_res = np.sum((np.log(Sb) - np.log(fit)) ** 2)
+    ss_tot = np.sum((np.log(Sb) - np.log(Sb).mean()) ** 2)
     R2 = 1 - ss_res / ss_tot if ss_tot > 0 else np.nan
     alpha_rough = -(slope + 1) / 2.0
-    ratio = S[sel] / fit
+    sel = (n >= 2) & (n <= ncut) & (S > 0)
+    ratio = S[sel] / (np.exp(intc) * n[sel] ** slope)
     j = int(np.argmax(ratio))
     peak_ratio = float(ratio[j]); n_peak = int(n[sel][j])
     has_peak = peak_ratio > PEAK_THRESH
@@ -117,8 +150,7 @@ def main():
         m = None
         try:
             ar = loadarchive(d)
-            fr = ar.read_frame(int((ar.nsteps - ar.nstart) / ar.ninfo))
-            m = kpz_metrics(grid(fr, "chi"), grid(fr, "phi"))
+            m = kpz_metrics(ar)
         except Exception as e:
             print("FAIL", name, repr(e))
         pp = parse_params(name)
@@ -219,20 +251,20 @@ def main():
             continue
         try:
             ar = loadarchive(dpath)
-            fr = ar.read_frame(int((ar.nsteps - ar.nstart) / ar.ninfo))
-            sp = spectrum(grid(fr, "chi"), grid(fr, "phi"))
-            mm = kpz_metrics(grid(fr, "chi"), grid(fr, "phi"))
+            sp = averaged_spectrum(ar)
+            mm = kpz_metrics(ar)
         except Exception:
             continue
         if sp is None or mm is None:
             continue
-        rmean, S, h, ncut, _ = sp
-        n = np.arange(len(S)); sel = (n >= 2) & (n <= ncut) & (S > 0)
+        rmean, S, W, ncut, _, _ = sp
+        n = np.arange(len(S))
+        nb, Sb = logbin(n, S, 2, ncut)
         lab = name.split("_LL")[0].replace("a0p", r"$\alpha$=0.").replace("_z0p", r", $\zeta$=0.").replace("_O0p", r", $O$=0.")
-        ax.loglog(n[sel], S[sel], "o", ms=3, color=cols[k], alpha=0.7,
+        ax.loglog(nb, Sb, "o", ms=5, color=cols[k], alpha=0.85,
                   label=lab + (r"  ($\alpha_r$=%.2f%s)" % (mm["alpha_rough"], ", PEAK" if mm["has_peak"] else "")))
-        sl, ic = np.polyfit(np.log(n[sel]), np.log(S[sel]), 1)
-        ax.loglog(n[sel], np.exp(ic) * n[sel] ** sl, "-", color=cols[k], lw=1.2)
+        sl, ic = np.polyfit(np.log(nb), np.log(Sb), 1)
+        ax.loglog(nb, np.exp(ic) * nb ** sl, "-", color=cols[k], lw=1.4)
         if mm["has_peak"] and np.isfinite(mm["n_peak"]):
             ax.axvline(mm["n_peak"], color=cols[k], ls=":", lw=1, alpha=0.6)
     ax.set_xlabel(r"angular mode  $n$"); ax.set_ylabel(r"structure factor  $S(n)$")
