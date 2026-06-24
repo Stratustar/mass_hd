@@ -2,16 +2,16 @@
 
 For each variant (final frame): extract the chi=0.5 contour inside the colony
 (phi>0.5), take the longest contour as the main go-grow interface, and
-characterise its roughness by LENGTH SCALES:
-  w   = RMS radial deviation from the mean radius (amplitude, lattice units)
-  lam = characteristic lateral wavelength from the radial fluctuation spectrum,
-        lam = 2*pi*<r> / <n>,  <n> = spectral-weighted mean angular mode (n>=2)
-  xi  = lateral correlation length (1/e decay of the angular autocorrelation)
+characterise it from the radial fluctuation spectrum via the DOMINANT (peak)
+angular mode n* = argmax P(n>=2):
+  lam   = characteristic wavelength = 2*pi*<r> / n*
+  w_dom = amplitude of the dominant mode = 2*|F_n*| / N
 plus dimensionless shape metrics Q = L^2/(4 pi A) - 1 and solidity = A / A_hull,
-and the dominant mode n_dom (finger count). Relative versions divide by <r>.
+and n_dom = n*. Relative versions (lam_rel, w_dom_rel) divide by <r>.
 
-Writes interface_roughness.csv, correlation_summary.txt, and figures
-(Spearman heatmap, scatter vs params, alpha x zeta heatmaps per Ochi).
+Writes interface_roughness.csv, correlation_summary.txt, and figures (Spearman
+heatmap, representative-slice trends, alpha x zeta heatmaps, LL/xi study, and
+the active-length sqrt(LL/zeta) scaling).
 
 Usage:
   python interface_roughness.py <scratch_study_dir> <outdir> [--pattern GLOB]
@@ -38,9 +38,9 @@ from archive.archive import loadarchive
 
 TOKEN = re.compile(r"^([A-Za-z]+)([-0-9pe.]+)$")
 KEYMAP = {"a": "alpha", "z": "zeta", "O": "Ochi", "LL": "LL", "xi": "xi"}
-COLS = ["variant", "alpha", "zeta", "Ochi", "LL", "xi_align", "R_eff", "w", "w_rel",
-        "w_dom", "w_dom_rel", "lam", "lam_rel", "xi", "xi_rel", "n_dom", "n_mean",
-        "Q", "solidity", "n_contours", "n_pts"]
+COLS = ["variant", "alpha", "zeta", "Ochi", "LL", "xi_align", "R_eff",
+        "w_dom", "w_dom_rel", "lam", "lam_rel", "n_dom", "Q", "solidity",
+        "n_contours", "n_pts"]
 
 
 def parse_params(name):
@@ -101,9 +101,8 @@ def extract_interface(chi, phi):
     rr = np.sqrt((x - cx) ** 2 + (y - cy) ** 2)
     th = np.arctan2(y - cy, x - cx)
     rmean = float(rr.mean())
-    w = float(np.sqrt(np.mean((rr - rmean) ** 2)))
 
-    # resample r(theta) for the spectrum
+    # resample r(theta) and take the angular power spectrum
     order = np.argsort(th)
     N = 512
     tg = np.linspace(-np.pi, np.pi, N, endpoint=False)
@@ -115,24 +114,16 @@ def extract_interface(chi, phi):
     nmax = max(3, int(rmean / 2))                 # pixel-resolution cutoff
     sel = (n >= 2) & (n <= nmax)
     if P[sel].sum() > 0:
-        n_mean = float(np.sum(n[sel] * P[sel]) / np.sum(P[sel]))
         n_dom = int(n[sel][np.argmax(P[sel])])
         lam = 2 * np.pi * rmean / n_dom            # wavelength from the dominant (peak) mode
         w_dom = float(2.0 * np.abs(F[n_dom]) / N)  # amplitude of the dominant mode
     else:
-        n_mean = n_dom = lam = w_dom = np.nan
+        n_dom = lam = w_dom = np.nan
 
-    # angular autocorrelation -> lateral correlation length (arclength)
-    ac = np.correlate(h, h, mode="full")[len(h) - 1:]
-    ac = ac / ac[0] if ac[0] != 0 else ac
-    below = np.where(ac < 1.0 / np.e)[0]
-    xi = float(below[0] * (2 * np.pi / N) * rmean) if len(below) else np.nan
-
-    return dict(R_eff=R_eff, w=w, w_rel=w / rmean,
+    return dict(R_eff=R_eff,
                 w_dom=w_dom, w_dom_rel=(w_dom / rmean if np.isfinite(w_dom) else np.nan),
                 lam=lam, lam_rel=(lam / rmean if np.isfinite(lam) else np.nan),
-                xi=xi, xi_rel=(xi / rmean if np.isfinite(xi) else np.nan),
-                n_dom=n_dom, n_mean=n_mean, Q=Q, solidity=solidity,
+                n_dom=n_dom, Q=Q, solidity=solidity,
                 n_contours=n_contours, n_pts=len(main))
 
 
@@ -194,7 +185,7 @@ def main():
     MAIN = [r for r in rows if is_main(r)]
 
     params = {"alpha": col("alpha", MAIN), "zeta": col("zeta", MAIN), "Ochi": col("Ochi", MAIN)}
-    metric_keys = ["w", "w_rel", "w_dom", "w_dom_rel", "lam", "lam_rel", "xi", "n_dom", "Q", "solidity"]
+    metric_keys = ["w_dom", "w_dom_rel", "lam", "lam_rel", "n_dom", "Q", "solidity"]
     metrics = {k: col(k, MAIN) for k in metric_keys}
 
     # Spearman correlations
@@ -214,7 +205,7 @@ def main():
         lines.append("  %-9s " % mk + "  ".join(cells))
     lines.append("")
     lines.append("Standardized regression (metric ~ log10 alpha,zeta,Ochi; coeffs = relative importance):")
-    for yk in ["lam", "w", "lam_rel", "w_rel", "n_dom"]:
+    for yk in ["lam", "w_dom", "lam_rel", "w_dom_rel", "n_dom"]:
         c = standardized_regression(metrics[yk], params)
         if c:
             lines.append("  %-9s " % yk + ", ".join("%s=%+.2f" % (k, c[k]) for k in ("alpha", "zeta", "Ochi")))
@@ -314,7 +305,7 @@ def main():
         fig.savefig(os.path.join(args.outdir, "heatmap_%s.png" % yk), dpi=args.dpi); plt.close(fig)
 
     heatmaps("lam", "characteristic wavelength lam (lattice units; log color, shared scale)", True)
-    heatmaps("w_rel", "relative amplitude w/<r> (shared scale)", False)
+    heatmaps("w_dom_rel", "relative dominant amplitude w_dom/<r> (shared scale)", False)
 
     # 4) LL / xi study at the reference points (groups with multiple LL,xi)
     from collections import defaultdict
