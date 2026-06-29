@@ -88,8 +88,8 @@ def shares(phi, fields, phi_th):
 
 def plot_variant(name, phi, P, fields, sh, phi_th, outpath):
     mask = phi > phi_th
-    fig, (axP, axB) = plt.subplots(
-        1, 2, figsize=(9.2, 4.2), gridspec_kw=dict(width_ratios=[3, 2]))
+    fig, (axP, axT) = plt.subplots(
+        1, 2, figsize=(7.6, 4.0), gridspec_kw=dict(width_ratios=[3, 1.1]))
 
     vmax = np.percentile(np.abs(P[mask]), 99) if mask.any() else float(np.abs(P).max())
     vmax = vmax or 1.0
@@ -101,15 +101,14 @@ def plot_variant(name, phi, P, fields, sh, phi_th, outpath):
     cb = fig.colorbar(im, ax=axP, fraction=0.046, pad=0.04)
     cb.set_label("P")
 
-    y = np.arange(len(COMPONENTS))[::-1]
-    vals = [sh[k] for k in COMPONENTS]
-    axB.barh(y, vals, color=[COLORS[k] for k in COMPONENTS])
-    axB.set_yticks(y); axB.set_yticklabels(COMPONENTS)
-    axB.set_xlim(0, 100)
-    axB.set_xlabel("share of |contribution|  (%)")
-    axB.set_title("bulk-stress breakdown\n(mean |.| over phi>%.1f)" % phi_th)
-    for yi, v in zip(y, vals):
-        axB.text(min(v + 2, 90), yi, "%.1f%%" % v, va="center", fontsize=9)
+    # three plain-text rows of the share percentages (no extra plot)
+    axT.axis("off")
+    labels = {"compress": "compress", "LdG-nematic": "LdG", "surface": "surface"}
+    ypos = [0.62, 0.50, 0.38]
+    for k, yy in zip(COMPONENTS, ypos):
+        axT.text(0.0, yy, "%-9s %5.1f%%" % (labels[k] + ":", sh[k]),
+                 transform=axT.transAxes, va="center", ha="left",
+                 fontsize=12, family="monospace", color=COLORS[k])
 
     fig.suptitle(name, fontsize=10)
     fig.tight_layout(rect=[0, 0, 1, 0.95])
