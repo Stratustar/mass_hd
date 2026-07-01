@@ -177,8 +177,11 @@ TEMPLATE = r"""<!doctype html>
   figcaption { font-size:11px; color:var(--muted); padding:4px 6px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .empty { color:var(--muted); font-size:13px; padding:20px 0; }
   #lb { position:fixed; inset:0; background:rgba(0,0,0,.85); display:none; align-items:center; justify-content:center; z-index:20; cursor:zoom-out; }
-  #lb img { max-width:96vw; max-height:92vh; object-fit:contain; }
+  #lb img, #lb canvas { max-width:96vw; max-height:88vh; object-fit:contain; }
   #lb .cap { position:fixed; bottom:10px; left:0; right:0; text-align:center; color:#eee; font-size:13px; }
+  #lb .speed { position:fixed; bottom:30px; left:0; right:0; display:none; gap:8px; align-items:center; justify-content:center; color:#eee; font-size:13px; }
+  #lb .speed input { width:min(55vw,300px); cursor:pointer; }
+  #lb .speed .sval { min-width:46px; text-align:left; font-variant-numeric:tabular-nums; }
 </style>
 </head>
 <body>
@@ -192,7 +195,7 @@ TEMPLATE = r"""<!doctype html>
   <div id="figfilters"></div>
 </header>
 <main><div id="results"></div></main>
-<div id="lb"><img alt=""><div class="cap"></div></div>
+<div id="lb"><img alt=""><canvas></canvas><div class="speed"><span>speed</span><input type="range" min="0.1" max="4" step="0.05" value="1"><span class="sval">1.00&#215;</span></div><div class="cap"></div></div>
 <script>
 const DATA = /*DATA*/;
 const sel = {};                 // axis -> Set of selected value strings
@@ -297,19 +300,83 @@ document.getElementById("reset").onclick = () => {
   render();
 };
 
-const lb = document.getElementById("lb"), lbimg = lb.querySelector("img"), lbcap = lb.querySelector(".cap");
+const lb = document.getElementById("lb"), lbimg = lb.querySelector("img"),
+      lbcanvas = lb.querySelector("canvas"), lbcap = lb.querySelector(".cap"),
+      speedbar = lb.querySelector(".speed"), speedInput = speedbar.querySelector("input"),
+      sval = speedbar.querySelector(".sval");
+// GIF speed control needs the ImageDecoder API (Chrome/Edge, Safari 17+). Where it
+// is missing (e.g. Firefox) gifs fall back to a plain <img> at their native speed.
+const GIF_OK = typeof window.ImageDecoder !== "undefined";
+let playSpeed = 1, gifRun = 0;      // gifRun is a generation token that cancels loops
+
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+function showStatic(src, cap){       // static PNG
+  gifRun++;
+  lbcanvas.style.display = "none"; speedbar.style.display = "none";
+  lbimg.style.display = ""; lbcap.textContent = cap; lbimg.src = src;
+}
+function showGifImg(url, cap){        // gif fallback: native speed, no control
+  gifRun++;
+  lbcanvas.style.display = "none"; speedbar.style.display = "none";
+  lbimg.style.display = ""; lbcap.textContent = cap; lbimg.src = url;
+}
+async function playGif(url, cap){     // decode gif -> canvas, adjustable frame delay
+  const my = ++gifRun;
+  lbimg.style.display = "none"; lbimg.src = "";
+  lbcanvas.style.display = ""; speedbar.style.display = "flex";
+  lbcap.textContent = cap + "  (decoding…)";
+  let dec;
+  try {
+    const buf = await (await fetch(url)).arrayBuffer();
+    if(my !== gifRun) return;
+    dec = new ImageDecoder({data: buf, type: "image/gif"});
+    await dec.tracks.ready;
+  } catch(err){ if(my === gifRun) showGifImg(url, cap); return; }
+  if(my !== gifRun){ try{ dec.close(); }catch(e){} return; }
+  lbcap.textContent = cap;
+  const ctx = lbcanvas.getContext("2d");
+  let i = 0, sized = false;
+  while(my === gifRun){
+    let res;
+    try { res = await dec.decode({frameIndex: i}); }
+    catch(e){ if(i === 0){ showGifImg(url, cap); break; } i = 0; continue; }  // wrap at end
+    if(my !== gifRun){ res.image.close(); break; }
+    const img = res.image;
+    if(!sized){ lbcanvas.width = img.displayWidth; lbcanvas.height = img.displayHeight; sized = true; }
+    ctx.drawImage(img, 0, 0);
+    const baseMs = img.duration ? img.duration / 1000 : 100;   // frame delay in microseconds
+    img.close();
+    i++;
+    await sleep(Math.max(10, baseMs / (playSpeed || 1)));
+  }
+  try { dec.close(); } catch(e){}
+}
+function closeLb(){
+  gifRun++;
+  lb.style.display = "none";
+  lbimg.src = ""; lbimg.style.display = "";
+  lbcanvas.style.display = "none"; speedbar.style.display = "none";
+}
+
 document.getElementById("results").addEventListener("click", e => {
   const t = e.target;
-  const src = t.dataset.gif || (t.tagName === "IMG" ? t.getAttribute("src") : null);
-  if(!src) return;
   const cap = t.dataset.cap || "";
-  lbcap.textContent = t.dataset.gif ? cap + "  (loading gif…)" : cap;
-  lbimg.onload = () => { lbcap.textContent = cap; };
-  lbimg.src = src;            // gif fetched here, only on click
-  lb.style.display = "flex";
+  if(t.dataset.gif){
+    lb.style.display = "flex";
+    if(GIF_OK) playGif(t.dataset.gif, cap); else showGifImg(t.dataset.gif, cap);
+  } else if(t.tagName === "IMG"){
+    lb.style.display = "flex";
+    showStatic(t.getAttribute("src"), cap);
+  }
 });
-lb.onclick = () => { lb.style.display = "none"; lbimg.src = ""; };
-document.addEventListener("keydown", e => { if(e.key === "Escape"){ lb.style.display = "none"; lbimg.src = ""; }});
+speedInput.oninput = () => {
+  playSpeed = parseFloat(speedInput.value) || 1;
+  sval.textContent = playSpeed.toFixed(2) + "×";
+};
+speedbar.onclick = e => e.stopPropagation();   // adjusting the slider must not close the lightbox
+lb.onclick = closeLb;
+document.addEventListener("keydown", e => { if(e.key === "Escape") closeLb(); });
 
 buildFilters();
 render();
