@@ -63,6 +63,7 @@ def collect_figures(vdir):
         if f.endswith(".png"):
             singles.append(f)
     last_png = {field: f for field, (n, f) in frames.items()}
+    single_groups = {f[:-4] for f in singles}
     figs = []
     for field, f in sorted(gifs):
         fig = {"kind": "gif", "group": field, "label": field + " (gif)", "file": f}
@@ -70,6 +71,10 @@ def collect_figures(vdir):
             fig["poster"] = last_png[field]   # lightweight cover; gif itself loads on click
         figs.append(fig)
     for field, (n, f) in sorted(frames.items()):
+        # if a same-named single (e.g. a pressure decomposition pressure.png) exists, it
+        # replaces the plain last-frame tile; the frame is kept only as the gif poster.
+        if field in single_groups:
+            continue
         figs.append({"kind": "png", "group": field, "label": "%s (frame %d)" % (field, n), "file": f})
     for f in sorted(singles):
         figs.append({"kind": "png", "group": f[:-4], "label": f[:-4], "file": f})
@@ -143,6 +148,9 @@ TEMPLATE = r"""<!doctype html>
              padding:3px 10px; font-size:12px; cursor:pointer; font-variant-numeric: tabular-nums; }
   button.v:hover { border-color:var(--accent); }
   button.v.on { background:var(--accent); color:#fff; border-color:var(--accent); }
+  button.v:disabled { opacity:.3; cursor:not-allowed; background:var(--chip); color:var(--muted);
+                      border-style:dashed; border-color:var(--line); }
+  button.v:disabled:hover { border-color:var(--line); }
   .bar { display:flex; align-items:center; gap:12px; margin-top:8px; flex-wrap:wrap; }
   .bar .count { font-size:12px; color:var(--muted); }
   button.act { border:1px solid var(--line); background:var(--chip); border-radius:6px; padding:3px 10px; font-size:12px; cursor:pointer; }
@@ -179,6 +187,7 @@ TEMPLATE = r"""<!doctype html>
 <script>
 const DATA = /*DATA*/;
 const sel = {};                 // axis -> Set of selected value strings
+const axisBtns = {};            // axis -> [{val, btn}] for availability greying
 const figOff = new Set();       // field groups toggled OFF (empty = all shown)
 const kindOff = new Set();      // kinds toggled OFF: "static" and/or "gif"
 
@@ -190,12 +199,14 @@ function buildFilters(){
   const host = document.getElementById("filters");
   DATA.order.forEach(k => {
     sel[k] = new Set();
+    axisBtns[k] = [];
     const row = document.createElement("div"); row.className = "axis";
     const nm = document.createElement("span"); nm.className = "name"; nm.textContent = k; row.appendChild(nm);
     DATA.axes[k].forEach(val => {
       const b = document.createElement("button"); b.className = "v"; b.textContent = val;
       b.onclick = () => { b.classList.toggle("on"); if(sel[k].has(val)) sel[k].delete(val); else sel[k].add(val); render(); };
       row.appendChild(b);
+      axisBtns[k].push({val, btn: b});
     });
     host.appendChild(row);
   });
@@ -229,6 +240,17 @@ function matches(v){
   return DATA.order.every(k => sel[k].size === 0 || sel[k].has(v.params[k]));
 }
 
+// A value on axis k is "available" if some variant has it while satisfying the
+// selections on every OTHER axis. Unavailable values are greyed out and disabled,
+// except ones already selected (kept clickable so they can be toggled off).
+function updateAvail(){
+  DATA.order.forEach(k => axisBtns[k].forEach(({val, btn}) => {
+    const ok = DATA.variants.some(v => v.params[k] === val &&
+      DATA.order.every(j => j === k || sel[j].size === 0 || sel[j].has(v.params[j])));
+    btn.disabled = !ok && !sel[k].has(val);
+  }));
+}
+
 function tile(v, f){
   const cap = v.name + " — " + f.label;
   if(f.kind === "gif"){
@@ -255,6 +277,7 @@ function render(){
   document.getElementById("count").textContent = "showing " + m.length + " / " + DATA.variants.length + " variants";
   document.getElementById("results").innerHTML =
     m.length ? m.map(card).join("") : '<div class="empty">no variants match the selected parameters</div>';
+  updateAvail();
 }
 
 document.getElementById("reset").onclick = () => {
