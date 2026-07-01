@@ -6,8 +6,7 @@
 # `frame` (a single output frame) and an `engine` (defaults to pyplot) and
 # draws directly onto it. Time-series routines instead take the output
 # archive `oa`. Nothing here loads archives or writes files; that stays with
-# the caller and with the CLI scripts plot/python/plot_hd.py and
-# proliferation_summary.py.
+# the caller and with the CLI script plot/python/plot_hd.py.
 #
 ################################################################################
 

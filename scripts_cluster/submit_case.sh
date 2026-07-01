@@ -22,12 +22,10 @@ SCRATCH_ROOT="/scratch/helu"
 CONDA_BIN="/home/helu/miniconda3/bin/conda"
 CONDA_ENV="env1"
 PLOT_SCRIPT="${REPO_ROOT}/plot/python/plot_hd.py"
-PROLIFERATION_SUMMARY_SCRIPT="${REPO_ROOT}/plot/python/proliferation_summary.py"
 MASS_BINARY="/opt/mass_hd/mass"
 RESULTS_ROOT="${REPO_ROOT}/results"
 THREADS="${SLURM_CPUS_PER_TASK}"
 SKIP_PLOTS="${SKIP_PLOTS:-0}"
-SKIP_SUMMARY="${SKIP_SUMMARY:-0}"
 PLOT_HD_ARGS="${PLOT_HD_ARGS:-}"
 # ----------------------------------------------------------------------
 
@@ -93,7 +91,6 @@ echo "Sim output:  ${OUTPUT_PATH}"
 echo "Plot output: ${PLOT_DIR}"
 echo "Threads:     ${THREADS}"
 echo "Skip plots:  ${SKIP_PLOTS}"
-echo "Skip summary:${SKIP_SUMMARY}"
 echo "Plot args:   ${PLOT_HD_ARGS:-<none>}"
 
 apptainer exec \
@@ -132,25 +129,6 @@ PLOT_STATUS=$?
 if [[ ${PLOT_STATUS} -ne 0 ]]; then
   echo "Plotting failed with status ${PLOT_STATUS} on $(date)"
   exit ${PLOT_STATUS}
-fi
-
-case "${SKIP_SUMMARY}" in
-  1|true|TRUE|yes|YES)
-    echo "Skipping proliferation summary on request."
-    echo "Plotting finished on $(date)"
-    exit 0
-    ;;
-esac
-
-echo "Running proliferation summary..."
-
-"${CONDA_BIN}" run --no-capture-output -n "${CONDA_ENV}" \
-  python "${PROLIFERATION_SUMMARY_SCRIPT}" "${OUTPUT_PATH}" "${PLOT_DIR}"
-
-SUMMARY_STATUS=$?
-if [[ ${SUMMARY_STATUS} -ne 0 ]]; then
-  echo "Proliferation summary failed with status ${SUMMARY_STATUS} on $(date)"
-  exit ${SUMMARY_STATUS}
 fi
 
 echo "Plotting finished on $(date)"

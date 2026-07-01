@@ -23,10 +23,8 @@ SCRATCH_ROOT="/scratch/helu"
 CONDA_BIN="/home/helu/miniconda3/bin/conda"
 CONDA_ENV="env1"
 PLOT_SCRIPT="${REPO_ROOT}/plot/python/plot_hd.py"
-PROLIFERATION_SUMMARY_SCRIPT="${REPO_ROOT}/plot/python/proliferation_summary.py"
 RESULTS_ROOT="${REPO_ROOT}/results"
 THREADS="${SLURM_CPUS_PER_TASK}"
-SKIP_SUMMARY="${SKIP_SUMMARY:-0}"
 PLOT_HD_ARGS="${PLOT_HD_ARGS:-}"
 
 if [[ "${INPUT_ARG}" == /* ]]; then
@@ -80,17 +78,6 @@ fi
 
 "${CONDA_BIN}" run --no-capture-output -n "${CONDA_ENV}" \
   python "${PLOT_SCRIPT}" "${OUTPUT_PATH}" "${PLOT_DIR}" "${PLOT_HD_ARGV[@]}"
-
-case "${SKIP_SUMMARY}" in
-  1|true|TRUE|yes|YES)
-    echo "Skipping proliferation summary on request."
-    echo "Plotting finished on $(date)"
-    exit 0
-    ;;
-esac
-
-"${CONDA_BIN}" run --no-capture-output -n "${CONDA_ENV}" \
-  python "${PROLIFERATION_SUMMARY_SCRIPT}" "${OUTPUT_PATH}" "${PLOT_DIR}"
 
 echo "Plotting finished on $(date)"
 exit 0
