@@ -40,6 +40,15 @@ def parse_variant(name):
             continue
         key, raw = m.group(1), m.group(2)
         params[KEY_LABEL.get(key, key)] = raw.replace("p", ".")
+    # Show Achi as a multiple of Ochi (scans set Achi = k*Ochi), so the filter
+    # button reads "0.5xOchi" / "1xOchi" instead of the absolute value.
+    if "Achi" in params and "Ochi" in params:
+        try:
+            a, o = float(params["Achi"]), float(params["Ochi"])
+            if o != 0:
+                params["Achi"] = "%gxOchi" % (a / o)
+        except (TypeError, ValueError):
+            pass
     return params
 
 
