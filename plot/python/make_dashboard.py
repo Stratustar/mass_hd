@@ -16,6 +16,7 @@ import argparse
 import json
 import os
 import re
+import subprocess
 
 PARAM_ORDER = ["alpha", "zeta", "Ochi", "LL", "xi", "Dchi", "Achi", "friction"]
 KEY_LABEL = {"a": "alpha", "z": "zeta", "O": "Ochi", "LL": "LL", "xi": "xi",
@@ -30,6 +31,42 @@ EXCLUDE_GROUPS = {
 GIF_RE = re.compile(r"^(?P<field>.+)_(?P<a>\d+)-(?P<b>\d+)_step(?P<k>\d+)\.gif$")
 FRAME_RE = re.compile(r"^(?P<field>.+)_frame(?P<n>\d+)\.png$")
 TOKEN_RE = re.compile(r"^([A-Za-z]+)([-0-9pe.]+)$")
+
+
+def _ffmpeg_exe():
+    try:
+        import imageio_ffmpeg
+        return imageio_ffmpeg.get_ffmpeg_exe()
+    except Exception:
+        return None
+
+
+FFMPEG = _ffmpeg_exe()
+
+
+def ensure_mp4(vdir, gif_name):
+    """Transcode a gif to an mp4 next to it (cached by mtime). Returns the mp4
+    filename, or None if ffmpeg is unavailable / conversion fails (caller then
+    falls back to the plain gif). mp4 + a <video> playbackRate is what lets the
+    dashboard adjust playback speed even when opened directly as a file:// URL
+    (fetch()-based gif decoding is blocked for local files)."""
+    if not FFMPEG:
+        return None
+    mp4_name = (gif_name[:-4] if gif_name.lower().endswith(".gif") else gif_name) + ".mp4"
+    gif_path = os.path.join(vdir, gif_name)
+    mp4_path = os.path.join(vdir, mp4_name)
+    try:
+        if os.path.exists(mp4_path) and os.path.getmtime(mp4_path) >= os.path.getmtime(gif_path):
+            return mp4_name
+        subprocess.run(
+            [FFMPEG, "-y", "-loglevel", "error", "-i", gif_path,
+             "-movflags", "+faststart", "-pix_fmt", "yuv420p",
+             "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2", mp4_path],
+            check=True)
+        return mp4_name
+    except Exception as e:
+        print("mp4 convert failed for %s: %r" % (gif_name, e))
+        return None
 
 
 def parse_variant(name):
@@ -75,9 +112,13 @@ def collect_figures(vdir):
     single_groups = {f[:-4] for f in singles}
     figs = []
     for field, f in sorted(gifs):
-        fig = {"kind": "gif", "group": field, "label": field + " (gif)", "file": f}
+        mp4 = ensure_mp4(vdir, f)             # video -> adjustable playback speed
+        if mp4:
+            fig = {"kind": "video", "group": field, "label": field, "file": mp4}
+        else:
+            fig = {"kind": "gif", "group": field, "label": field + " (gif)", "file": f}
         if field in last_png:
-            fig["poster"] = last_png[field]   # lightweight cover; gif itself loads on click
+            fig["poster"] = last_png[field]   # lightweight cover; media loads on click
         figs.append(fig)
     for field, (n, f) in sorted(frames.items()):
         # if a same-named single (e.g. a pressure decomposition pressure.png) exists, it
@@ -118,6 +159,8 @@ def main():
         variants.append({"name": name, "params": parse_variant(name), "figures": figs})
         for fig in figs:
             referenced.append("%s/%s" % (name, fig["file"]))
+            if fig.get("poster"):
+                referenced.append("%s/%s" % (name, fig["poster"]))
 
     axes = {}
     for v in variants:
@@ -177,7 +220,7 @@ TEMPLATE = r"""<!doctype html>
   figcaption { font-size:11px; color:var(--muted); padding:4px 6px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .empty { color:var(--muted); font-size:13px; padding:20px 0; }
   #lb { position:fixed; inset:0; background:rgba(0,0,0,.85); display:none; align-items:center; justify-content:center; z-index:20; cursor:zoom-out; }
-  #lb img, #lb canvas { max-width:96vw; max-height:88vh; object-fit:contain; }
+  #lb img, #lb video { max-width:96vw; max-height:88vh; object-fit:contain; }
   #lb .cap { position:fixed; bottom:10px; left:0; right:0; text-align:center; color:#eee; font-size:13px; }
   #lb .speed { position:fixed; bottom:30px; left:0; right:0; display:none; gap:8px; align-items:center; justify-content:center; color:#eee; font-size:13px; }
   #lb .speed input { width:min(55vw,300px); cursor:pointer; }
@@ -195,7 +238,7 @@ TEMPLATE = r"""<!doctype html>
   <div id="figfilters"></div>
 </header>
 <main><div id="results"></div></main>
-<div id="lb"><img alt=""><canvas></canvas><div class="speed"><span>speed</span><input type="range" min="0.1" max="4" step="0.05" value="1"><span class="sval">1.00&#215;</span></div><div class="cap"></div></div>
+<div id="lb"><img alt=""><video loop muted playsinline controls></video><div class="speed"><span>speed</span><input type="range" min="0.1" max="4" step="0.05" value="1"><span class="sval">1.00&#215;</span></div><div class="cap"></div></div>
 <script>
 const DATA = /*DATA*/;
 const sel = {};                 // axis -> Set of selected value strings
@@ -265,6 +308,13 @@ function updateAvail(){
 
 function tile(v, f){
   const cap = v.name + " — " + f.label;
+  if(f.kind === "video"){
+    const url = enc(v.name+"/"+f.file);
+    const inner = f.poster
+      ? '<img loading="lazy" src="'+enc(v.name+"/"+f.poster)+'" data-video="'+url+'" data-cap="'+cap+'" alt="'+f.label+'">'
+      : '<div class="noposter" data-video="'+url+'" data-cap="'+cap+'">&#9654; play</div>';
+    return '<figure><span class="badge">&#9654;</span>'+inner+'<figcaption>'+f.label+'</figcaption></figure>';
+  }
   if(f.kind === "gif"){
     const gif = enc(v.name+"/"+f.file);
     const inner = f.poster
@@ -301,78 +351,44 @@ document.getElementById("reset").onclick = () => {
 };
 
 const lb = document.getElementById("lb"), lbimg = lb.querySelector("img"),
-      lbcanvas = lb.querySelector("canvas"), lbcap = lb.querySelector(".cap"),
+      lbvideo = lb.querySelector("video"), lbcap = lb.querySelector(".cap"),
       speedbar = lb.querySelector(".speed"), speedInput = speedbar.querySelector("input"),
       sval = speedbar.querySelector(".sval");
-// GIF speed control needs the ImageDecoder API (Chrome/Edge, Safari 17+). Where it
-// is missing (e.g. Firefox) gifs fall back to a plain <img> at their native speed.
-const GIF_OK = typeof window.ImageDecoder !== "undefined";
-let playSpeed = 1, gifRun = 0;      // gifRun is a generation token that cancels loops
+lbvideo.loop = true; lbvideo.muted = true; lbvideo.playsInline = true;
+let playSpeed = 1;
 
-const sleep = ms => new Promise(r => setTimeout(r, ms));
-
-function showStatic(src, cap){       // static PNG
-  gifRun++;
-  lbcanvas.style.display = "none"; speedbar.style.display = "none";
+function stopVideo(){ try { lbvideo.pause(); } catch(e){} lbvideo.removeAttribute("src"); try { lbvideo.load(); } catch(e){} }
+function showStatic(src, cap){        // static PNG
+  stopVideo(); lbvideo.style.display = "none"; speedbar.style.display = "none";
   lbimg.style.display = ""; lbcap.textContent = cap; lbimg.src = src;
 }
-function showGifImg(url, cap){        // gif fallback: native speed, no control
-  gifRun++;
-  lbcanvas.style.display = "none"; speedbar.style.display = "none";
+function showGifImg(url, cap){         // gif fallback (no mp4): native speed, no control
+  stopVideo(); lbvideo.style.display = "none"; speedbar.style.display = "none";
   lbimg.style.display = ""; lbcap.textContent = cap; lbimg.src = url;
 }
-async function playGif(url, cap){     // decode gif -> canvas, adjustable frame delay
-  const my = ++gifRun;
+function showVideo(url, cap){          // mp4 -> <video>, adjustable via playbackRate (works on file://)
   lbimg.style.display = "none"; lbimg.src = "";
-  lbcanvas.style.display = ""; speedbar.style.display = "flex";
-  lbcap.textContent = cap + "  (decoding…)";
-  let dec;
-  try {
-    const buf = await (await fetch(url)).arrayBuffer();
-    if(my !== gifRun) return;
-    dec = new ImageDecoder({data: buf, type: "image/gif"});
-    await dec.tracks.ready;
-  } catch(err){ if(my === gifRun) showGifImg(url, cap); return; }
-  if(my !== gifRun){ try{ dec.close(); }catch(e){} return; }
-  lbcap.textContent = cap;
-  const ctx = lbcanvas.getContext("2d");
-  let i = 0, sized = false;
-  while(my === gifRun){
-    let res;
-    try { res = await dec.decode({frameIndex: i}); }
-    catch(e){ if(i === 0){ showGifImg(url, cap); break; } i = 0; continue; }  // wrap at end
-    if(my !== gifRun){ res.image.close(); break; }
-    const img = res.image;
-    if(!sized){ lbcanvas.width = img.displayWidth; lbcanvas.height = img.displayHeight; sized = true; }
-    ctx.drawImage(img, 0, 0);
-    const baseMs = img.duration ? img.duration / 1000 : 100;   // frame delay in microseconds
-    img.close();
-    i++;
-    await sleep(Math.max(10, baseMs / (playSpeed || 1)));
-  }
-  try { dec.close(); } catch(e){}
+  lbvideo.style.display = ""; speedbar.style.display = "flex"; lbcap.textContent = cap;
+  lbvideo.src = url; lbvideo.playbackRate = playSpeed; lbvideo.play().catch(() => {});
 }
 function closeLb(){
-  gifRun++;
+  stopVideo();
   lb.style.display = "none";
   lbimg.src = ""; lbimg.style.display = "";
-  lbcanvas.style.display = "none"; speedbar.style.display = "none";
+  lbvideo.style.display = "none"; speedbar.style.display = "none";
 }
 
 document.getElementById("results").addEventListener("click", e => {
   const t = e.target;
   const cap = t.dataset.cap || "";
-  if(t.dataset.gif){
-    lb.style.display = "flex";
-    if(GIF_OK) playGif(t.dataset.gif, cap); else showGifImg(t.dataset.gif, cap);
-  } else if(t.tagName === "IMG"){
-    lb.style.display = "flex";
-    showStatic(t.getAttribute("src"), cap);
-  }
+  if(t.dataset.video){ lb.style.display = "flex"; showVideo(t.dataset.video, cap); }
+  else if(t.dataset.gif){ lb.style.display = "flex"; showGifImg(t.dataset.gif, cap); }
+  else if(t.tagName === "IMG"){ lb.style.display = "flex"; showStatic(t.getAttribute("src"), cap); }
 });
 speedInput.oninput = () => {
   playSpeed = parseFloat(speedInput.value) || 1;
   sval.textContent = playSpeed.toFixed(2) + "×";
+  lbvideo.playbackRate = playSpeed;
 };
 speedbar.onclick = e => e.stopPropagation();   // adjusting the slider must not close the lightbox
 lb.onclick = closeLb;
