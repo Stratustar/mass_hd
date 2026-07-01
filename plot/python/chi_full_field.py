@@ -44,16 +44,22 @@ def grid(frame, field):
     return np.array(getattr(frame, field)).reshape((lx, ly))
 
 
+NEARVAC = 0.05        # below this phi there is essentially no material: chi should be ~0
+
 def halo_stats(chi, phi):
     halo = (phi > HALO_LO) & (phi < COLONY)
+    nearvac = (phi > HALO_LO) & (phi < NEARVAC)
     if not halo.any():
-        return dict(halo_px=0, chi_max=0.0, chi_mean=0.0, spurious_frac=0.0)
+        return dict(halo_px=0, nearvac_px=0, chi_max=0.0, chi_mean=0.0, spurious_frac=0.0)
     c = chi[halo]
+    # spurious = near-vacuum (phi<0.05, no material) cells that still carry chi>0.1
+    sp = float(np.mean(chi[nearvac] > 0.1)) if nearvac.any() else 0.0
     return dict(
         halo_px=int(halo.sum()),
+        nearvac_px=int(nearvac.sum()),
         chi_max=float(np.max(c)),
         chi_mean=float(np.mean(c)),
-        spurious_frac=float(np.mean(np.abs(c - 0.5) > 0.1)),
+        spurious_frac=sp,
     )
 
 
@@ -66,9 +72,9 @@ def plot_chi_full(name, chi, phi, stats, outpath):
     ax.contour(phi.T, levels=[0.01], colors="0.4", linewidths=0.5,
                linestyles="dashed", origin="lower")
     ax.set_xticks([]); ax.set_yticks([])
-    ax.set_title("chi (full domain)\nhalo: max=%.2f mean=%.2f spurious=%.1f%%"
+    ax.set_title("chi (full domain)\nhalo max=%.2f mean=%.2f | near-vac(phi<0.05) chi>0.1: %.1f%%"
                  % (stats["chi_max"], stats["chi_mean"], 100 * stats["spurious_frac"]),
-                 fontsize=9)
+                 fontsize=8)
     cb = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04); cb.set_label("chi")
     fig.suptitle(name, fontsize=8)
     fig.tight_layout(rect=[0, 0, 1, 0.97])
@@ -123,7 +129,7 @@ def main():
 
     csv_path = os.path.join(args.outdir, "chi_full_halo_stats.csv")
     with open(csv_path, "w", newline="") as fh:
-        wr = csv.DictWriter(fh, fieldnames=["variant", "frame", "halo_px",
+        wr = csv.DictWriter(fh, fieldnames=["variant", "frame", "halo_px", "nearvac_px",
                                             "chi_max", "chi_mean", "spurious_frac"])
         wr.writeheader()
         for r in rows:
