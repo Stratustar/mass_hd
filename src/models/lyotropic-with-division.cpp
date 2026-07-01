@@ -51,24 +51,23 @@ void LyotropicWithDivision::SetMasks()
           centers.emplace_back(array<unsigned,2>{GetXPosition(k), GetYPosition(k)});
       }
     }
-    // draw the circles
-    for(unsigned k=0; k<DomainSize; ++k)
+    // draw the circles: stamp a disc of radius division_radius around each
+    // center locally, instead of testing every grid node against every center.
+    // Identical result to the O(DomainSize * n_centers) scan, but O(n_centers *
+    // radius^2) -- the previous version dominated runtime once the colony grew.
+    const double thr = ceil(division_radius*division_radius);
+    const int Rbox = static_cast<int>(ceil(sqrt(thr)));
+    for(const auto& c : centers)
     {
-      // corrdinates of the point
-      const unsigned yk = GetYPosition(k);
-      const unsigned xk = GetXPosition(k);
-
-      // set the corresponding mask to 1 if the point falls is close enough from
-      // a center
-      for(const auto& c : centers)
-      {
-        if(pow(wrap(diff(yk, c[1]), LY), 2) + pow(wrap(diff(xk, c[0]), LX), 2)
-            <= ceil(division_radius*division_radius))
-        {
-          division_mask[k] = true;
-          break;
-        }
-      }
+      const long int cx = c[0], cy = c[1];
+      for(int dx=-Rbox; dx<=Rbox; ++dx)
+        for(int dy=-Rbox; dy<=Rbox; ++dy)
+          if(dx*dx + dy*dy <= thr)
+          {
+            const unsigned x = modu(cx+dx, static_cast<long int>(LX));
+            const unsigned y = modu(cy+dy, static_cast<long int>(LY));
+            division_mask[GetDomainIndex(x, y)] = true;
+          }
     }
   }
 
@@ -89,23 +88,21 @@ void LyotropicWithDivision::SetMasks()
           centers.emplace_back(array<unsigned,2>{GetXPosition(k), GetYPosition(k)});
       }
     }
-    // draw the circles
-    for(unsigned k=0; k<DomainSize; ++k)
+    // draw the circles: stamp a disc of radius death_radius around each center
+    // locally (see the division block above for the rationale).
+    const double thr = ceil(death_radius*death_radius);
+    const int Rbox = static_cast<int>(ceil(sqrt(thr)));
+    for(const auto& c : centers)
     {
-      // corrdinates of the point
-      const unsigned yk = GetYPosition(k);
-      const unsigned xk = GetXPosition(k);
-      // set the corresponding mask to 1 if the point falls is close enough from
-      // a center
-      for(const auto& c : centers)
-      {
-        if(pow(wrap(diff(yk, c[1]), LY), 2) + pow(wrap(diff(xk, c[0]), LX), 2)
-            <= ceil(death_radius*death_radius))
-        {
-          death_mask[k] = true;
-          break;
-        }
-      }
+      const long int cx = c[0], cy = c[1];
+      for(int dx=-Rbox; dx<=Rbox; ++dx)
+        for(int dy=-Rbox; dy<=Rbox; ++dy)
+          if(dx*dx + dy*dy <= thr)
+          {
+            const unsigned x = modu(cx+dx, static_cast<long int>(LX));
+            const unsigned y = modu(cy+dy, static_cast<long int>(LY));
+            death_mask[GetDomainIndex(x, y)] = true;
+          }
     }
   }
 }
