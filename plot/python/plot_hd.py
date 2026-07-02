@@ -14,6 +14,7 @@ VELOCITY_STRIDE = 5
 DIRECTOR_WIDTH = 0.0015
 VISUALIZATION_CMAP = plt.get_cmap("bwr")  # go (chi=0)=blue, grow (chi=1)=red, boundary (chi=0.5)=white
 VISUALIZATION_BACKGROUND = "#7e7e7e"
+GIF_DPI = 300  # default plotting spec: GIF frames rendered at 300 dpi
 
 BASE_DIR = os.path.abspath(
     os.path.join(
@@ -517,7 +518,7 @@ def save_field_png(ar, frame_index, field_name, outdir, cmap, clim, dpi, crop=No
 def render_field_image(ar, frame_index, field_name, cmap, clim, crop=None):
     frame = ar.read_frame(frame_index)
 
-    fig, ax = plt.subplots(figsize=(6, 5))
+    fig, ax = plt.subplots(figsize=(6, 5), dpi=GIF_DPI)
     im = draw_field(ax, frame, field_name, cmap=cmap, clim=clim)
     if crop is not None:
         ax.set_xlim(crop[0], crop[1])
