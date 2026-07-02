@@ -12,8 +12,12 @@ protected:
   double Snem = 1.;
   /** Phenotype diffusion coefficient */
   double Dchi = 0.;
-  /** Phenotype switching potential parameters */
+  /** Legacy double-well switching parameters (retired from the dynamics; kept
+   *  declared/parsed/serialized so existing cases and archives still load) */
   double Achi = 0., Ochi = 0., pswitch = 0.;
+  /** Dead-band switching: go->grow and grow->go rate coefficients, and the
+   *  pressure deviation from pswitch needed before switching turns on */
+  double switch_gogrow = 0., switch_growgo = 0., switch_cost = 0.;
   /** Whether m growth follows the local grow fraction */
   int growTogether = 0;
   /** Whether phase-field surface terms contribute to stress and velocity */
@@ -99,7 +103,10 @@ public:
        & auto_name(relax_phi)
        & auto_name(relax_Q)
        & auto_name(phi_noise)
-       & auto_name(phi_length);
+       & auto_name(phi_length)
+       & auto_name(switch_gogrow)
+       & auto_name(switch_growgo)
+       & auto_name(switch_cost);
   }
 
   /** Serialization of the current frame (time snapshot) */

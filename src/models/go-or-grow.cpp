@@ -508,10 +508,11 @@ void GoOrGrow::UpdateFields(bool first)
     + .5*(phi[d[3]] + phi[k])*(chi_py - chi_eff)
     - .5*(phi[k] + phi[d[4]])*(chi_eff - chi_my);
     const double press = -sigma_bulk[k];
-    const double dVdChi =
-      2*Achi*chi_eff*(1-chi_eff)*(1-2*chi_eff)
-    + Ochi*(press-pswitch);
-    const double Sswitch = -phi[k]*dVdChi;
+    // Dead-band phenotype switching (see DryGoOrGrow::UpdateDryFieldsAtNode).
+    const double excess_low  = press < pswitch - switch_cost ? (pswitch - switch_cost) - press : 0.;
+    const double excess_high = press > pswitch + switch_cost ? press - (pswitch + switch_cost) : 0.;
+    const double Sswitch = phi[k]*( switch_gogrow*(1-chi_eff)*excess_low
+                                  - switch_growgo*chi_eff*excess_high );
     const double mGrowth = growTogether ? chi_eff*R : R;
     const double Dm = mTransport + Dchi*phenotypeDiffusion + Sswitch + mGrowth;
 
@@ -593,7 +594,13 @@ option_list GoOrGrow::GetOptions()
     ("Ochi", opt::value<double>(&Ochi),
      "phenotype switching bias strength")
     ("pswitch", opt::value<double>(&pswitch),
-     "pressure threshold for phenotype switching bias")
+     "pressure set-point (dead-band centre) for phenotype switching")
+    ("switch-gogrow", opt::value<double>(&switch_gogrow),
+     "go->grow switching rate coefficient")
+    ("switch-growgo", opt::value<double>(&switch_growgo),
+     "grow->go switching rate coefficient")
+    ("switch-cost", opt::value<double>(&switch_cost),
+     "pressure deviation from pswitch needed to trigger switching (dead-band half-width)")
     ("growTogether", opt::value<int>(&growTogether),
      "m growth source: 0 uses R, 1 uses chi*R")
     ("surface-stress", opt::value<int>(&surface_stress),
