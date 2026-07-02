@@ -123,3 +123,28 @@ def count_defects(theta, mask=None, min_charge=0.3, q=None):
     n_plus = sum(1 for d in defects if d["charge"] > 0)
     n_minus = sum(1 for d in defects if d["charge"] < 0)
     return n_plus, n_minus
+
+
+def defect_markers(qxx, qyx, mask=None, min_charge=0.35):
+    """Detect defects from Q-tensor grids and return plot-coordinate markers.
+
+    qxx, qyx are the Q-tensor component grids in the plotting index convention
+    grid()==[x, y] (axis 0 = x, axis 1 = y), as produced by plot_hd.grid /
+    field_as_grid.  mask (same shape) restricts detection to real material
+    (e.g. phi > 0.5) so the random exterior director does not spawn spurious
+    defects.  Returns (plus, minus): two lists of (x, y) positions in lattice /
+    plot data coordinates -- i.e. they overlay directly on
+    imshow(field.T, origin="lower") and quiver(x_index, y_index).
+
+    The winding routines here assume the image convention theta[row=y, col=x], so
+    this helper transposes internally: theta[x,y] -> theta.T[y,x], detects, then
+    maps the returned (row=y, col=x) back to (x, y).  Positive charge (+1/2, and
+    the rare +1) goes to `plus`, negative to `minus`.
+    """
+    theta = director_angle(np.asarray(qxx, float), np.asarray(qyx, float))  # [x, y]
+    theta_img = theta.T                                                     # [row=y, col=x]
+    mask_img = None if mask is None else np.asarray(mask, bool).T
+    ds = find_defects(theta_img, mask=mask_img, min_charge=min_charge)
+    plus = [(d["col"], d["row"]) for d in ds if d["charge"] > 0]   # (x, y)
+    minus = [(d["col"], d["row"]) for d in ds if d["charge"] < 0]  # (x, y)
+    return plus, minus

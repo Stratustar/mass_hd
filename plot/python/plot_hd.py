@@ -329,6 +329,36 @@ def draw_boundary_contours(ax, frame, lw_scale=1.0):
                linewidths=1.0 * lw_scale, origin="lower")
 
 
+def draw_defects(ax, frame, size_scale=1.0):
+    """Overlay +/-1/2 nematic defect markers: circle = +1/2, triangle = -1/2.
+
+    Defects are detected on the full-resolution director (theta = 1/2 atan2(QQyx,
+    QQxx)) inside the colony (phi>0.5 mask) by the winding method in
+    plot/python/plot/defects.py. Markers are drawn in lattice/plot coordinates so
+    they sit on the imshow(field.T)+quiver panels. Silently skips if the Q fields
+    or scipy are unavailable.
+    """
+    if not (hasattr(frame, "QQxx") and hasattr(frame, "QQyx")):
+        return
+    try:
+        from plot.defects import defect_markers
+    except Exception as exc:  # scipy/plot package missing
+        print(f"defect markers unavailable ({exc}); skipping.", flush=True)
+        return
+    qxx = field_as_grid(frame, "QQxx")
+    qyx = field_as_grid(frame, "QQyx")
+    mask = field_as_grid(frame, "phi") > 0.5 if hasattr(frame, "phi") else None
+    plus, minus = defect_markers(qxx, qyx, mask=mask)
+    if plus:
+        px, py = zip(*plus)
+        ax.scatter(px, py, marker="o", c="#00e5ff", edgecolors="black",
+                   s=30 * size_scale, linewidths=0.5, zorder=6)
+    if minus:
+        mx, my = zip(*minus)
+        ax.scatter(mx, my, marker="^", c="#ff00ff", edgecolors="black",
+                   s=42 * size_scale, linewidths=0.5, zorder=6)
+
+
 def draw_field(ax, frame, field_name, cmap, clim=None):
     if field_name == "visualization":
         rgba = visualization_rgba(frame)
@@ -339,6 +369,7 @@ def draw_field(ax, frame, field_name, cmap, clim=None):
             interpolation="nearest",
         )
         draw_boundary_contours(ax, frame, 1.0)
+        draw_defects(ax, frame)
         ax.set_aspect("equal")
         ax.set_xlabel("x")
         ax.set_ylabel("y")
@@ -378,6 +409,7 @@ def draw_field(ax, frame, field_name, cmap, clim=None):
             color="black",
         )
         draw_boundary_contours(ax, frame, 0.5)
+        draw_defects(ax, frame)
         ax.set_aspect("equal")
         ax.set_xlabel("x")
         ax.set_ylabel("y")
