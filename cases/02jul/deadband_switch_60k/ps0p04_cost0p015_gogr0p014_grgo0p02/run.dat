@@ -1,0 +1,67 @@
+# 02jul dead-band switching -- 60000-step run, wider dead band + asymmetric rate.
+# Follow-up to the 20000-step ps0p04_cost0p01 test (which showed the go-core only
+# just beginning at the end). Longer run lets the interior cross grow->go and fully
+# form a go-core. switch-cost 0.01->0.015 (loop width 0.03: grow->go P>0.055,
+# go->grow P<0.025). Asymmetric rate: switch-gogrow = 0.7*switch-growgo (0.014 vs
+# 0.020) so grow->go (center commits to go) is faster than go->grow (rim regrow).
+# dry-go-or-grow, 100x100, random chi~0.5 init, 01jul physics.
+
+model    = dry-go-or-grow
+config   = circle
+nsteps   = 60000
+nstart   = 0000
+ninfo    = 200
+LX       = 100
+LY       = 100
+bc       = 0
+seed     = 1001
+GammaQ   = 0.3
+GammaP   = 0.05
+zeta     = 0.1
+zetaI    = 0
+friction = 10
+tauNem   = 1.0
+tauIso   = 1.0
+AA       = 0.03
+CC       = 0.1
+LL       = 0.012
+KK       = 0.06
+rho      = 40
+xi       = 1
+B        = 1.0
+Snem     = 1
+level    = 50
+radius   = 20
+conc     = 1
+noise    = 1
+initial-order = 1
+angle    = 0
+relax-steps = 500
+relax-dt    = 1.0
+relax-phi   = 1
+relax-Q     = 1
+chi-config = noise
+chi0       = 0.5
+chi-noise  = 0.04
+chi-length = 5
+phi-noise  = 0
+phi-length = 5
+Dchi       = 0.0002
+Achi       = 0
+Ochi       = 0
+pswitch    = 0.04
+switch-gogrow = 0.014
+switch-growgo = 0.02
+switch-cost   = 0.015
+growTogether = 1
+beta         = 0
+death-rate   = 0
+death-time   = 1
+death-radius = 0
+division-rate   = 1e-1
+division-time   = 2
+alpha           = 0.00005
+phi-critical    = 1.0
+division-phi-critical-factor = 0
+division-radius = 3
+surface-stress = 0
