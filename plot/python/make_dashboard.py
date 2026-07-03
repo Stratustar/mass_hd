@@ -28,6 +28,7 @@ EXCLUDE_GROUPS = {
     "proliferation_dashboard", "radial_kymographs", "radial_profiles",
 }
 
+MP4_RE = re.compile(r"^(?P<field>.+)_(?P<a>\d+)-(?P<b>\d+)_step(?P<k>\d+)\.mp4$")
 GIF_RE = re.compile(r"^(?P<field>.+)_(?P<a>\d+)-(?P<b>\d+)_step(?P<k>\d+)\.gif$")
 FRAME_RE = re.compile(r"^(?P<field>.+)_frame(?P<n>\d+)\.png$")
 TOKEN_RE = re.compile(r"^([A-Za-z]+)([-0-9pe.]+)$")
@@ -94,8 +95,12 @@ def collect_figures(vdir):
         files = os.listdir(vdir)
     except OSError:
         return []
-    gifs, frames, singles = [], {}, []
+    mp4s, gifs, frames, singles = {}, [], {}, []
     for f in files:
+        vm = MP4_RE.match(f)
+        if vm:
+            mp4s[vm.group("field")] = f       # mp4 written directly by plot_hd (preferred)
+            continue
         gm = GIF_RE.match(f)
         if gm:
             gifs.append((gm.group("field"), f))
@@ -111,14 +116,26 @@ def collect_figures(vdir):
     last_png = {field: f for field, (n, f) in frames.items()}
     single_groups = {f[:-4] for f in singles}
     figs = []
+    # Prefer a directly-written mp4; fall back to transcoding a legacy gif (old studies).
+    video = dict(mp4s)
+    gif_only = []
     for field, f in sorted(gifs):
-        mp4 = ensure_mp4(vdir, f)             # video -> adjustable playback speed
+        if field in video:
+            continue
+        mp4 = ensure_mp4(vdir, f)             # legacy gif -> mp4 for adjustable playback speed
         if mp4:
-            fig = {"kind": "video", "group": field, "label": field, "file": mp4}
+            video[field] = mp4
         else:
-            fig = {"kind": "gif", "group": field, "label": field + " (gif)", "file": f}
+            gif_only.append((field, f))
+    for field, f in sorted(video.items()):
+        fig = {"kind": "video", "group": field, "label": field, "file": f}
         if field in last_png:
             fig["poster"] = last_png[field]   # lightweight cover; media loads on click
+        figs.append(fig)
+    for field, f in gif_only:
+        fig = {"kind": "gif", "group": field, "label": field + " (gif)", "file": f}
+        if field in last_png:
+            fig["poster"] = last_png[field]
         figs.append(fig)
     for field, (n, f) in sorted(frames.items()):
         # if a same-named single (e.g. a pressure decomposition pressure.png) exists, it

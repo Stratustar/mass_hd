@@ -14,7 +14,8 @@ VELOCITY_STRIDE = 5
 DIRECTOR_WIDTH = 0.0015
 VISUALIZATION_CMAP = plt.get_cmap("bwr")  # go (chi=0)=blue, grow (chi=1)=red, boundary (chi=0.5)=white
 VISUALIZATION_BACKGROUND = "#7e7e7e"
-GIF_DPI = 300  # default plotting spec: GIF frames rendered at 300 dpi
+GIF_DPI = 300  # default plotting spec: video frames rendered at 300 dpi
+MP4_FPS = 10   # default plotting spec: animations written as mp4 (h264) at this fps
 
 BASE_DIR = os.path.abspath(
     os.path.join(
@@ -540,36 +541,53 @@ def render_field_image(ar, frame_index, field_name, cmap, clim, crop=None):
     return image
 
 
-def save_field_gif(ar, field_name, outdir, cmap, clim, nframes, frame_start, frame_step, crop=None):
+def save_field_mp4(ar, field_name, outdir, cmap, clim, nframes, frame_start, frame_step, crop=None):
+    """Write the animation directly as an h264 mp4 (default plotting spec).
+
+    mp4 replaces the old gif path: it is far smaller than a 300-dpi gif, needs no
+    downstream transcode (the dashboard plays mp4 with an adjustable-speed <video>),
+    and streams frame-by-frame so we never hold all frames in memory. Frame
+    selection is identical to the previous gif routine.
+    """
+    import imageio_ffmpeg  # ffmpeg frame-writer (same dep the dashboard already uses)
+
     if nframes < 1:
-        raise RuntimeError(f"GIF needs at least one {field_name} frame.")
+        raise RuntimeError(f"Video needs at least one {field_name} frame.")
     if frame_step < 1:
         raise ValueError("--gif-frame-step must be at least 1.")
 
-    frames = []
     n_available = available_frame_count(ar)
     frame_indices = list(range(frame_start, n_available, frame_step))[:nframes]
     final_frame = n_available - 1
     if frame_indices and frame_indices[-1] != final_frame and final_frame >= frame_start:
         frame_indices.append(final_frame)
-    for frame_index in frame_indices:
-        print(f"Rendering {field_name} GIF frame {frame_index}", flush=True)
-        frames.append(render_field_image(ar, frame_index, field_name, cmap, clim, crop))
-
-    if not frames:
-        raise RuntimeError(f"No {field_name} frames were rendered for GIF.")
+    if not frame_indices:
+        raise RuntimeError(f"No {field_name} frames selected for video.")
 
     outfile = os.path.join(
         outdir,
-        f"{field_name}_{frame_indices[0]}-{frame_indices[-1]}_step{frame_step}.gif",
+        f"{field_name}_{frame_indices[0]}-{frame_indices[-1]}_step{frame_step}.mp4",
     )
-    frames[0].save(
-        outfile,
-        save_all=True,
-        append_images=frames[1:],
-        duration=200,
-        loop=0,
-    )
+    writer = None
+    try:
+        for frame_index in frame_indices:
+            print(f"Rendering {field_name} video frame {frame_index}", flush=True)
+            img = render_field_image(ar, frame_index, field_name, cmap, clim, crop)
+            arr = np.asarray(img)
+            if arr.ndim == 3 and arr.shape[2] == 4:
+                arr = arr[..., :3]
+            arr = np.ascontiguousarray(arr, dtype=np.uint8)
+            if writer is None:
+                h, w = arr.shape[:2]
+                writer = imageio_ffmpeg.write_frames(
+                    outfile, (w, h), fps=MP4_FPS, codec="libx264",
+                    quality=8, macro_block_size=2, pix_fmt_out="yuv420p",
+                )
+                writer.send(None)  # seed the generator
+            writer.send(arr.tobytes())
+    finally:
+        if writer is not None:
+            writer.close()
     return outfile
 
 
@@ -662,9 +680,9 @@ def main():
 
     gif_step = args.gif_frame_step if args.gif_frame_step is not None else max(1, int(round(n_available / 40.0)))
     gif_count = args.gif_frames if args.gif_frames is not None else n_available
-    print("Preparing GIFs...", flush=True)
+    print("Preparing videos...", flush=True)
     for field_name, style in fields.items():
-        outfile = save_field_gif(
+        outfile = save_field_mp4(
             ar,
             field_name,
             args.outdir,
@@ -675,7 +693,7 @@ def main():
             gif_step,
             crop,
         )
-        print(f"Saved GIF: {outfile}", flush=True)
+        print(f"Saved video: {outfile}", flush=True)
 
     if args.skip_counts:
         print("Skipping N0/N1 time-series plot.", flush=True)
