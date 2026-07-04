@@ -482,6 +482,7 @@ def draw_field(ax, frame, field_name, cmap, clim=None):
     )
     if field_name == "pressure":
         draw_boundary_contours(ax, frame, 0.5)
+        draw_defects(ax, frame)
     ax.set_aspect("equal")
     ax.set_xlabel("x")
     ax.set_ylabel("y")
