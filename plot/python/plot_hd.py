@@ -6,6 +6,7 @@ import os
 import sys
 
 import matplotlib.pyplot as plt
+import matplotlib.colors as mcolors
 import numpy as np
 from PIL import Image
 
@@ -16,10 +17,11 @@ VISUALIZATION_CMAP = plt.get_cmap("bwr")  # go (chi=0)=blue, grow (chi=1)=red, b
 VISUALIZATION_BACKGROUND = "#7e7e7e"
 GIF_DPI = 300  # default plotting spec: video frames rendered at 300 dpi
 MP4_FPS = 10   # default plotting spec: animations written as mp4 (h264) at this fps
-# Cyclic colormap for the nematic director ANGLE (theta is pi-periodic, so a cyclic
-# map is required so theta=0 and theta=pi share a colour). hsv is the common
-# active-nematics convention; twilight is a perceptual alternative.
-DIRECTOR_ANGLE_CMAP = "hsv"
+# Black-and-white cyclic map for the nematic director ANGLE. theta is pi-periodic, so a
+# monotonic grayscale would put a false black/white seam at 0/180 deg (same orientation);
+# instead we go black -> white -> black across 0..180 deg so the wrap is seamless.
+DIRECTOR_ANGLE_CMAP = mcolors.LinearSegmentedColormap.from_list(
+    "cyclic_gray", ["black", "white", "black"])
 
 BASE_DIR = os.path.abspath(
     os.path.join(
