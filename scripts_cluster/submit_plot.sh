@@ -63,8 +63,24 @@ export OMP_NUM_THREADS="${THREADS}"
 export OMP_PLACES=cores
 export OMP_PROC_BIND=spread
 
-# Remove stale figures so we regenerate cleanly.
-find "${PLOT_DIR}" -maxdepth 1 -type f \( -name '*.png' -o -name '*.gif' -o -name '*.csv' \) -delete
+# Remove stale figures. If PLOT_HD_ARGS restricts to specific --fields, clear only those
+# fields' figures so a partial re-plot keeps the other panels; otherwise clear everything.
+REPLOT_FIELDS=""
+read -r -a _pargs <<< "${PLOT_HD_ARGS}"
+_grab=0
+for _tok in "${_pargs[@]}"; do
+  if [[ "${_tok}" == "--fields" ]]; then _grab=1; continue; fi
+  if [[ ${_grab} -eq 1 ]]; then
+    if [[ "${_tok}" == --* ]]; then _grab=0; else REPLOT_FIELDS+=" ${_tok}"; fi
+  fi
+done
+if [[ -n "${REPLOT_FIELDS}" ]]; then
+  for _fld in ${REPLOT_FIELDS}; do
+    find "${PLOT_DIR}" -maxdepth 1 -type f \( -name "${_fld}_*.png" -o -name "${_fld}_*.gif" -o -name "${_fld}_*.mp4" \) -delete
+  done
+else
+  find "${PLOT_DIR}" -maxdepth 1 -type f \( -name '*.png' -o -name '*.gif' -o -name '*.csv' -o -name '*.mp4' \) -delete
+fi
 
 echo "Plot-only job started on $(date)"
 echo "Sim output:  ${OUTPUT_PATH}"

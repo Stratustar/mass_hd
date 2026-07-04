@@ -16,6 +16,10 @@ VISUALIZATION_CMAP = plt.get_cmap("bwr")  # go (chi=0)=blue, grow (chi=1)=red, b
 VISUALIZATION_BACKGROUND = "#7e7e7e"
 GIF_DPI = 300  # default plotting spec: video frames rendered at 300 dpi
 MP4_FPS = 10   # default plotting spec: animations written as mp4 (h264) at this fps
+# Cyclic colormap for the nematic director ANGLE (theta is pi-periodic, so a cyclic
+# map is required so theta=0 and theta=pi share a colour). hsv is the common
+# active-nematics convention; twilight is a perceptual alternative.
+DIRECTOR_ANGLE_CMAP = "hsv"
 
 BASE_DIR = os.path.abspath(
     os.path.join(
@@ -361,6 +365,23 @@ def draw_defects(ax, frame, size_scale=1.0):
                    s=42 * size_scale, linewidths=0.5, zorder=6)
 
 
+def director_angle_deg_masked(frame):
+    """Nematic director angle in degrees [0, 180), masked to the colony (phi>0.5).
+
+    theta = 1/2 atan2(QQyx, QQxx) is pi-periodic; returned in degrees on [0,180) so a
+    cyclic colormap (DIRECTOR_ANGLE_CMAP) with vmin=0/vmax=180 colours orientation
+    continuously (0 deg == 180 deg). Outside the colony the director is vacuum noise,
+    so those nodes are masked (shown as the neutral background), matching the field
+    convention of colouring orientation only where there is material.
+    """
+    qxx = field_as_grid(frame, "QQxx")
+    qyx = field_as_grid(frame, "QQyx")
+    deg = np.degrees(0.5 * np.arctan2(qyx, qxx) % np.pi)  # [0, 180)
+    if hasattr(frame, "phi"):
+        deg = np.ma.masked_where(field_as_grid(frame, "phi") <= 0.5, deg)
+    return deg
+
+
 def draw_field(ax, frame, field_name, cmap, clim=None):
     if field_name == "visualization":
         rgba = visualization_rgba(frame)
@@ -381,19 +402,16 @@ def draw_field(ax, frame, field_name, cmap, clim=None):
 
     if field_name in ("director", "phi_director"):
         xx, yy, uu, vv, strength = director_components(frame)
-        background = strength
-        cmap = "viridis"
-        colorbar_label = "nematic order"
-        if field_name == "phi_director":
-            background = field_as_grid(frame, "phi")
-            cmap = "summer"
-            colorbar_label = "phi"
-
+        # Background: director ORIENTATION via a cyclic colormap (masked to the colony),
+        # overlaid with the black director glyphs and the +/-1/2 defect markers.
+        ax.set_facecolor(VISUALIZATION_BACKGROUND)
         im = ax.imshow(
-            background.T,
+            director_angle_deg_masked(frame).T,
             origin="lower",
             interpolation="nearest",
-            cmap=cmap,
+            cmap=DIRECTOR_ANGLE_CMAP,
+            vmin=0.0,
+            vmax=180.0,
         )
         ax.quiver(
             xx,
@@ -415,16 +433,21 @@ def draw_field(ax, frame, field_name, cmap, clim=None):
         ax.set_aspect("equal")
         ax.set_xlabel("x")
         ax.set_ylabel("y")
-        im.colorbar_label = colorbar_label
+        im.colorbar_label = "director angle (deg)"
         return im
 
     if field_name == "phi_velocity":
         xx, yy, uu, vv, speed = velocity_components(frame)
+        # Background: director orientation (same cyclic map as the director panel),
+        # overlaid with the red velocity arrows and the +/-1/2 defect markers.
+        ax.set_facecolor(VISUALIZATION_BACKGROUND)
         im = ax.imshow(
-            field_as_grid(frame, "phi").T,
+            director_angle_deg_masked(frame).T,
             origin="lower",
             interpolation="nearest",
-            cmap="summer",
+            cmap=DIRECTOR_ANGLE_CMAP,
+            vmin=0.0,
+            vmax=180.0,
         )
         ax.quiver(
             xx,
@@ -437,10 +460,11 @@ def draw_field(ax, frame, field_name, cmap, clim=None):
             color="red",
         )
         draw_boundary_contours(ax, frame, 0.5)
+        draw_defects(ax, frame)
         ax.set_aspect("equal")
         ax.set_xlabel("x")
         ax.set_ylabel("y")
-        im.colorbar_label = "phi"
+        im.colorbar_label = "director angle (deg)"
         im.max_speed = np.max(speed)
         return im
 
