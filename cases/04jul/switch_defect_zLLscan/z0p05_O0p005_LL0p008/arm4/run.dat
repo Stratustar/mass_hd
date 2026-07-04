@@ -1,5 +1,5 @@
 # cases/04jul/switch_defect_zLLscan z0p05_O0p005_LL0p008/arm4
-# switching OFF (Ochi=0), growth OFF (alpha=0)
+# switching OFF (Ochi=0), growth OFF (alpha=1e-10 ~ no growth; disables conserve_phi hard check)
 # 70000-step continuation from z0p05_O0p005_LL0p008/arm1 frame30000 (to t=100000).
 model    = dry-go-or-grow
 config   = circle
@@ -52,7 +52,7 @@ death-time   = 1
 death-radius = 0
 division-rate   = 1e-1
 division-time   = 2
-alpha           = 0
+alpha           = 1e-10
 phi-critical    = 1.0
 division-phi-critical-factor = 0
 division-radius = 3
