@@ -299,7 +299,7 @@ function buildFilters(){
 
   const krow = document.createElement("div"); krow.className = "axis";
   const knm = document.createElement("span"); knm.className = "name"; knm.textContent = "show"; krow.appendChild(knm);
-  [["static", "static frame"], ["gif", "gif"]].forEach(pair => {
+  [["static", "static frame"], ["video", "video"]].forEach(pair => {
     const k = pair[0], label = pair[1];
     const b = document.createElement("button"); b.className = "v on"; b.textContent = label;
     b.onclick = () => { b.classList.toggle("on"); if(kindOff.has(k)) kindOff.delete(k); else kindOff.add(k); render(); };
@@ -344,7 +344,7 @@ function tile(v, f){
 }
 
 function card(v){
-  const figs = v.figures.filter(f => !figOff.has(f.group) && !kindOff.has(f.kind === "gif" ? "gif" : "static"));
+  const figs = v.figures.filter(f => !figOff.has(f.group) && !kindOff.has((f.kind === "video" || f.kind === "gif") ? "video" : "static"));
   const pstr = DATA.order.map(k => '<span class="k">'+k+'</span> '+(v.params[k]??'-')).join(" &nbsp; ");
   const tiles = figs.map(f => tile(v, f)).join("");
   return '<div class="card"><h2>'+pstr+'</h2><div class="grid">'+
