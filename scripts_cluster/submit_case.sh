@@ -27,6 +27,11 @@ RESULTS_ROOT="${REPO_ROOT}/results"
 THREADS="${SLURM_CPUS_PER_TASK}"
 SKIP_PLOTS="${SKIP_PLOTS:-0}"
 PLOT_HD_ARGS="${PLOT_HD_ARGS:-}"
+# Optional read-only bind so the container can read an init-frame snapshot that
+# lives outside the input/output dirs (e.g. a frame from another case on scratch).
+# /scratch is NOT auto-bound inside apptainer here, so set this to the tree that
+# holds the init-frame path referenced in the run.dat. Empty = no extra bind.
+INIT_FRAME_ROOT="${INIT_FRAME_ROOT:-}"
 # ----------------------------------------------------------------------
 
 if [[ "${SIF_NAME}" == *.sif ]]; then
@@ -93,12 +98,16 @@ echo "Threads:     ${THREADS}"
 echo "Skip plots:  ${SKIP_PLOTS}"
 echo "Plot args:   ${PLOT_HD_ARGS:-<none>}"
 
-apptainer exec \
-  --bind "${INPUT_DIR}":/input \
-  --bind "${OUTPUT_PATH}":/output \
-  "${IMAGE_PATH}" \
-  "${MASS_BINARY}" \
-  /input/${INPUT_BASENAME} -o /output -t "${THREADS}"
+APPTAINER_CMD=(apptainer exec
+  --bind "${INPUT_DIR}":/input
+  --bind "${OUTPUT_PATH}":/output)
+if [[ -n "${INIT_FRAME_ROOT}" ]]; then
+  APPTAINER_CMD+=(--bind "${INIT_FRAME_ROOT}:${INIT_FRAME_ROOT}:ro")
+fi
+APPTAINER_CMD+=("${IMAGE_PATH}" "${MASS_BINARY}"
+  "/input/${INPUT_BASENAME}" -o /output -t "${THREADS}")
+
+"${APPTAINER_CMD[@]}"
 
 SIM_STATUS=$?
 if [[ ${SIM_STATUS} -ne 0 ]]; then
