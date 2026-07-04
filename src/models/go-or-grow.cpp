@@ -1,6 +1,7 @@
 #include "header.hpp"
 #include "models/go-or-grow.hpp"
 #include "error_msg.hpp"
+#include "serialization.hpp"
 #include "lb.hpp"
 #include "random.hpp"
 
@@ -34,10 +35,64 @@ void GoOrGrow::Initialize()
 void GoOrGrow::Configure()
 {
   LyotropicWithDivision::Configure();
-  RelaxFreeEnergy();
+
+  if(init_frame.empty())
+  {
+    // Standard procedural/random initialization.
+    RelaxFreeEnergy();
+    ResetHydrodynamics();
+    ConfigurePhiNoise();
+    ConfigurePhenotype();
+  }
+  else
+  {
+    // Seed the dynamical fields from a saved snapshot instead.
+    ConfigureFromFrame();
+  }
+}
+
+void GoOrGrow::ConfigureFromFrame()
+{
+  // Read the snapshot once, then overwrite the fields set by the base Configure.
+  const string content = read_file_to_string(init_frame);
+
+  auto load_into = [&](const string& nm, ScalarField& fld)
+  {
+    const auto vals = read_frame_field(content, nm);
+    if(vals.size() != DomainSize)
+      throw error_msg("init-frame field '", nm, "' has ", vals.size(),
+                      " values but this run has DomainSize=", DomainSize,
+                      " (grid-size mismatch between snapshot and run).");
+    auto& data = fld.get_data();
+    for(unsigned k=0; k<DomainSize; ++k)
+      data[k] = vals[k];
+  };
+
+  // Director and interface come from the snapshot in every case.
+  load_into("QQxx", QQxx);
+  load_into("QQyx", QQyx);
+  load_into("phi",  phi);
+
+  // Phenotype: carry over the snapshot's chi (via m), or reset it uniform (=chi0)
+  // for the homogeneous control.
+  if(init_frame_uniform_chi)
+    for(unsigned k=0; k<DomainSize; ++k)
+      m[k] = phi[k]*chi0;
+  else
+    load_into("m", m);
+
+  BoundaryConditionsFields();
+  ProjectM();
+  UpdatePhenotypeQuantities();
+
+  // Start hydrodynamics from rest, as after dry relaxation on the normal path.
   ResetHydrodynamics();
-  ConfigurePhiNoise();
-  ConfigurePhenotype();
+
+  // Retarget the mass reference used by conserve_phi / diagnostics.
+  double total = 0.;
+  for(unsigned k=0; k<DomainSize; ++k)
+    total += phi[k];
+  totalphi = countphi = ptot = total;
 }
 
 void GoOrGrow::RelaxFreeEnergy()
@@ -606,6 +661,10 @@ option_list GoOrGrow::GetOptions()
      "initial phenotype variance")
     ("chi-length", opt::value<double>(&chi_length),
      "initial phenotype correlation length")
+    ("init-frame", opt::value<string>(&init_frame),
+     "seed Q, phi (and chi) from this frame*.json snapshot instead of random init")
+    ("init-frame-uniform-chi", opt::value<int>(&init_frame_uniform_chi),
+     "with init-frame, set chi uniform (=chi0) instead of loading it from the snapshot")
     ("phi-noise", opt::value<double>(&phi_noise),
      "std of multiplicative correlated-noise phi modulation")
     ("phi-length", opt::value<double>(&phi_length),

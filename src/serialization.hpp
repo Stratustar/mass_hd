@@ -286,6 +286,26 @@ struct iarchive
 };
 
 // =============================================================================
+// Minimal frame reader (input side)
+//
+// The full templated iarchive above is unimplemented; for initializing a run
+// from a snapshot we only need a handful of named double-array fields, so we
+// provide targeted readers instead of a general deserializer.
+
+/** Read a whole file into a string. Throws error_msg on failure. */
+std::string read_file_to_string(const std::string& path);
+
+/** Extract the numeric value array of a named double-array field from the text
+  * of a frame*.json file produced by oarchive. Each field is stored as
+  *   "name" : { "type" : "array(double)", "value" : [ v0, v1, ... ] }
+  * so we locate the key, then its "value" array, and parse the doubles. Throws
+  * error_msg if the field is missing or malformed. Note the writer emits
+  * doubles at the default ~6 significant digits, so the values are not
+  * bit-exact copies of the original run's state. */
+std::vector<double> read_frame_field(const std::string& file_content,
+                                     const std::string& name);
+
+// =============================================================================
 // Template specializations for traits
 
 namespace detail

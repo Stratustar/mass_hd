@@ -26,6 +26,12 @@ protected:
   double phi_noise = 0., phi_length = 0.;
   /** Phenotype initialization mode */
   std::string chi_config = "noise";
+  /** Optional snapshot to seed Q, phi (and chi) from, replacing the procedural
+   *  random initialization. Empty string = normal initialization. */
+  std::string init_frame = "";
+  /** When seeding from init_frame, set chi uniform (=chi0) instead of loading it
+   *  from the snapshot (used by the homogeneous control). */
+  int init_frame_uniform_chi = 0;
   /** Dry free-energy relaxation before official dynamics */
   unsigned relax_steps = 0;
   double relax_dt = 1.;
@@ -41,6 +47,8 @@ protected:
   virtual void BoundaryConditionsFields();
   /** Setup the spatially correlated phenotype field */
   void ConfigurePhenotype();
+  /** Seed Q, phi and (unless init_frame_uniform_chi) chi from a saved frame */
+  void ConfigureFromFrame();
   /** Overlay a multiplicative correlated-noise modulation on the initial phi */
   void ConfigurePhiNoise();
   /** Update derived phenotype fraction */
@@ -99,7 +107,9 @@ public:
        & auto_name(relax_phi)
        & auto_name(relax_Q)
        & auto_name(phi_noise)
-       & auto_name(phi_length);
+       & auto_name(phi_length)
+       & auto_name(init_frame)
+       & auto_name(init_frame_uniform_chi);
   }
 
   /** Serialization of the current frame (time snapshot) */
