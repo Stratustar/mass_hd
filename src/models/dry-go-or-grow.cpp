@@ -117,15 +117,10 @@ void DryGoOrGrow::UpdateDryFieldsAtNode(unsigned k, bool first)
   + .5*(phi[d[3]] + p)*(chi_py - chi_eff)
   - .5*(p + phi[d[4]])*(chi_eff - chi_my);
   const double press = -sigma_bulk[k];
-  // Dead-band phenotype switching: convert go<->grow only when the pressure lies
-  // more than switch_cost from pswitch. The rate grows with that excess (further
-  // from pswitch -> faster) and with the available reservoir (mass-action: grow->go
-  // slows as chi->0, go->grow slows as chi->1). Inside the dead band Sswitch=0 so
-  // chi is carried by advection alone -- hysteresis without a bistable attractor.
-  const double excess_low  = press < pswitch - switch_cost ? (pswitch - switch_cost) - press : 0.;
-  const double excess_high = press > pswitch + switch_cost ? press - (pswitch + switch_cost) : 0.;
-  const double Sswitch = p*( switch_gogrow*(1-chi_eff)*excess_low
-                           - switch_growgo*chi_eff*excess_high );
+  const double dVdChi =
+    2*Achi*chi_eff*(1-chi_eff)*(1-2*chi_eff)
+  + Ochi*(press-pswitch);
+  const double Sswitch = -p*dVdChi;
   const double mGrowth = growTogether ? chi_eff*R : R;
   const double Dm = mTransport + Dchi*phenotypeDiffusion + Sswitch + mGrowth;
 
