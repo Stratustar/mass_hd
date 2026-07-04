@@ -14,4 +14,8 @@ if [[ -z "${IMAGE_BASE}" ]]; then
 fi
 
 echo "==> Building Docker image: ${IMAGE_NAME}"
-docker build --platform "${PLATFORM}" -t "${IMAGE_NAME}" "${PROJECT_ROOT}"
+# --provenance=false --sbom=false: emit a plain single-platform image, not a
+# buildx manifest list with attestations (which `docker image inspect` and
+# push_image.sh cannot resolve, and which apptainer pull mis-handles).
+docker build --platform "${PLATFORM}" --provenance=false --sbom=false \
+  -t "${IMAGE_NAME}" "${PROJECT_ROOT}"
