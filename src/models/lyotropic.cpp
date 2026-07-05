@@ -138,6 +138,13 @@ void Lyotropic::ConfigureAtNode(unsigned k)
       if(y<level) nematicOrder = 1;
     }
   }
+  else if(init_config=="full")
+  {
+    // Uniform full-domain fill: every node is material (phi=conc), for periodic
+    // bulk runs with no colony/vacuum. The director is still set below via
+    // theta = angle + noise*..., so angle=0, noise=1 gives a random director.
+    nematicOrder = 1;
+  }
   else
     throw error_msg("error: initial configuration '", init_config, "' unknown.");
 

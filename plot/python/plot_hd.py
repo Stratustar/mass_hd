@@ -104,6 +104,12 @@ def parse_args():
         action="store_true",
         help="Skip the N0/N1 time-series plot.",
     )
+    parser.add_argument(
+        "--defect-counts",
+        action="store_true",
+        help="Also emit a defect-count-vs-t plot + CSV (total, +1/2, -1/2). "
+             "Independent of --skip-counts (which only controls N0/N1).",
+    )
     return parser.parse_args()
 
 
@@ -652,6 +658,54 @@ def save_counts_timeseries(ar, outdir, dpi):
     return outfile
 
 
+def save_defect_count_timeseries(ar, outdir, dpi):
+    """Emit defect_count_vs_t.png + .csv: number of +1/2, -1/2 and total
+    disclinations per frame, using the SAME winding detector as the panel
+    markers (defect_markers on the full-res director inside phi>0.5)."""
+    try:
+        from plot.defects import defect_markers
+    except Exception as exc:  # pragma: no cover
+        print(f"defect count unavailable ({exc}); skipping.", flush=True)
+        return None
+
+    n_available = available_frame_count(ar)
+    frame_indices = list(range(n_available))
+    n_plus, n_minus, n_total = [], [], []
+
+    for frame_index in frame_indices:
+        print(f"Counting defects for frame {frame_index}", flush=True)
+        frame = ar.read_frame(frame_index)
+        qxx = field_as_grid(frame, "QQxx")
+        qyx = field_as_grid(frame, "QQyx")
+        mask = field_as_grid(frame, "phi") > 0.5 if hasattr(frame, "phi") else None
+        plus, minus = defect_markers(qxx, qyx, mask=mask)
+        n_plus.append(len(plus))
+        n_minus.append(len(minus))
+        n_total.append(len(plus) + len(minus))
+
+    fig, ax = plt.subplots(figsize=(6, 4))
+    ax.plot(frame_indices, n_total, color="black", label="total")
+    ax.plot(frame_indices, n_plus, color="tab:cyan", label="+1/2")
+    ax.plot(frame_indices, n_minus, color="tab:pink", label="-1/2")
+    ax.set_xlabel("frame")
+    ax.set_ylabel("defect count")
+    ax.set_title("defect count vs t")
+    ax.legend()
+    fig.tight_layout()
+
+    outfile = os.path.join(outdir, "defect_count_vs_t.png")
+    fig.savefig(outfile, dpi=dpi)
+    plt.close(fig)
+
+    csvfile = os.path.join(outdir, "defect_count_vs_t.csv")
+    with open(csvfile, "w") as fh:
+        fh.write("frame,n_plus,n_minus,n_total\n")
+        for i, fi in enumerate(frame_indices):
+            fh.write(f"{fi},{n_plus[i]},{n_minus[i]},{n_total[i]}\n")
+
+    return outfile
+
+
 def defect_variants(style):
     """(show_defects, name_suffix) variants to render for a field.
 
@@ -755,6 +809,12 @@ def main():
         print("Preparing N0/N1 time-series plot...", flush=True)
         outfile = save_counts_timeseries(ar, args.outdir, args.dpi)
         print(f"Saved N0/N1 time-series plot: {outfile}", flush=True)
+
+    if args.defect_counts:
+        print("Preparing defect-count time-series plot...", flush=True)
+        outfile = save_defect_count_timeseries(ar, args.outdir, args.dpi)
+        if outfile is not None:
+            print(f"Saved defect-count time-series plot: {outfile}", flush=True)
 
     print("All done.", flush=True)
 
