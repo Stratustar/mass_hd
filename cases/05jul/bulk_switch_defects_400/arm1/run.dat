@@ -1,18 +1,16 @@
-# cases/05jul/bulk_switch_defects_400 arm1
+# cases/05jul/bulk_switch_defects_400 arm1 (v2 pswitch)
 # MAIN run: full p-driven switching + advection, NO proliferation (alpha=0),
 # NO chi diffusion (Dchi=0). Full-space periodic bulk active nematic.
 # phi uniform=1.1 (config=full, conc=1.1, phi-noise=0), director random
 # (angle=0, noise=1), chi random (chi0=0.5, chi-noise=0.1 => field std ~0.32).
 # zeta=0.6 (strong activity), Ochi=0.03 (switching strength), Achi=0 (=> pure
-# pressure tilt Sswitch=-phi*Ochi*(P-pswitch)). pswitch=0.10556 = arm0_passive
-# final-frame domain-mean P (= -sigma_bulk). Physics else matches July04 dw_ochi.
+# pressure tilt Sswitch=-phi*Ochi*(P-pswitch)).
+# pswitch=0.13136 = MEDIAN P of arm0 (active, switching-off, chi~chi0 half-active
+# state), replacing the passive calibration (0.10556) that ran arm1 to all-go.
+# alpha=0 (true): the relative-tolerance conserve_phi check (1e-4) permits it, so
+# phi mass is pinned at 1.1 and mean P stays stationary near the calibration state.
 # arm2 (advection-only) and arm3 (homogeneous chi) will branch from this run's
 # frame at step 20000.
-# NOTE alpha=1e-10 (not 0): the conserve_phi hard check (|ptot-pcheck|>1 absolute,
-# lyotropic.cpp:546) tripped at alpha=0 on the ~1e-6 relative active-flux drift of
-# the 176000-mass domain. alpha!=0 && division_rate!=0 auto-disables conserve_phi
-# (correction + check). Growth ~1e-10 is negligible (~2e-6 over 20000 steps) so
-# this stays effectively alpha=0; div-form CH conserves phi to roundoff anyway.
 model    = dry-go-or-grow
 config   = full
 nsteps   = 20000
@@ -56,7 +54,7 @@ phi-length = 5
 Dchi       = 0
 Achi       = 0
 Ochi       = 0.03
-pswitch    = 0.10556
+pswitch    = 0.13136
 growTogether = 1
 beta         = 0
 death-rate   = 0
@@ -64,7 +62,7 @@ death-time   = 1
 death-radius = 0
 division-rate   = 1e-1
 division-time   = 2
-alpha           = 1e-10
+alpha           = 0
 phi-critical    = 1.0
 division-phi-critical-factor = 0
 division-radius = 3
