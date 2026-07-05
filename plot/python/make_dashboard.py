@@ -257,6 +257,9 @@ TEMPLATE = r"""<!doctype html>
   #lb img, #lb video { max-width:96vw; max-height:88vh; object-fit:contain; }
   #lb .cap { position:fixed; bottom:10px; left:0; right:0; text-align:center; color:#eee; font-size:13px; }
   #lb .speed { position:fixed; bottom:30px; left:0; right:0; display:none; gap:8px; align-items:center; justify-content:center; color:#eee; font-size:13px; }
+  #lb .defbtn { position:fixed; top:14px; right:18px; z-index:21; border:1px solid var(--accent); background:var(--accent); color:#fff; border-radius:14px; padding:5px 14px; font-size:13px; cursor:pointer; }
+  #lb .defbtn.off { background:rgba(255,255,255,.12); color:#eee; border-color:rgba(255,255,255,.4); }
+  #lb .defbtn.hidden { display:none; }
   #lb .speed input { width:min(55vw,300px); cursor:pointer; }
   #lb .speed .sval { min-width:46px; text-align:left; font-variant-numeric:tabular-nums; }
 </style>
@@ -272,14 +275,13 @@ TEMPLATE = r"""<!doctype html>
   <div id="figfilters"></div>
 </header>
 <main><div id="results"></div></main>
-<div id="lb"><img alt=""><video loop muted playsinline controls></video><div class="speed"><span>speed</span><input type="range" min="0.1" max="4" step="0.05" value="1"><span class="sval">1.00&#215;</span></div><div class="cap"></div></div>
+<div id="lb"><button class="defbtn on hidden">defects: on</button><img alt=""><video loop muted playsinline controls></video><div class="speed"><span>speed</span><input type="range" min="0.1" max="4" step="0.05" value="1"><span class="sval">1.00&#215;</span></div><div class="cap"></div></div>
 <script>
 const DATA = /*DATA*/;
 const sel = {};                 // axis -> Set of selected value strings
 const axisBtns = {};            // axis -> [{val, btn}] for availability greying
 const figOff = new Set();       // field groups toggled OFF (empty = all shown)
 const kindOff = new Set();      // kinds toggled OFF: "static" and/or "gif"
-let defectsOff = false;         // true = show the nodef variant for defect-toggle fields
 
 document.getElementById("title").textContent = DATA.title;
 
@@ -323,15 +325,6 @@ function buildFilters(){
     b.onclick = () => { b.classList.toggle("on"); if(kindOff.has(k)) kindOff.delete(k); else kindOff.add(k); render(); };
     krow.appendChild(b);
   });
-  // defects on/off: swaps defect-toggle fields (director/pressure/visualization)
-  // between the with-defect and the nodef render. Fields without a nodef variant
-  // (e.g. velocity) are unaffected.
-  const anyNodef = DATA.variants.some(v => v.figures.some(f => f.file_nodef));
-  if(anyNodef){
-    const db = document.createElement("button"); db.className = "v on"; db.textContent = "defects";
-    db.onclick = () => { db.classList.toggle("on"); defectsOff = !db.classList.contains("on"); render(); };
-    krow.appendChild(db);
-  }
   ff.appendChild(krow);
 }
 
@@ -352,25 +345,25 @@ function updateAvail(){
 
 function tile(v, f){
   const cap = v.name + " — " + f.label;
-  // When defects are toggled off, use the nodef render for fields that have one.
-  const nd = defectsOff && f.file_nodef;
-  const ffile = nd ? f.file_nodef : f.file;
-  const fposter = nd ? (f.poster_nodef || f.poster) : f.poster;
+  // Grid thumbnails always show the with-defect render; the nodef url is carried
+  // as a data attribute so the enlarged view can toggle defects seamlessly.
+  const ndv = f.file_nodef ? ' data-video-nodef="'+enc(v.name+"/"+f.file_nodef)+'"' : '';
+  const ndi = f.file_nodef ? ' data-src-nodef="'+enc(v.name+"/"+f.file_nodef)+'"' : '';
   if(f.kind === "video"){
-    const url = enc(v.name+"/"+ffile);
-    const inner = fposter
-      ? '<img loading="lazy" src="'+enc(v.name+"/"+fposter)+'" data-video="'+url+'" data-cap="'+cap+'" alt="'+f.label+'">'
-      : '<div class="noposter" data-video="'+url+'" data-cap="'+cap+'">&#9654; play</div>';
+    const url = enc(v.name+"/"+f.file);
+    const inner = f.poster
+      ? '<img loading="lazy" src="'+enc(v.name+"/"+f.poster)+'" data-video="'+url+'"'+ndv+' data-cap="'+cap+'" alt="'+f.label+'">'
+      : '<div class="noposter" data-video="'+url+'"'+ndv+' data-cap="'+cap+'">&#9654; play</div>';
     return '<figure><span class="badge">&#9654;</span>'+inner+'<figcaption>'+f.label+'</figcaption></figure>';
   }
   if(f.kind === "gif"){
-    const gif = enc(v.name+"/"+ffile);
-    const inner = fposter
-      ? '<img loading="lazy" src="'+enc(v.name+"/"+fposter)+'" data-gif="'+gif+'" data-cap="'+cap+'" alt="'+f.label+'">'
+    const gif = enc(v.name+"/"+f.file);
+    const inner = f.poster
+      ? '<img loading="lazy" src="'+enc(v.name+"/"+f.poster)+'" data-gif="'+gif+'" data-cap="'+cap+'" alt="'+f.label+'">'
       : '<div class="noposter" data-gif="'+gif+'" data-cap="'+cap+'">&#9654; load gif</div>';
     return '<figure><span class="badge">&#9654; gif</span>'+inner+'<figcaption>'+f.label+'</figcaption></figure>';
   }
-  return '<figure><img loading="lazy" src="'+enc(v.name+"/"+ffile)+'" data-cap="'+cap+'" alt="'+f.label+'">'+
+  return '<figure><img loading="lazy" src="'+enc(v.name+"/"+f.file)+'"'+ndi+' data-cap="'+cap+'" alt="'+f.label+'">'+
          '<figcaption>'+f.label+'</figcaption></figure>';
 }
 
@@ -392,7 +385,7 @@ function render(){
 
 document.getElementById("reset").onclick = () => {
   Object.values(sel).forEach(s => s.clear());
-  figOff.clear(); kindOff.clear(); defectsOff = false;
+  figOff.clear(); kindOff.clear();
   document.querySelectorAll("#filters button.v").forEach(b => b.classList.remove("on"));
   document.querySelectorAll("#figfilters button.v").forEach(b => b.classList.add("on"));
   render();
@@ -404,6 +397,41 @@ const lb = document.getElementById("lb"), lbimg = lb.querySelector("img"),
       sval = speedbar.querySelector(".sval");
 lbvideo.loop = true; lbvideo.muted = true; lbvideo.playsInline = true;
 let playSpeed = 1;
+
+// In-lightbox defects toggle: swaps the enlarged media between the with-defect
+// and the nodef render. For video it keeps the current frame and play state.
+const defbtn = lb.querySelector(".defbtn");
+let lbDefUrl = null, lbNodefUrl = null, lbIsVideo = false, lbDefectsOn = true;
+function setupDefBtn(){
+  lbDefectsOn = true;
+  if(lbNodefUrl){
+    defbtn.classList.remove("hidden", "off"); defbtn.classList.add("on");
+    defbtn.textContent = "defects: on";
+  } else {
+    defbtn.classList.add("hidden");
+  }
+}
+function toggleDefects(){
+  if(!lbNodefUrl) return;
+  lbDefectsOn = !lbDefectsOn;
+  defbtn.classList.toggle("on", lbDefectsOn);
+  defbtn.classList.toggle("off", !lbDefectsOn);
+  defbtn.textContent = lbDefectsOn ? "defects: on" : "defects: off";
+  const url = lbDefectsOn ? lbDefUrl : lbNodefUrl;
+  if(lbIsVideo){
+    const cur = lbvideo.currentTime, playing = !lbvideo.paused;   // resume at the same frame
+    lbvideo.src = url; lbvideo.playbackRate = playSpeed;
+    const onmeta = () => {
+      try { lbvideo.currentTime = cur; } catch(e){}
+      if(playing) lbvideo.play().catch(() => {});
+      lbvideo.removeEventListener("loadedmetadata", onmeta);
+    };
+    lbvideo.addEventListener("loadedmetadata", onmeta);
+  } else {
+    lbimg.src = url;
+  }
+}
+defbtn.onclick = e => { e.stopPropagation(); toggleDefects(); };
 
 function stopVideo(){ try { lbvideo.pause(); } catch(e){} lbvideo.removeAttribute("src"); try { lbvideo.load(); } catch(e){} }
 function showStatic(src, cap){        // static PNG
@@ -424,14 +452,24 @@ function closeLb(){
   lb.style.display = "none";
   lbimg.src = ""; lbimg.style.display = "";
   lbvideo.style.display = "none"; speedbar.style.display = "none";
+  defbtn.classList.add("hidden");
 }
 
 document.getElementById("results").addEventListener("click", e => {
   const t = e.target;
   const cap = t.dataset.cap || "";
-  if(t.dataset.video){ lb.style.display = "flex"; showVideo(t.dataset.video, cap); }
-  else if(t.dataset.gif){ lb.style.display = "flex"; showGifImg(t.dataset.gif, cap); }
-  else if(t.tagName === "IMG"){ lb.style.display = "flex"; showStatic(t.getAttribute("src"), cap); }
+  if(t.dataset.video){
+    lbDefUrl = t.dataset.video; lbNodefUrl = t.dataset.videoNodef || null; lbIsVideo = true;
+    setupDefBtn(); lb.style.display = "flex"; showVideo(t.dataset.video, cap);
+  }
+  else if(t.dataset.gif){
+    lbDefUrl = null; lbNodefUrl = null; lbIsVideo = false;
+    setupDefBtn(); lb.style.display = "flex"; showGifImg(t.dataset.gif, cap);
+  }
+  else if(t.tagName === "IMG"){
+    lbDefUrl = t.getAttribute("src"); lbNodefUrl = t.dataset.srcNodef || null; lbIsVideo = false;
+    setupDefBtn(); lb.style.display = "flex"; showStatic(t.getAttribute("src"), cap);
+  }
 });
 speedInput.oninput = () => {
   playSpeed = parseFloat(speedInput.value) || 1;
