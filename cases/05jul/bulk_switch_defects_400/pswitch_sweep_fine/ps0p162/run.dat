@@ -1,13 +1,14 @@
-# cases/05jul/bulk_switch_defects_400/pswitch_sweep_fine ps0p162
-# FINE pswitch sweep across the bistable transition (coarse sweep: <=0.16 all-go,
-# 0.18 all-grow). Resolves (0.16,0.18) at 0.004 to locate the transition and check
-# for any coexistence window. Same as arm1 (zeta=0.6, Ochi=0.03, Achi=0 pure-tilt,
-# alpha=0, Dchi=0, chi~0.5). 20000 steps (near-critical slowing -> longer settle).
+# cases/05jul/bulk_switch_defects_400/pswitch_sweep_fine ps0p162 (EXTENDED to 60k)
+# The critical/separatrix case. 20k run showed chi.mean meandering 0.3-0.55, P.median
+# already at passive 0.107, chi.mean rising at the end -> looked like a slow transient
+# to all-grow, not a stable coexistence. Extended to 60000 steps (same seed => the
+# first 20k reproduce deterministically, then continue) to confirm the final fate.
+# ninfo=600 (100 frames over 60k) to keep scratch manageable.
 model    = dry-go-or-grow
 config   = full
-nsteps   = 20000
+nsteps   = 60000
 nstart   = 0000
-ninfo    = 200
+ninfo    = 600
 LX       = 400
 LY       = 400
 bc       = 0
