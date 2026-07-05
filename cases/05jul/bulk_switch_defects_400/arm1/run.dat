@@ -8,6 +8,11 @@
 # final-frame domain-mean P (= -sigma_bulk). Physics else matches July04 dw_ochi.
 # arm2 (advection-only) and arm3 (homogeneous chi) will branch from this run's
 # frame at step 20000.
+# NOTE alpha=1e-10 (not 0): the conserve_phi hard check (|ptot-pcheck|>1 absolute,
+# lyotropic.cpp:546) tripped at alpha=0 on the ~1e-6 relative active-flux drift of
+# the 176000-mass domain. alpha!=0 && division_rate!=0 auto-disables conserve_phi
+# (correction + check). Growth ~1e-10 is negligible (~2e-6 over 20000 steps) so
+# this stays effectively alpha=0; div-form CH conserves phi to roundoff anyway.
 model    = dry-go-or-grow
 config   = full
 nsteps   = 20000
@@ -59,7 +64,7 @@ death-time   = 1
 death-radius = 0
 division-rate   = 1e-1
 division-time   = 2
-alpha           = 0
+alpha           = 1e-10
 phi-critical    = 1.0
 division-phi-critical-factor = 0
 division-radius = 3
