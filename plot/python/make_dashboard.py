@@ -145,7 +145,23 @@ def collect_figures(vdir):
         figs.append({"kind": "png", "group": field, "label": "%s (frame %d)" % (field, n), "file": f})
     for f in sorted(singles):
         figs.append({"kind": "png", "group": f[:-4], "label": f[:-4], "file": f})
-    return [f for f in figs if f["group"] not in EXCLUDE_GROUPS]
+    figs = [f for f in figs if f["group"] not in EXCLUDE_GROUPS]
+    # Fold each "<field>_nodef" tile into its base "<field>" tile (matched by kind)
+    # as file_nodef / poster_nodef, so the dashboard's defects toggle can swap to
+    # the no-defect render; drop the standalone nodef tiles.
+    by_gk = {(f["group"], f["kind"]): f for f in figs}
+    out = []
+    for f in figs:
+        g = f["group"]
+        if g.endswith("_nodef"):
+            base = by_gk.get((g[: -len("_nodef")], f["kind"]))
+            if base is not None:
+                base["file_nodef"] = f["file"]
+                if f.get("poster"):
+                    base["poster_nodef"] = f["poster"]
+                continue
+        out.append(f)
+    return out
 
 
 def sort_key(s):
@@ -176,8 +192,9 @@ def main():
         variants.append({"name": name, "params": parse_variant(name), "figures": figs})
         for fig in figs:
             referenced.append("%s/%s" % (name, fig["file"]))
-            if fig.get("poster"):
-                referenced.append("%s/%s" % (name, fig["poster"]))
+            for key in ("poster", "file_nodef", "poster_nodef"):
+                if fig.get(key):
+                    referenced.append("%s/%s" % (name, fig[key]))
 
     axes = {}
     for v in variants:
@@ -262,6 +279,7 @@ const sel = {};                 // axis -> Set of selected value strings
 const axisBtns = {};            // axis -> [{val, btn}] for availability greying
 const figOff = new Set();       // field groups toggled OFF (empty = all shown)
 const kindOff = new Set();      // kinds toggled OFF: "static" and/or "gif"
+let defectsOff = false;         // true = show the nodef variant for defect-toggle fields
 
 document.getElementById("title").textContent = DATA.title;
 
@@ -305,6 +323,15 @@ function buildFilters(){
     b.onclick = () => { b.classList.toggle("on"); if(kindOff.has(k)) kindOff.delete(k); else kindOff.add(k); render(); };
     krow.appendChild(b);
   });
+  // defects on/off: swaps defect-toggle fields (director/pressure/visualization)
+  // between the with-defect and the nodef render. Fields without a nodef variant
+  // (e.g. velocity) are unaffected.
+  const anyNodef = DATA.variants.some(v => v.figures.some(f => f.file_nodef));
+  if(anyNodef){
+    const db = document.createElement("button"); db.className = "v on"; db.textContent = "defects";
+    db.onclick = () => { db.classList.toggle("on"); defectsOff = !db.classList.contains("on"); render(); };
+    krow.appendChild(db);
+  }
   ff.appendChild(krow);
 }
 
@@ -325,21 +352,25 @@ function updateAvail(){
 
 function tile(v, f){
   const cap = v.name + " — " + f.label;
+  // When defects are toggled off, use the nodef render for fields that have one.
+  const nd = defectsOff && f.file_nodef;
+  const ffile = nd ? f.file_nodef : f.file;
+  const fposter = nd ? (f.poster_nodef || f.poster) : f.poster;
   if(f.kind === "video"){
-    const url = enc(v.name+"/"+f.file);
-    const inner = f.poster
-      ? '<img loading="lazy" src="'+enc(v.name+"/"+f.poster)+'" data-video="'+url+'" data-cap="'+cap+'" alt="'+f.label+'">'
+    const url = enc(v.name+"/"+ffile);
+    const inner = fposter
+      ? '<img loading="lazy" src="'+enc(v.name+"/"+fposter)+'" data-video="'+url+'" data-cap="'+cap+'" alt="'+f.label+'">'
       : '<div class="noposter" data-video="'+url+'" data-cap="'+cap+'">&#9654; play</div>';
     return '<figure><span class="badge">&#9654;</span>'+inner+'<figcaption>'+f.label+'</figcaption></figure>';
   }
   if(f.kind === "gif"){
-    const gif = enc(v.name+"/"+f.file);
-    const inner = f.poster
-      ? '<img loading="lazy" src="'+enc(v.name+"/"+f.poster)+'" data-gif="'+gif+'" data-cap="'+cap+'" alt="'+f.label+'">'
+    const gif = enc(v.name+"/"+ffile);
+    const inner = fposter
+      ? '<img loading="lazy" src="'+enc(v.name+"/"+fposter)+'" data-gif="'+gif+'" data-cap="'+cap+'" alt="'+f.label+'">'
       : '<div class="noposter" data-gif="'+gif+'" data-cap="'+cap+'">&#9654; load gif</div>';
     return '<figure><span class="badge">&#9654; gif</span>'+inner+'<figcaption>'+f.label+'</figcaption></figure>';
   }
-  return '<figure><img loading="lazy" src="'+enc(v.name+"/"+f.file)+'" data-cap="'+cap+'" alt="'+f.label+'">'+
+  return '<figure><img loading="lazy" src="'+enc(v.name+"/"+ffile)+'" data-cap="'+cap+'" alt="'+f.label+'">'+
          '<figcaption>'+f.label+'</figcaption></figure>';
 }
 
@@ -361,7 +392,7 @@ function render(){
 
 document.getElementById("reset").onclick = () => {
   Object.values(sel).forEach(s => s.clear());
-  figOff.clear(); kindOff.clear();
+  figOff.clear(); kindOff.clear(); defectsOff = false;
   document.querySelectorAll("#filters button.v").forEach(b => b.classList.remove("on"));
   document.querySelectorAll("#figfilters button.v").forEach(b => b.classList.add("on"));
   render();

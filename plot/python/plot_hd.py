@@ -384,7 +384,7 @@ def director_angle_deg_masked(frame):
     return deg
 
 
-def draw_field(ax, frame, field_name, cmap, clim=None):
+def draw_field(ax, frame, field_name, cmap, clim=None, show_defects=True):
     if field_name == "visualization":
         rgba = visualization_rgba(frame)
         ax.set_facecolor(VISUALIZATION_BACKGROUND)
@@ -394,7 +394,8 @@ def draw_field(ax, frame, field_name, cmap, clim=None):
             interpolation="nearest",
         )
         draw_boundary_contours(ax, frame, 1.0)
-        draw_defects(ax, frame)
+        if show_defects:
+            draw_defects(ax, frame)
         ax.set_aspect("equal")
         ax.set_xlabel("x")
         ax.set_ylabel("y")
@@ -431,7 +432,8 @@ def draw_field(ax, frame, field_name, cmap, clim=None):
             color="black",
         )
         draw_boundary_contours(ax, frame, 0.5)
-        draw_defects(ax, frame)
+        if show_defects:
+            draw_defects(ax, frame)
         ax.set_aspect("equal")
         ax.set_xlabel("x")
         ax.set_ylabel("y")
@@ -462,7 +464,8 @@ def draw_field(ax, frame, field_name, cmap, clim=None):
             color="red",
         )
         draw_boundary_contours(ax, frame, 0.5)
-        draw_defects(ax, frame)
+        if show_defects:
+            draw_defects(ax, frame)
         ax.set_aspect("equal")
         ax.set_xlabel("x")
         ax.set_ylabel("y")
@@ -482,7 +485,8 @@ def draw_field(ax, frame, field_name, cmap, clim=None):
     )
     if field_name == "pressure":
         draw_boundary_contours(ax, frame, 0.5)
-        draw_defects(ax, frame)
+        if show_defects:
+            draw_defects(ax, frame)
     ax.set_aspect("equal")
     ax.set_xlabel("x")
     ax.set_ylabel("y")
@@ -517,11 +521,12 @@ def compute_crop_box(ar, margin=30):
     return (x0, x1, y0, y1)
 
 
-def save_field_png(ar, frame_index, field_name, outdir, cmap, clim, dpi, crop=None):
+def save_field_png(ar, frame_index, field_name, outdir, cmap, clim, dpi, crop=None,
+                   show_defects=True, name_suffix=""):
     frame = ar.read_frame(frame_index)
 
     fig, ax = plt.subplots(figsize=(6, 5))
-    im = draw_field(ax, frame, field_name, cmap=cmap, clim=clim)
+    im = draw_field(ax, frame, field_name, cmap=cmap, clim=clim, show_defects=show_defects)
     if crop is not None:
         ax.set_xlim(crop[0], crop[1])
         ax.set_ylim(crop[2], crop[3])
@@ -532,7 +537,7 @@ def save_field_png(ar, frame_index, field_name, outdir, cmap, clim, dpi, crop=No
     if field_name == "visualization":
         fig.subplots_adjust(right=0.75)
 
-    outfile = os.path.join(outdir, f"{field_name}_frame{frame_index}.png")
+    outfile = os.path.join(outdir, f"{field_name}{name_suffix}_frame{frame_index}.png")
     fig.savefig(
         outfile,
         dpi=dpi,
@@ -543,11 +548,11 @@ def save_field_png(ar, frame_index, field_name, outdir, cmap, clim, dpi, crop=No
     return outfile
 
 
-def render_field_image(ar, frame_index, field_name, cmap, clim, crop=None):
+def render_field_image(ar, frame_index, field_name, cmap, clim, crop=None, show_defects=True):
     frame = ar.read_frame(frame_index)
 
     fig, ax = plt.subplots(figsize=(6, 5), dpi=GIF_DPI)
-    im = draw_field(ax, frame, field_name, cmap=cmap, clim=clim)
+    im = draw_field(ax, frame, field_name, cmap=cmap, clim=clim, show_defects=show_defects)
     if crop is not None:
         ax.set_xlim(crop[0], crop[1])
         ax.set_ylim(crop[2], crop[3])
@@ -568,7 +573,8 @@ def render_field_image(ar, frame_index, field_name, cmap, clim, crop=None):
     return image
 
 
-def save_field_mp4(ar, field_name, outdir, cmap, clim, nframes, frame_start, frame_step, crop=None):
+def save_field_mp4(ar, field_name, outdir, cmap, clim, nframes, frame_start, frame_step, crop=None,
+                   show_defects=True, name_suffix=""):
     """Write the animation directly as an h264 mp4 (default plotting spec).
 
     mp4 replaces the old gif path: it is far smaller than a 300-dpi gif, needs no
@@ -593,13 +599,13 @@ def save_field_mp4(ar, field_name, outdir, cmap, clim, nframes, frame_start, fra
 
     outfile = os.path.join(
         outdir,
-        f"{field_name}_{frame_indices[0]}-{frame_indices[-1]}_step{frame_step}.mp4",
+        f"{field_name}{name_suffix}_{frame_indices[0]}-{frame_indices[-1]}_step{frame_step}.mp4",
     )
     writer = None
     try:
         for frame_index in frame_indices:
             print(f"Rendering {field_name} video frame {frame_index}", flush=True)
-            img = render_field_image(ar, frame_index, field_name, cmap, clim, crop)
+            img = render_field_image(ar, frame_index, field_name, cmap, clim, crop, show_defects=show_defects)
             arr = np.asarray(img)
             if arr.ndim == 3 and arr.shape[2] == 4:
                 arr = arr[..., :3]
@@ -646,6 +652,18 @@ def save_counts_timeseries(ar, outdir, dpi):
     return outfile
 
 
+def defect_variants(style):
+    """(show_defects, name_suffix) variants to render for a field.
+
+    'never' -> a single variant with no defect markers (velocity).
+    'toggle' -> the default (with-defect, unsuffixed) variant plus a '_nodef'
+    variant, so the dashboard can switch defects on/off.
+    """
+    if style.get("defects", "toggle") == "never":
+        return [(False, "")]
+    return [(True, ""), (False, "_nodef")]
+
+
 def main():
     args = parse_args()
     os.makedirs(args.outdir, exist_ok=True)
@@ -657,11 +675,14 @@ def main():
 
     crop = compute_crop_box(ar, margin=30)
 
+    # defects: "toggle" -> render a with-defect (default-named) and a nodef variant
+    # so the dashboard can switch them; "never" -> single variant with no defect
+    # markers at all (velocity).
     fields = {
-        "visualization": {"cmap": None, "clim": None},
-        "pressure": {"cmap": "coolwarm", "clim": None},
-        "phi_velocity": {"cmap": None, "clim": None},
-        "phi_director": {"cmap": None, "clim": None},
+        "visualization": {"cmap": None, "clim": None, "defects": "toggle"},
+        "pressure": {"cmap": "coolwarm", "clim": None, "defects": "toggle"},
+        "phi_velocity": {"cmap": None, "clim": None, "defects": "never"},
+        "phi_director": {"cmap": None, "clim": None, "defects": "toggle"},
     }
 
     if args.fields is not None:
@@ -692,35 +713,41 @@ def main():
                 continue
 
             for field_name, style in fields.items():
-                print(f"Rendering {field_name} PNG frame {frame_index}", flush=True)
-                outfile = save_field_png(
-                    ar,
-                    frame_index,
-                    field_name,
-                    args.outdir,
-                    style["cmap"],
-                    style["clim"],
-                    args.dpi,
-                    crop,
-                )
-                print(f"Saved: {outfile}", flush=True)
+                for show_def, suffix in defect_variants(style):
+                    print(f"Rendering {field_name}{suffix} PNG frame {frame_index}", flush=True)
+                    outfile = save_field_png(
+                        ar,
+                        frame_index,
+                        field_name,
+                        args.outdir,
+                        style["cmap"],
+                        style["clim"],
+                        args.dpi,
+                        crop,
+                        show_defects=show_def,
+                        name_suffix=suffix,
+                    )
+                    print(f"Saved: {outfile}", flush=True)
 
     gif_step = args.gif_frame_step if args.gif_frame_step is not None else max(1, int(round(n_available / 40.0)))
     gif_count = args.gif_frames if args.gif_frames is not None else n_available
     print("Preparing videos...", flush=True)
     for field_name, style in fields.items():
-        outfile = save_field_mp4(
-            ar,
-            field_name,
-            args.outdir,
-            style["cmap"],
-            style["clim"],
-            gif_count,
-            args.gif_frame_start,
-            gif_step,
-            crop,
-        )
-        print(f"Saved video: {outfile}", flush=True)
+        for show_def, suffix in defect_variants(style):
+            outfile = save_field_mp4(
+                ar,
+                field_name,
+                args.outdir,
+                style["cmap"],
+                style["clim"],
+                gif_count,
+                args.gif_frame_start,
+                gif_step,
+                crop,
+                show_defects=show_def,
+                name_suffix=suffix,
+            )
+            print(f"Saved video: {outfile}", flush=True)
 
     if args.skip_counts:
         print("Skipping N0/N1 time-series plot.", flush=True)
