@@ -1,0 +1,68 @@
+# cases/05jul/bulk_switch_defects_400 arm0 (pswitch calibration, v2)
+# NEW calibration method (supersedes the passive arm0): use arm1's FULL init and
+# ACTIVITY (zeta=0.6) but turn OFF switching (Ochi=0) and keep Dchi=0. chi is
+# random centred on chi0=0.5 and only advects (no switching, no diffusion), so the
+# field evolves as a bulk active nematic at mean chi ~ chi0 (half active). The
+# pressure P=-sigma_bulk this reaches is the "typical operating pressure" of that
+# active state; pswitch for the switching arms := MEDIAN of P (final frame).
+# Rationale: the old passive calibration (zeta=0, near-uniform phi) gave pswitch far
+# BELOW the active-state P, so the switching run ran away to all-go. Calibrating on
+# the active half-chi state centres the dead-band on the real operating pressure.
+# alpha=0 (true): the relative-tolerance conserve_phi check (1e-4) now permits it,
+# so phi mass is pinned at 1.1 and mean P stays stationary.
+model    = dry-go-or-grow
+config   = full
+nsteps   = 20000
+nstart   = 0000
+ninfo    = 200
+LX       = 400
+LY       = 400
+bc       = 0
+seed     = 1001
+GammaQ   = 0.3
+GammaP   = 0.05
+zeta     = 0.6
+zetaI    = 0
+friction = 10
+tauNem   = 1.0
+tauIso   = 1.0
+AA       = 0.03
+CC       = 0.1
+LL       = 0.012
+KK       = 0.06
+rho      = 40
+xi       = 1
+B        = 1.0
+Snem     = 1
+level    = 50
+radius   = 20
+conc     = 1.1
+noise    = 1
+initial-order = 1
+angle    = 0
+relax-steps = 500
+relax-dt    = 1.0
+relax-phi   = 0
+relax-Q     = 1
+chi-config = noise
+chi0       = 0.5
+chi-noise  = 0.1
+chi-length = 5
+phi-noise  = 0
+phi-length = 5
+Dchi       = 0
+Achi       = 0
+Ochi       = 0
+pswitch    = 0
+growTogether = 1
+beta         = 0
+death-rate   = 0
+death-time   = 1
+death-radius = 0
+division-rate   = 1e-1
+division-time   = 2
+alpha           = 0
+phi-critical    = 1.0
+division-phi-critical-factor = 0
+division-radius = 3
+surface-stress = 0

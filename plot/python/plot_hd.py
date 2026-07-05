@@ -110,6 +110,12 @@ def parse_args():
         help="Also emit a defect-count-vs-t plot + CSV (total, +1/2, -1/2). "
              "Independent of --skip-counts (which only controls N0/N1).",
     )
+    parser.add_argument(
+        "--skip-video",
+        action="store_true",
+        help="Skip the mp4 video export (PNG frames + time-series plots only). "
+             "Much faster for large full-domain runs.",
+    )
     return parser.parse_args()
 
 
@@ -783,25 +789,28 @@ def main():
                     )
                     print(f"Saved: {outfile}", flush=True)
 
-    gif_step = args.gif_frame_step if args.gif_frame_step is not None else max(1, int(round(n_available / 40.0)))
-    gif_count = args.gif_frames if args.gif_frames is not None else n_available
-    print("Preparing videos...", flush=True)
-    for field_name, style in fields.items():
-        for show_def, suffix in defect_variants(style):
-            outfile = save_field_mp4(
-                ar,
-                field_name,
-                args.outdir,
-                style["cmap"],
-                style["clim"],
-                gif_count,
-                args.gif_frame_start,
-                gif_step,
-                crop,
-                show_defects=show_def,
-                name_suffix=suffix,
-            )
-            print(f"Saved video: {outfile}", flush=True)
+    if args.skip_video:
+        print("Skipping video export.", flush=True)
+    else:
+        gif_step = args.gif_frame_step if args.gif_frame_step is not None else max(1, int(round(n_available / 40.0)))
+        gif_count = args.gif_frames if args.gif_frames is not None else n_available
+        print("Preparing videos...", flush=True)
+        for field_name, style in fields.items():
+            for show_def, suffix in defect_variants(style):
+                outfile = save_field_mp4(
+                    ar,
+                    field_name,
+                    args.outdir,
+                    style["cmap"],
+                    style["clim"],
+                    gif_count,
+                    args.gif_frame_start,
+                    gif_step,
+                    crop,
+                    show_defects=show_def,
+                    name_suffix=suffix,
+                )
+                print(f"Saved video: {outfile}", flush=True)
 
     if args.skip_counts:
         print("Skipping N0/N1 time-series plot.", flush=True)
