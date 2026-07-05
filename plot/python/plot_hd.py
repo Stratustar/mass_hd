@@ -116,6 +116,13 @@ def parse_args():
         help="Skip the mp4 video export (PNG frames + time-series plots only). "
              "Much faster for large full-domain runs.",
     )
+    parser.add_argument(
+        "--png-only-fields",
+        nargs="*",
+        default=[],
+        help="Fields to render as PNG only (no mp4), e.g. 'pressure'. They still "
+             "get PNG frames; only their video is skipped.",
+    )
     return parser.parse_args()
 
 
@@ -795,7 +802,11 @@ def main():
         gif_step = args.gif_frame_step if args.gif_frame_step is not None else max(1, int(round(n_available / 40.0)))
         gif_count = args.gif_frames if args.gif_frames is not None else n_available
         print("Preparing videos...", flush=True)
+        png_only = set(args.png_only_fields or [])
         for field_name, style in fields.items():
+            if field_name in png_only:
+                print(f"Skipping video for {field_name} (png-only).", flush=True)
+                continue
             for show_def, suffix in defect_variants(style):
                 outfile = save_field_mp4(
                     ar,
