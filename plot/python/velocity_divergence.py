@@ -19,7 +19,9 @@ import matplotlib
 matplotlib.use("Agg")
 
 import argparse
+import glob
 import os
+import re
 import sys
 
 import matplotlib.pyplot as plt
@@ -79,11 +81,37 @@ def colony_bbox(phi, margin=CROP_MARGIN):
     return (x0, x1, y0, y1)
 
 
+def last_present_index(ar, archive_dir):
+    """Highest frame index whose json file actually exists on disk.
+
+    A blown-up run (nan while writing) stops early, so the archive's nominal
+    frame count overshoots what was written; fall back to the real listing.
+    """
+    steps = []
+    for f in glob.glob(os.path.join(archive_dir, "frame*.json")):
+        m = re.search(r"frame(\d+)\.json$", os.path.basename(f))
+        if m:
+            steps.append(int(m.group(1)))
+    if not steps:
+        return available_frame_count(ar) - 1
+    return int((max(steps) - ar.nstart) / ar.ninfo)
+
+
 def load_case(archive_dir):
     ar = loadarchive(archive_dir)
-    n = available_frame_count(ar)
-    frame = ar.read_frame(n - 1)
-    step = ar.nstart + (n - 1) * ar.ninfo
+    idx = last_present_index(ar, archive_dir)
+    # step back past any frame that fails to read (e.g. a nan blow-up frame)
+    frame = None
+    while idx >= 0:
+        try:
+            frame = ar.read_frame(idx)
+            break
+        except (ValueError, FileNotFoundError, OSError) as exc:
+            print(f"       frame index {idx} unreadable ({exc}); stepping back")
+            idx -= 1
+    if frame is None:
+        raise RuntimeError(f"no readable frame in {archive_dir}")
+    step = ar.nstart + idx * ar.ninfo
     div = divergence(frame)
     phi = _grid(frame, "phi")
     alpha = frame.parameters.get("alpha", float("nan"))
