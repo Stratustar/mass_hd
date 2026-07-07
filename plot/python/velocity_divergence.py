@@ -177,13 +177,17 @@ def main():
               f"max|div v|={np.abs(case['div']).max():.3e} "
               f"mean(div v over phi>0.5)={case['div'][case['phi']>0.5].mean():.3e}")
 
-    vmax = sym_limit([c["div"] for _, c in cases])
-    print(f"[divv] shared symmetric color limit (p{CLIP_PCTILE}) = {vmax:.3e}")
+    # per-case symmetric color limit (each panel self-scaled: magnitudes span
+    # ~1e-3 to ~1e-1 across alpha, so a shared scale would wash out the small ones).
+    for _, case in cases:
+        case["vmax"] = sym_limit([case["div"]])
+        print(f"[divv] {case['step']:>6} alpha={case['alpha']:g}: "
+              f"per-panel color limit (p{CLIP_PCTILE}) = {case['vmax']:.3e}")
 
     # per-case single figures
     for label, case in cases:
         fig, ax = plt.subplots(figsize=(5, 4.6))
-        im = draw_panel(ax, case, vmax, case_title(case, label))
+        im = draw_panel(ax, case, case["vmax"], case_title(case, label))
         cb = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
         cb.set_label(r"$\nabla\!\cdot\mathbf{v}$")
         fig.tight_layout()
@@ -192,18 +196,17 @@ def main():
         plt.close(fig)
         print(f"[divv] wrote {out}")
 
-    # combined comparison (shared scale)
+    # combined comparison, each panel on its own scale with its own colorbar
     n = len(cases)
-    fig, axes = plt.subplots(1, n, figsize=(4.4 * n, 4.6))
+    fig, axes = plt.subplots(1, n, figsize=(4.8 * n, 4.8))
     if n == 1:
         axes = [axes]
-    im = None
     for ax, (label, case) in zip(axes, cases):
-        im = draw_panel(ax, case, vmax, case_title(case, label))
-    cb = fig.colorbar(im, ax=axes, fraction=0.046 / n, pad=0.02)
-    cb.set_label(r"$\nabla\!\cdot\mathbf{v}$  (shared scale)")
-    fig.suptitle("final-frame velocity divergence vs alpha (all-grow, switching off)",
-                 fontsize=12)
+        im = draw_panel(ax, case, case["vmax"], case_title(case, label))
+        cb = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+        cb.set_label(r"$\nabla\!\cdot\mathbf{v}$")
+    fig.suptitle("final-frame velocity divergence vs alpha "
+                 "(all-grow, switching off; per-panel scale)", fontsize=12)
     out = os.path.join(args.outdir, "divv_compare.png")
     fig.savefig(out, dpi=300, bbox_inches="tight")
     plt.close(fig)
