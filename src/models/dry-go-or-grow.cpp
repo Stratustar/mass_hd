@@ -82,10 +82,14 @@ void DryGoOrGrow::UpdateDryFieldsAtNode(unsigned k, bool first)
     + xi*((Qxx+1)*(2*dxux-traceQL) + 2*Qyx*shear - expansion);
   const double Dyx = GammaQ*Hyx - vx*dxQyx - vy*dyQyx + 2*vorticity*Qxx
     + xi*(Qyx*(expansion-traceQL) + 2*shear);
-  const double dphi_px_raw = GammaP*(MU[d[1]] - MU[k]) - .5*ux_phi[d[1]];
-  const double dphi_mx_raw = GammaP*(MU[d[2]] - MU[k]) + .5*ux_phi[d[2]];
-  const double dphi_py_raw = GammaP*(MU[d[3]] - MU[k]) - .5*uy_phi[d[3]];
-  const double dphi_my_raw = GammaP*(MU[d[4]] - MU[k]) + .5*uy_phi[d[4]];
+  // Advective face flux uses the shared (pair-symmetric) face momentum .5*(u_phi[k]+u_phi[n])
+  // so each per-face increment is antisymmetric (dphi_px@k = -dphi_mx@n). The extra .5*u_phi[k]
+  // terms cancel within Dp, so phi evolution is unchanged to round-off; but weighting these now
+  // antisymmetric increments by the upwind chi (mTransport below) conserves Sum(m) instead of leaking.
+  const double dphi_px_raw = GammaP*(MU[d[1]] - MU[k]) - .5*(ux_phi[k] + ux_phi[d[1]]);
+  const double dphi_mx_raw = GammaP*(MU[d[2]] - MU[k]) + .5*(ux_phi[k] + ux_phi[d[2]]);
+  const double dphi_py_raw = GammaP*(MU[d[3]] - MU[k]) - .5*(uy_phi[k] + uy_phi[d[3]]);
+  const double dphi_my_raw = GammaP*(MU[d[4]] - MU[k]) + .5*(uy_phi[k] + uy_phi[d[4]]);
   const double dphi_px = MaskedPhiFaceIncrement(k, d[1], dphi_px_raw);
   const double dphi_mx = MaskedPhiFaceIncrement(k, d[2], dphi_mx_raw);
   const double dphi_py = MaskedPhiFaceIncrement(k, d[3], dphi_py_raw);
