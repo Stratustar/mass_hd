@@ -123,6 +123,15 @@ def parse_args():
         help="Fields to render as PNG only (no mp4), e.g. 'pressure'. They still "
              "get PNG frames; only their video is skipped.",
     )
+    parser.add_argument(
+        "--crop",
+        type=int,
+        nargs=4,
+        default=None,
+        metavar=("X0", "X1", "Y0", "Y1"),
+        help="Fixed view-crop box in lattice coords, overriding the auto colony bbox. "
+             "E.g. '--crop 50 200 50 200' shows the center 150x150 of a 250^2 box.",
+    )
     return parser.parse_args()
 
 
@@ -741,6 +750,8 @@ def main():
     print(f"Archive loaded. Available frame count: {n_available}", flush=True)
 
     crop = compute_crop_box(ar, margin=30)
+    if args.crop is not None:
+        crop = tuple(args.crop)  # fixed view crop (e.g. center 150x150), overrides auto bbox
 
     # defects: "toggle" -> render a with-defect (default-named) and a nodef variant
     # so the dashboard can switch them; "never" -> single variant with no defect
