@@ -1,0 +1,63 @@
+# 20260709 switch/defect arm3: switching OFF, from arm1(z0p08_O0p005) frame30000, 20000 steps.
+# chi set UNIFORM = arm1 frame30000 phi-weighted mean chi = 0.44308 (init-frame-uniform-chi).
+# all-go active nematic base xi=1 LL=0.02 250^2, near-aligned seed.
+# Ochi does not enter (switching off) -> shared across the 3 Ochi at this zeta. all-go active
+# nematic base: xi=1, LL=0.02, 250x250, alpha=0, Dchi=0, surface-stress=0.
+model    = dry-go-or-grow
+config   = full
+init-frame = /scratch/helu/mass_hd/cases/20260709/switchdefect_zOchi_seed_LL0p02/arm1/z0p08_O0p005/frame30000.json
+init-frame-uniform-chi = 1
+nsteps   = 20000
+nstart   = 0000
+ninfo    = 500
+LX       = 250
+LY       = 250
+bc       = 0
+seed     = 1001
+GammaQ   = 0.3
+GammaP   = 0.05
+zeta     = 0.08
+zetaI    = 0
+friction = 10
+tauNem   = 1.0
+tauIso   = 1.0
+AA       = 0.03
+CC       = 0.1
+LL       = 0.02
+KK       = 0.06
+rho      = 40
+xi       = 1
+B        = 1.0
+Snem     = 1
+level    = 50
+radius   = 20
+conc     = 1.1
+noise    = 0.1
+initial-order = 1
+angle    = 0
+relax-steps = 500
+relax-dt    = 1.0
+relax-phi   = 0
+relax-Q     = 1
+chi-config = noise
+chi0       = 0.44308
+chi-noise  = 0.1
+chi-length = 5
+phi-noise  = 0
+phi-length = 5
+Dchi       = 0
+Achi       = 0
+Ochi       = 0
+pswitch    = 0
+growTogether = 1
+beta         = 0
+death-rate   = 0
+death-time   = 1
+death-radius = 0
+division-rate   = 1e-1
+division-time   = 2
+alpha           = 0
+phi-critical    = 1.0
+division-phi-critical-factor = 0
+division-radius = 3
+surface-stress = 0
