@@ -1,0 +1,70 @@
+# 20260716 defectpair_switch_zOchi arm2: MATCHED UNIFORM ACTIVITY control (switching OFF).
+# Stage 3 of the single-pair switching study. Fresh run from the same initial condition as
+# arm1/z0p32_O0p01 (single +1/2/-1/2 pair, defect-sep=30, config=full 100x100 conc=1.1), but with
+# NO switching (Achi=Ochi=0) and chi held UNIFORM at
+#   chi_u = 1 - a_max/zeta = 0.033458
+# so the activity is uniform and equal to arm1's PEAK mean activity
+#   a_max = zeta*(1 - M/Phi)|max = 0.309293   (reached at t = 45500 in arm1/z0p32_O0p01)
+# zeta = 0.32. This is the strict control: the uniform arm gets the HIGHEST mean activity
+# switching ever reached, so any surviving arm1-vs-arm2 difference cannot be attributed to
+# mean activity -- only to the STRUCTURE (heterogeneous chi -> concentrated activity).
+# alpha=0, Dchi=0, relax-Q=0, noise=0. Regime: xi=1, LL=0.02, CC=0.1, GammaQ=0.3,
+# friction=10, B=1, Snem=1, surface-stress=0.
+model    = dry-go-or-grow
+config   = full
+nsteps   = 50000
+nstart   = 0000
+ninfo    = 500
+LX       = 100
+LY       = 100
+bc       = 0
+seed     = 1001
+GammaQ   = 0.3
+GammaP   = 0.05
+zeta     = 0.32
+zetaI    = 0
+friction = 10
+tauNem   = 1.0
+tauIso   = 1.0
+AA       = 0.03
+CC       = 0.1
+LL       = 0.02
+KK       = 0.06
+rho      = 40
+xi       = 1
+B        = 1.0
+Snem     = 1
+level    = 50
+radius   = 20
+conc     = 1.1
+noise    = 0
+initial-order = 1
+angle    = 0
+director-config = defect-pair
+defect-sep      = 30
+relax-steps = 500
+relax-dt    = 1.0
+relax-phi   = 0
+relax-Q     = 0
+chi-config = noise
+chi0       = 0.033458
+chi-noise  = 0
+chi-length = 5
+phi-noise  = 0
+phi-length = 5
+Dchi       = 0
+Achi       = 0
+Ochi       = 0
+pswitch    = 0
+growTogether = 1
+beta         = 0
+death-rate   = 0
+death-time   = 1
+death-radius = 0
+division-rate   = 1e-1
+division-time   = 2
+alpha           = 0
+phi-critical    = 1.0
+division-phi-critical-factor = 0
+division-radius = 3
+surface-stress = 0
