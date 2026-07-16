@@ -23,7 +23,9 @@ CONDA_BIN="/home/helu/miniconda3/bin/conda"
 CONDA_ENV="env1"
 PLOT_SCRIPT="${REPO_ROOT}/plot/python/plot_hd.py"
 MASS_BINARY="/opt/mass_hd/mass"
-RESULTS_ROOT="${REPO_ROOT}/results"
+# Figures/videos live on SCRATCH, next to the raw output -- /home has a small per-user
+# quota that mp4 export blows through silently (corrupt videos, failed jobs).
+RESULTS_ROOT="${SCRATCH_ROOT}/mass_hd/results"
 THREADS="${SLURM_CPUS_PER_TASK}"
 SKIP_PLOTS="${SKIP_PLOTS:-0}"
 PLOT_HD_ARGS="${PLOT_HD_ARGS:-}"
