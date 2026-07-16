@@ -1,0 +1,66 @@
+# 20260716 active +/- 1/2 defect-pair zeta-scan (100x100, 20000 steps).
+# Single +1/2 (left) / -1/2 (right) pair, defect-sep=30, config=full conc=1.1.
+# ACTIVE, NO SWITCHING: zeta=0.16, chi0=0 (all-go -> full activity zeta*phi),
+# Achi=Ochi=0, alpha=0, Dchi=0. Start from exact analytic pair (relax-Q=0, noise=0).
+# Baseline = defectpair_passive_100_n100k (zeta=0: d^2~(t_ann-t), t_ann~1.3e5, +1/2
+# does the moving). Probe +1/2 self-propulsion vs zeta across the bulk threshold
+# (~0.08 at xi=1,LL=0.02): accelerated annihilation / escape / turbulence nucleation.
+# Regime: xi=1, LL=0.02, CC=0.1, GammaQ=0.3, friction=10, B=1, Snem=1, surface-stress=0.
+model    = dry-go-or-grow
+config   = full
+nsteps   = 20000
+nstart   = 0000
+ninfo    = 200
+LX       = 100
+LY       = 100
+bc       = 0
+seed     = 1001
+GammaQ   = 0.3
+GammaP   = 0.05
+zeta     = 0.16
+zetaI    = 0
+friction = 10
+tauNem   = 1.0
+tauIso   = 1.0
+AA       = 0.03
+CC       = 0.1
+LL       = 0.02
+KK       = 0.06
+rho      = 40
+xi       = 1
+B        = 1.0
+Snem     = 1
+level    = 50
+radius   = 20
+conc     = 1.1
+noise    = 0
+initial-order = 1
+angle    = 0
+director-config = defect-pair
+defect-sep      = 30
+relax-steps = 500
+relax-dt    = 1.0
+relax-phi   = 0
+relax-Q     = 0
+chi-config = noise
+chi0       = 0
+chi-noise  = 0
+chi-length = 5
+phi-noise  = 0
+phi-length = 5
+Dchi       = 0
+Achi       = 0
+Ochi       = 0
+pswitch    = 0
+growTogether = 1
+beta         = 0
+death-rate   = 0
+death-time   = 1
+death-radius = 0
+division-rate   = 1e-1
+division-time   = 2
+alpha           = 0
+phi-critical    = 1.0
+division-phi-critical-factor = 0
+division-radius = 3
+surface-stress = 0
