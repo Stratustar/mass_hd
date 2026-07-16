@@ -38,6 +38,10 @@ protected:
   double GammaP, GammaQ, xi, tauNem, tauIso, friction, LL, KK, AA, CC, zeta, zetaI;
   /** Intial configuration */
   std::string init_config;
+  /** Director initialization mode: "uniform" (angle+noise) or "defect-pair" */
+  std::string director_config = "uniform";
+  /** Separation of the +/- 1/2 defect pair (lattice units, defect-pair mode) */
+  double defect_sep = 0.;
   /** Number of correction steps in the predictor/corrector scheme */
   unsigned npc = 1;
   /** Sum of f (for checking purposes) */
@@ -116,7 +120,9 @@ public:
        & auto_name(KK)
        & auto_name(init_config)
        & auto_name(AA)
-       & auto_name(CC);
+       & auto_name(CC)
+       & auto_name(director_config)
+       & auto_name(defect_sep);
   }
 
   /** Serialization of the current frame (time snapshot) */

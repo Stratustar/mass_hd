@@ -150,7 +150,26 @@ void Lyotropic::ConfigureAtNode(unsigned k)
 
   // add   (for meta-stable configs)
   // theta is the angle of the director
-  theta = angle + noise*M_PI*(random_real() - .5);
+  if(init_config!="full" && director_config=="defect-pair")
+    throw error_msg("director-config=defect-pair expects config=full (uniform bulk).");
+  if(director_config=="defect-pair")
+  {
+    // Analytic +1/2 / -1/2 winding, textbook single pair:
+    //   theta = angle + .5*atan2(y-y+, x-x+) - .5*atan2(y-y-, x-x-).
+    // +1/2 on the left, -1/2 on the right, centred and separated along x by defect_sep.
+    // Q = S*(cos2theta, sin2theta) is single-valued/smooth off the two cores (the atan2
+    // branch cuts are 2pi jumps in 2*theta -> invisible in Q). Use PLAIN (non-wrapped)
+    // displacements: the dipole far field is uniform, so the periodic-boundary mismatch
+    // is only O(defect_sep/L) and relaxes. Do NOT minimum-image wrap the displacement --
+    // its jump at the half-box line injects a spurious extra defect pair.
+    const double xpl = LX/2.0 - defect_sep/2.0, ypl = LY/2.0;
+    const double xmi = LX/2.0 + defect_sep/2.0, ymi = LY/2.0;
+    const double ap = atan2(ytemp-ypl, xtemp-xpl);
+    const double am = atan2(ytemp-ymi, xtemp-xmi);
+    theta = angle + 0.5*ap - 0.5*am + noise*M_PI*(random_real() - .5);
+  }
+  else
+    theta = angle + noise*M_PI*(random_real() - .5);
 	//printf("coord is %u and %u, coordtemp is %f and %f, theta is %f\n",y,x,ytemp-LY/2,xtemp-LX/2,theta);
   //nematicOrder += noise*random_real();
   QQxx[k] = init_order*nematicOrder*(cos(2*theta));
@@ -611,6 +630,10 @@ option_list Lyotropic::GetOptions()
      "initial angle to x direction (in degrees)")
     ("noise", opt::value<double>(&noise),
      "size of initial variations")
+    ("director-config", opt::value<string>(&director_config),
+     "director init: uniform (angle+noise) or defect-pair")
+    ("defect-sep", opt::value<double>(&defect_sep),
+     "separation of the +/- 1/2 defect pair (lattice units, defect-pair mode)")
     ("initial-order", opt::value<double>(&init_order),
      "initial nematic order amplitude");
 
