@@ -1,0 +1,64 @@
+# 20260716 confluent_density suppress: steady-state defect density vs mean activity at 300x300.
+# Homogeneous bulk active nematic, random director (config=full, noise=1), resolved operating point
+# LL=0.5, friction=100, GammaQ=0.03 (core xi_N=2.43 lattice, fully melted). Larger 300x300 box for
+# steady-state statistics; 50000 steps, average over the stationary window. SUPPRESS: Ochi=-0.02<0, chi0=0.5.
+# Goal: compare defect density N vs mean activity <a>=zeta*(1-<chi>) for pressure PROMOTES activity
+# (Ochi>0), pressure SUPPRESSES activity (Ochi<0), and UNIFORM (no switching). Pilot showed suppress
+# self-caps at <a>~1.0 (negative feedback), so all three overlap on <a> in 0.5-1.0 and promote/uniform
+# extend to 2.0. pswitch=0.11 fixed (~ median P).
+model    = dry-go-or-grow
+config   = full
+nsteps   = 50000
+nstart   = 0000
+ninfo    = 500
+LX       = 300
+LY       = 300
+bc       = 0
+seed     = 1001
+GammaQ   = 0.03
+GammaP   = 0.05
+zeta     = 5
+zetaI    = 0
+friction = 100
+tauNem   = 1.0
+tauIso   = 1.0
+AA       = 0.03
+CC       = 0.1
+LL       = 0.5
+KK       = 0.06
+rho      = 40
+xi       = 1
+B        = 1.0
+Snem     = 1
+level    = 50
+radius   = 20
+conc     = 1.1
+noise    = 1
+initial-order = 1
+angle    = 0
+relax-steps = 500
+relax-dt    = 1.0
+relax-phi   = 0
+relax-Q     = 0
+chi-config = noise
+chi0       = 0.5
+chi-noise  = 0
+chi-length = 5
+phi-noise  = 0
+phi-length = 5
+Dchi       = 0
+Achi       = 0
+Ochi       = -0.02
+pswitch    = 0.11
+growTogether = 1
+beta         = 0
+death-rate   = 0
+death-time   = 1
+death-radius = 0
+division-rate   = 1e-1
+division-time   = 2
+alpha           = 0
+phi-critical    = 1.0
+division-phi-critical-factor = 0
+division-radius = 3
+surface-stress = 0
