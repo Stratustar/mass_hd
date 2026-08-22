@@ -44,7 +44,12 @@
  * of recent time the material element spent above the pressure threshold. The
  * memory feeds back on the phenotype through
  *
- *   V(chi,m) = Achi*chi^2*(1-chi)^2 + Ochi*(m - mc)*chi
+ *   tau_chi * D_t chi = chi*(m) - chi,   chi*(m) = 1/2 [1 + s*tanh((m-mc)/chi_width)]
+ *
+ * i.e. the SAME first-order low-pass form as the memory itself, so the loop
+ * P -> m -> chi -> activity -> flow -> P is a cascade of two lags whose times
+ * tau_m and tau_chi are exact and directly comparable to each other and to the
+ * flow time.
  *
  * Because the layer is confluent there is no vacuum, so none of the material
  * masking / neighbour-fallback machinery of GoOrGrow is needed: chi and m are
@@ -68,8 +73,24 @@ protected:
   double Snem = 1.;
   /** Phenotype diffusion coefficient */
   double Dchi = 0.;
-  /** Switching potential V = Achi*chi^2*(1-chi)^2 + Ochi*(m-mc)*chi */
-  double Achi = 0., Ochi = 0., mc = 0.5;
+  /** Phenotype switching, written as a RELAXATION so that its timescale is exact.
+   *
+   * V(chi,m) = (1/2)(chi - chi*(m))^2 / tau_chi gives
+   *     tau_chi * D_t chi = chi*(m) - chi,
+   *     chi*(m) = .5*(1 + switch_sign*tanh((m - mc)/chi_width)),
+   * the exact mirror of the memory equation tau_m * D_t m = g(P) - m, so the two lags
+   * of the loop P -> m -> chi -> activity -> flow -> P are the same kind of object and
+   * can be compared directly. The earlier linear form V = Ochi*(m-mc)*chi made dV/dchi
+   * independent of chi, so chi drifted at a constant rate and only stopped at the
+   * [0,phi] clamp; its effective timescale then depended on |m-mc| and was measured to
+   * be 2.2-9.0x longer than 1/|Ochi|, with the discrepancy itself correlated with
+   * tau_m -- fatal for a study whose whole point is the ordering of the timescales.
+   * switch_sign = +1: sustained compression drives chi UP, towards the passive/grow
+   * phenotype (contact inhibition); since the activity is zeta*phi*(1-chi) that is a
+   * negative, self-limiting feedback. switch_sign = -1 is the opposite branch.
+   * tau_chi <= 0 disables switching entirely (the frozen-chi control). */
+  double tau_chi = 0., chi_width = 0.15, mc = 0.5;
+  int switch_sign = 1;
   /** Whether the phi*chi growth source is chi*R (chi-preserving) or R */
   int growTogether = 1;
   /** Phenotype initialization: mean, std and correlation length of the noise */
@@ -88,6 +109,9 @@ protected:
   std::string init_frame = "";
   /** With init_frame, reset chi uniform (=chi0) instead of loading it */
   int init_frame_uniform_chi = 0;
+
+  /** Cached tau_chi > 0; keeps the string-free branch out of the inner loop */
+  bool use_switching = false;
 
   /** Smallest phi seen in the last UpdateQuantities (confluence diagnostic) */
   double phi_min = 0.;
@@ -108,6 +132,8 @@ protected:
   void ConfigureFromFrame();
   /** phi-weighted memory source phi*(g(P) - m)/tau_m */
   double MemorySource(unsigned, double) const;
+  /** phi-weighted switching source phi*(chi*(m) - chi)/tau_chi */
+  double SwitchingSource(double, double) const;
   /** Upwind value of an intensive field on the face (k, neighbour) */
   double UpwindFace(const ScalarField&, unsigned, unsigned, double) const;
   /** Clamp a phi-carried density back into [0, phi] */
@@ -135,8 +161,9 @@ public:
     ar & auto_name(B)
        & auto_name(Snem)
        & auto_name(Dchi)
-       & auto_name(Achi)
-       & auto_name(Ochi)
+       & auto_name(tau_chi)
+       & auto_name(chi_width)
+       & auto_name(switch_sign)
        & auto_name(mc)
        & auto_name(growTogether)
        & auto_name(chi0)

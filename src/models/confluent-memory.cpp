@@ -50,6 +50,11 @@ void ConfluentMemory::Initialize()
                     "of mechanical pressure.");
   if(tau_m <= 0.)
     throw error_msg("confluent-memory requires tau-m > 0.");
+  if(chi_width <= 0.)
+    throw error_msg("chi-width must be positive (it is the width of the tanh in "
+                    "chi*(m); a hard switch is chi-width -> 0, not 0).");
+  if(switch_sign != 1 && switch_sign != -1)
+    throw error_msg("switch-sign must be +1 (compression -> passive) or -1.");
   if(pmem_width < 0.)
     throw error_msg("pmem-width must be non-negative.");
   if(m0 < 0. || m0 > 1.)
@@ -66,6 +71,9 @@ void ConfluentMemory::Initialize()
                     " > phi-critical=", phi_critical, " silently disables all "
                     "division (the crowding factor 1-phi/phi_critical is "
                     "negative). Set division-phi-critical-factor=0.");
+
+  // tau_chi <= 0 is the frozen-chi control, not an error.
+  use_switching = (tau_chi > 0.);
 
   chi.SetSize(LX, LY, Type);
   phichi.SetSize(LX, LY, Type);
@@ -200,6 +208,17 @@ void ConfluentMemory::UpdateDerivedFields()
   }
 
   BoundaryConditionsFields();
+}
+
+double ConfluentMemory::SwitchingSource(double chi_eff, double m_eff) const
+{
+  // tau_chi * D_t chi = chi*(m) - chi, with the target
+  //   chi*(m) = .5*(1 + switch_sign*tanh((m - mc)/chi_width))
+  // Because chi* lies strictly inside (0,1) and is an attractor, chi cannot leave
+  // [0,1] on its own; the [0,phi] clamp in the update is only a round-off guard,
+  // not -- as in the earlier linear form -- what sets the steady state.
+  const double chi_star = .5*(1 + switch_sign*tanh((m_eff - mc)/chi_width));
+  return (chi_star - chi_eff)/tau_chi;
 }
 
 void ConfluentMemory::ProjectDensity(ScalarField& fld, const ScalarField& density)
@@ -401,11 +420,9 @@ void ConfluentMemory::UpdateNodeFields(unsigned k, bool first)
   + .5*(phi[d[3]] + p)*(chi[d[3]] - chi_eff)
   - .5*(p + phi[d[4]])*(chi_eff - chi[d[4]]);
 
-  // Switching is driven by the MEMORY, not by the instantaneous pressure:
-  //   V(chi,m) = Achi*chi^2*(1-chi)^2 + Ochi*(m-mc)*chi
-  const double dVdChi = 2*Achi*chi_eff*(1-chi_eff)*(1-2*chi_eff)
-                      + Ochi*(m_eff - mc);
-  const double Sswitch = -p*dVdChi;
+  // Switching is driven by the MEMORY, and is a relaxation towards chi*(m) with the
+  // exact timescale tau_chi -- the mirror of the memory's own relaxation towards g(P).
+  const double Sswitch = use_switching ? p*SwitchingSource(chi_eff, m_eff) : 0.;
 
   const double Dphichi = phichiTransport + Dchi*phenotypeDiffusion + Sswitch
                        + (growTogether ? chi_eff*R : R);
@@ -526,12 +543,15 @@ option_list ConfluentMemory::GetOptions()
      "preferred value of one half Tr(Q^2) per unit density")
     ("Dchi", opt::value<double>(&Dchi),
      "phenotype diffusion coefficient")
-    ("Achi", opt::value<double>(&Achi),
-     "phenotype switching double-well barrier")
-    ("Ochi", opt::value<double>(&Ochi),
-     "phenotype switching bias strength, V = Ochi*(m-mc)*chi")
+    ("tau-chi", opt::value<double>(&tau_chi),
+     "phenotype relaxation time; tau_chi*D_t chi = chi*(m) - chi. "
+     "<= 0 disables switching (frozen-chi control)")
+    ("chi-width", opt::value<double>(&chi_width),
+     "width of the tanh in chi*(m); small = hard switch, large = linear response")
+    ("switch-sign", opt::value<int>(&switch_sign),
+     "+1: compression drives chi towards passive/grow (contact inhibition); -1: opposite")
     ("mc", opt::value<double>(&mc),
-     "memory threshold in the switching potential")
+     "memory threshold in chi*(m)")
     ("growTogether", opt::value<int>(&growTogether),
      "phi*chi growth source: 0 uses R, 1 uses chi*R (chi-preserving)")
     ("chi-config", opt::value<string>(&chi_config),

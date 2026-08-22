@@ -1,0 +1,56 @@
+# 20260822 validation of the NEW relaxational phenotype dynamics.
+# tau-m = 1e12 freezes the memory at m0 = 1, so chi*(m) is a constant and chi must relax
+# to it exactly exponentially:  chi(t) = chi* + (chi0 - chi*) exp(-t/tau_chi), with
+# chi* = .5*(1 + tanh((1 - 0.5)/0.15)) = 0.9987545.  zeta = 0 so there is no flow at all
+# and transport cannot contaminate the test.
+model    = confluent-memory
+config   = full
+nsteps   = 2000
+nstart   = 0000
+ninfo    = 100
+LX       = 50
+LY       = 50
+bc       = 0
+seed     = 1001
+GammaQ   = 0.03
+GammaP   = 0.05
+zeta     = 0
+zetaI    = 0
+friction = 100
+rho      = 40
+xi       = 1
+CC       = 0.1
+LL       = 0.5
+B        = 1.0
+Snem     = 1
+conc     = 1.1
+phi-critical = 0.3
+initial-order = 1
+noise    = 0
+angle    = 0
+director-config = uniform
+defect-sep      = 0
+chi-config = uniform
+chi0       = 0.5
+chi-noise  = 0
+chi-length = 5
+Dchi       = 0
+tau-chi    = 200
+chi-width  = 0.15
+switch-sign = 1
+mc         = 0.5
+growTogether = 1
+alpha        = 0
+beta         = 0
+division-rate   = 0
+division-time   = 1
+division-radius = 0
+division-phi-critical-factor = 0
+death-rate   = 0
+death-time   = 1
+death-radius = 0
+tau-m      = 1e12
+pmem       = 0
+pmem-width = 0
+m0         = 1.0
+phi-floor  = 1e-3
