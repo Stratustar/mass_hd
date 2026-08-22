@@ -10,7 +10,7 @@ protected:
   void ComputeDryVelocity();
   /** Compute velocity at one node from div(sigma) = friction*u */
   void ComputeDryVelocityAtNode(unsigned);
-  /** Update Q, phi, and m without LB collision/streaming */
+  /** Update Q, phi, and phichi without LB collision/streaming */
   void UpdateDryFieldsAtNode(unsigned, bool);
 
   /** Update fields using predictor-corrector method */

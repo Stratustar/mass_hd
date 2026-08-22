@@ -25,11 +25,26 @@ void GoOrGrow::Initialize()
     throw error_msg("chi-length must be non-negative.");
   if(relax_dt < 0)
     throw error_msg("relax-dt must be non-negative.");
+  if(switch_drive != "pressure" && switch_drive != "memory")
+    throw error_msg("switch-drive must be 'pressure' or 'memory'.");
+  if(switch_drive == "memory" && tau_m <= 0)
+    throw error_msg("switch-drive=memory requires tau-m > 0.");
+  if(pmem_width < 0)
+    throw error_msg("pmem-width must be non-negative.");
+  if(m0 < 0 || m0 > 1)
+    throw error_msg("m0 must lie in [0,1].");
+
+  use_memory = (switch_drive == "memory");
 
   chi.SetSize(LX, LY, Type);
+  phichi.SetSize(LX, LY, Type);
+  phichiN.SetSize(LX, LY, Type);
+  phichi_tmp.SetSize(LX, LY, Type);
   m.SetSize(LX, LY, Type);
-  mN.SetSize(LX, LY, Type);
-  m_tmp.SetSize(LX, LY, Type);
+  phim.SetSize(LX, LY, Type);
+  phimN.SetSize(LX, LY, Type);
+  phim_tmp.SetSize(LX, LY, Type);
+  sigma_bulk_nosurf.SetSize(LX, LY, Type);
 }
 
 void GoOrGrow::Configure()
@@ -73,16 +88,21 @@ void GoOrGrow::ConfigureFromFrame()
   load_into("QQyx", QQyx);
   load_into("phi",  phi);
 
-  // Phenotype: carry over the snapshot's chi (via m), or reset it uniform (=chi0)
+  // Phenotype: carry over the snapshot's chi (via phichi), or reset it uniform (=chi0)
   // for the homogeneous control.
   if(init_frame_uniform_chi)
     for(unsigned k=0; k<DomainSize; ++k)
-      m[k] = phi[k]*chi0;
+      phichi[k] = phi[k]*chi0;
   else
-    load_into("m", m);
+    load_into("phichi", phichi);
+
+  // The mechanical memory always carries over from the snapshot: it is a property
+  // of the material, and a pre-memory run simply stores phim = 0 everywhere.
+  load_into("phim", phim);
 
   BoundaryConditionsFields();
-  ProjectM();
+  ProjectDensity(phichi);
+  ProjectDensity(phim);
   UpdatePhenotypeQuantities();
 
   // Start hydrodynamics from rest, as after dry relaxation on the normal path.
@@ -220,10 +240,10 @@ void GoOrGrow::ConfigurePhiNoise()
     for(unsigned k=0; k<DomainSize; ++k)
     {
       const auto& d = get_neighbours(k);
-      m_tmp[k] = chi[k] + smooth_rate*laplacian(chi, d, sD);
+      phichi_tmp[k] = chi[k] + smooth_rate*laplacian(chi, d, sD);
     }
 
-    swap(chi.get_data(), m_tmp.get_data());
+    swap(chi.get_data(), phichi_tmp.get_data());
     BoundaryConditionsFields();
   }
 
@@ -272,10 +292,10 @@ void GoOrGrow::ConfigurePhenotype()
       for(unsigned k=0; k<DomainSize; ++k)
       {
         const auto& d = get_neighbours(k);
-        m_tmp[k] = chi[k] + smooth_rate*laplacian(chi, d, sD);
+        phichi_tmp[k] = chi[k] + smooth_rate*laplacian(chi, d, sD);
       }
 
-      swap(chi.get_data(), m_tmp.get_data());
+      swap(chi.get_data(), phichi_tmp.get_data());
       BoundaryConditionsFields();
     }
 
@@ -312,9 +332,13 @@ void GoOrGrow::ConfigurePhenotype()
     throw error_msg("error: chi configuration '", chi_config, "' unknown.");
 
   for(unsigned k=0; k<DomainSize; ++k)
-    m[k] = phi[k]*chi[k];
+  {
+    phichi[k] = phi[k]*chi[k];
+    phim[k] = phi[k]*m0;
+  }
 
-  ProjectM();
+  ProjectDensity(phichi);
+  ProjectDensity(phim);
   UpdatePhenotypeQuantities();
   BoundaryConditionsFields();
 }
@@ -326,11 +350,16 @@ void GoOrGrow::UpdatePhenotypeQuantities()
     if(!HasPhenotypeMaterial(k))
     {
       phi[k] = 0.;
-      m[k] = 0.;
+      phichi[k] = 0.;
       chi[k] = 0.;
+      phim[k] = 0.;
+      m[k] = 0.;
     }
     else
-      chi[k] = m[k]/phi[k];
+    {
+      chi[k] = phichi[k]/phi[k];
+      m[k] = phim[k]/phi[k];
+    }
   }
 
   BoundaryConditionsFields();
@@ -356,12 +385,12 @@ double GoOrGrow::MaskedPhiFaceIncrement(unsigned k, unsigned neighbour, double i
   return HasMaterialFace(k, neighbour) ? increment : 0.;
 }
 
-double GoOrGrow::LocalMaterialChi(unsigned k, bool& found) const
+double GoOrGrow::LocalMaterialValue(const ScalarField& fld, unsigned k, bool& found) const
 {
   if(HasPhenotypeMaterial(k))
   {
     found = true;
-    return chi[k];
+    return fld[k];
   }
 
   const auto& d = get_neighbours(k);
@@ -371,7 +400,7 @@ double GoOrGrow::LocalMaterialChi(unsigned k, bool& found) const
   for(unsigned q=1; q<9; ++q)
     if(HasPhenotypeMaterial(d[q]))
     {
-      sum += chi[d[q]];
+      sum += fld[d[q]];
       ++count;
     }
 
@@ -379,39 +408,56 @@ double GoOrGrow::LocalMaterialChi(unsigned k, bool& found) const
   return found ? sum/count : 0.;
 }
 
-double GoOrGrow::MaterialChi(unsigned preferred, unsigned fallback) const
+double GoOrGrow::MaterialValue(const ScalarField& fld, unsigned preferred,
+                               unsigned fallback) const
 {
   if(HasPhenotypeMaterial(preferred))
-    return chi[preferred];
+    return fld[preferred];
   if(HasPhenotypeMaterial(fallback))
-    return chi[fallback];
+    return fld[fallback];
 
   bool found = false;
-  const double preferred_chi = LocalMaterialChi(preferred, found);
+  const double preferred_value = LocalMaterialValue(fld, preferred, found);
   if(found)
-    return preferred_chi;
+    return preferred_value;
 
-  const double fallback_chi = LocalMaterialChi(fallback, found);
+  const double fallback_value = LocalMaterialValue(fld, fallback, found);
   if(found)
-    return fallback_chi;
+    return fallback_value;
 
   return 0.;
 }
 
-double GoOrGrow::TransportFaceChi(unsigned k, unsigned neighbour, double dphi_k) const
+double GoOrGrow::TransportFaceValue(const ScalarField& fld, unsigned k,
+                                    unsigned neighbour, double dphi_k) const
 {
-  return dphi_k >= 0 ? MaterialChi(neighbour, k) : MaterialChi(k, neighbour);
+  return dphi_k >= 0 ? MaterialValue(fld, neighbour, k)
+                     : MaterialValue(fld, k, neighbour);
 }
 
-void GoOrGrow::ProjectM()
+double GoOrGrow::MemorySource(unsigned k, double m_eff) const
+{
+  // Mechanical pressure that drives the memory: half-trace of the stress with the
+  // phase-field surface contribution removed (a purely local function of the node).
+  const double press = -sigma_bulk_nosurf[k];
+  // g(P): smoothed step of unit amplitude, so m relaxes towards 1 above threshold
+  // and towards 0 below it, i.e. m in [0,1] is a recent-time-above-threshold duty
+  // cycle. pmem_width = 0 recovers the sharp step.
+  const double g = pmem_width > 0
+    ? .5*(1 + tanh((press - pmem)/pmem_width))
+    : (press > pmem ? 1. : 0.);
+  return phi[k]*(g - m_eff)/tau_m;
+}
+
+void GoOrGrow::ProjectDensity(ScalarField& fld)
 {
   for(unsigned k=0; k<DomainSize; ++k)
   {
     const double upper = phi[k] > 0 ? phi[k] : 0.;
-    if(m[k] < 0)
-      m[k] = 0;
-    else if(m[k] > upper)
-      m[k] = upper;
+    if(fld[k] < 0)
+      fld[k] = 0;
+    else if(fld[k] > upper)
+      fld[k] = upper;
   }
 }
 
@@ -460,8 +506,9 @@ void GoOrGrow::UpdateQuantitiesAtNode(unsigned k)
   // computation of sigma...
   // ... on-diagonal stress components
   const double sigma_surface_bulk = f_surface - mu_surface*p;
-  const double sigmaB = f_compress + .5*CC*term*term
-    - (mu_compress + CC*Snem*term)*p
+  const double sigmaB_nosurf = f_compress + .5*CC*term*term
+    - (mu_compress + CC*Snem*term)*p;
+  const double sigmaB = sigmaB_nosurf
     + (surface_stress ? sigma_surface_bulk : 0.);
   const double active_prefactor = zeta*p*(1-MaterialChi(k, k));
   const double phase_xx = surface_stress ? .5*KK*(dyPhi*dyPhi-dxPhi*dxPhi) : 0.;
@@ -493,6 +540,7 @@ void GoOrGrow::UpdateQuantitiesAtNode(unsigned k)
   sigmaXY[k] =  sigmaS + sigmaA;
   sigmaYX[k] =  sigmaS - sigmaA;
   sigma_bulk[k] = sigmaB + zetaI * (conc-p);
+  sigma_bulk_nosurf[k] = sigmaB_nosurf + zetaI * (conc-p);
   sigma_elastic_xx[k] = sigmaF - phase_xx + active_prefactor*Qxx;
   sigma_elastic_yx[k] = sigmaS - phase_yx + active_prefactor*Qyx;
   sigma_phase_field_xx[k] = phase_xx;
@@ -533,10 +581,16 @@ void GoOrGrow::UpdateFields(bool first)
     const double chi_eff = MaterialChi(k, k);
     const double R = chi_eff*phi[k]*growth_rate;
 
-    const double dphi_px_raw = GammaP*(MU[d[1]] - MU[k]) - .5*ux_phi[d[1]];
-    const double dphi_mx_raw = GammaP*(MU[d[2]] - MU[k]) + .5*ux_phi[d[2]];
-    const double dphi_py_raw = GammaP*(MU[d[3]] - MU[k]) - .5*uy_phi[d[3]];
-    const double dphi_my_raw = GammaP*(MU[d[4]] - MU[k]) + .5*uy_phi[d[4]];
+    // Shared (pair-symmetric) face momentum .5*(u_phi[k]+u_phi[n]), as in the dry
+    // model: it makes each per-face increment antisymmetric (dphi_px@k = -dphi_mx@n),
+    // which is what lets the upwind-chi weighting below conserve Sum(phichi). The
+    // extra .5*u_phi[k] terms cancel over the four faces, so phiRawTransport -- and
+    // hence phi itself, which is integrated by Lyotropic::UpdateFieldsAtNode -- is
+    // unchanged except where the vacuum mask breaks the cancellation.
+    const double dphi_px_raw = GammaP*(MU[d[1]] - MU[k]) - .5*(ux_phi[k] + ux_phi[d[1]]);
+    const double dphi_mx_raw = GammaP*(MU[d[2]] - MU[k]) + .5*(ux_phi[k] + ux_phi[d[2]]);
+    const double dphi_py_raw = GammaP*(MU[d[3]] - MU[k]) - .5*(uy_phi[k] + uy_phi[d[3]]);
+    const double dphi_my_raw = GammaP*(MU[d[4]] - MU[k]) + .5*(uy_phi[k] + uy_phi[d[4]]);
     const double dphi_px = MaskedPhiFaceIncrement(k, d[1], dphi_px_raw);
     const double dphi_mx = MaskedPhiFaceIncrement(k, d[2], dphi_mx_raw);
     const double dphi_py = MaskedPhiFaceIncrement(k, d[3], dphi_py_raw);
@@ -546,7 +600,7 @@ void GoOrGrow::UpdateFields(bool first)
     const double phiTransport = dphi_px + dphi_mx + dphi_py + dphi_my
       - (conserve_phi ? (countphi-totalphi)/DomainSize : 0.);
     const double phiTransportCorrection = phiTransport - phiRawTransport;
-    const double mTransport =
+    const double phichiTransport =
       TransportFaceChi(k, d[1], dphi_px)*dphi_px
     + TransportFaceChi(k, d[2], dphi_mx)*dphi_mx
     + TransportFaceChi(k, d[3], dphi_py)*dphi_py
@@ -562,18 +616,38 @@ void GoOrGrow::UpdateFields(bool first)
     - .5*(phi[k] + phi[d[2]])*(chi_eff - chi_mx)
     + .5*(phi[d[3]] + phi[k])*(chi_py - chi_eff)
     - .5*(phi[k] + phi[d[4]])*(chi_eff - chi_my);
+    // Mechanical memory: phim = phi*m rides the SAME face increments as phichi (the
+    // full phi flux J = phi*v - GammaP*grad(mu)), so
+    //   d_t(phi*m) + div(m*J) = phi*(g(P)-m)/tau_m + m*R,
+    // the conservative form of tau_m * D_t m = g(P) - m along the biomass. The m*R
+    // term makes new biomass inherit the memory of the material it grew from.
+    const double m_eff = use_memory ? MaterialM(k, k) : 0.;
+    double Dphim = 0.;
+    if(use_memory)
+    {
+      const double phimTransport =
+        TransportFaceM(k, d[1], dphi_px)*dphi_px
+      + TransportFaceM(k, d[2], dphi_mx)*dphi_mx
+      + TransportFaceM(k, d[3], dphi_py)*dphi_py
+      + TransportFaceM(k, d[4], dphi_my)*dphi_my
+      - m_eff*(conserve_phi ? (countphi-totalphi)/DomainSize : 0.);
+      Dphim = phimTransport + MemorySource(k, m_eff) + m_eff*R;
+    }
+
+    // Phenotype switching is driven either by the instantaneous local pressure or by
+    // the accumulated mechanical memory: V(chi,m) = Ochi*(m-mc)*chi.
     const double press = -sigma_bulk[k];
     const double dVdChi =
       2*Achi*chi_eff*(1-chi_eff)*(1-2*chi_eff)
-    + Ochi*(press-pswitch);
+    + Ochi*(use_memory ? (m_eff-mc) : (press-pswitch));
     const double Sswitch = -phi[k]*dVdChi;
-    const double mGrowth = growTogether ? chi_eff*R : R;
-    const double Dm = mTransport + Dchi*phenotypeDiffusion + Sswitch + mGrowth;
+    const double phichiGrowth = growTogether ? chi_eff*R : R;
+    const double Dphichi = phichiTransport + Dchi*phenotypeDiffusion + Sswitch + phichiGrowth;
 
     // normal lyotropic update
     Lyotropic::UpdateFieldsAtNode(k, first);
 
-    // Apply growth with the same predictor-corrector timing used for m.
+    // Apply growth with the same predictor-corrector timing used for phichi.
     if(first)
     {
       phn[k] += .5*(phiTransportCorrection + R);
@@ -584,21 +658,33 @@ void GoOrGrow::UpdateFields(bool first)
 
     if(first)
     {
-      mN[k] = m[k] + .5*Dm;
-      m_tmp[k] = m[k] + Dm;
+      phichiN[k] = phichi[k] + .5*Dphichi;
+      phichi_tmp[k] = phichi[k] + Dphichi;
+
+      phimN[k] = phim[k] + .5*Dphim;
+      phim_tmp[k] = phim[k] + Dphim;
     }
     else
-      m_tmp[k] = mN[k] + .5*Dm;
+    {
+      phichi_tmp[k] = phichiN[k] + .5*Dphichi;
+      phim_tmp[k] = phimN[k] + .5*Dphim;
+    }
 
+    // Both carried densities obey 0 <= . <= phi, since chi and m each lie in [0,1].
     const double upper = phi_tmp[k] > 0 ? phi_tmp[k] : 0.;
-    if(m_tmp[k] < 0)
-      m_tmp[k] = 0;
-    else if(m_tmp[k] > upper)
-      m_tmp[k] = upper;
+    if(phichi_tmp[k] < 0)
+      phichi_tmp[k] = 0;
+    else if(phichi_tmp[k] > upper)
+      phichi_tmp[k] = upper;
+    if(phim_tmp[k] < 0)
+      phim_tmp[k] = 0;
+    else if(phim_tmp[k] > upper)
+      phim_tmp[k] = upper;
   }
 
   swap(phi.get_data(), phi_tmp.get_data());
-  swap(m.get_data(), m_tmp.get_data());
+  swap(phichi.get_data(), phichi_tmp.get_data());
+  swap(phim.get_data(), phim_tmp.get_data());
   UpdatePhenotypeQuantities();
 }
 
@@ -614,19 +700,25 @@ void GoOrGrow::BoundaryConditionsFields()
     // channel
     case 1:
     case 2:
-      m.ApplyNeumannChannel();
+      phichi.ApplyNeumannChannel();
       chi.ApplyNeumannChannel();
+      phim.ApplyNeumannChannel();
+      m.ApplyNeumannChannel();
       break;
     // box
     case 3:
     case 4:
-      m.ApplyNeumann();
+      phichi.ApplyNeumann();
       chi.ApplyNeumann();
+      phim.ApplyNeumann();
+      m.ApplyNeumann();
       break;
     // pbc with bdry layer
     default:
-      m.ApplyPBC();
+      phichi.ApplyPBC();
       chi.ApplyPBC();
+      phim.ApplyPBC();
+      m.ApplyPBC();
   }
 }
 
@@ -650,7 +742,7 @@ option_list GoOrGrow::GetOptions()
     ("pswitch", opt::value<double>(&pswitch),
      "pressure threshold for phenotype switching bias")
     ("growTogether", opt::value<int>(&growTogether),
-     "m growth source: 0 uses R, 1 uses chi*R")
+     "phichi growth source: 0 uses R, 1 uses chi*R")
     ("surface-stress", opt::value<int>(&surface_stress),
      "whether phase-field surface terms contribute to stress and velocity")
     ("chi-config", opt::value<string>(&chi_config),
@@ -676,7 +768,19 @@ option_list GoOrGrow::GetOptions()
     ("relax-phi", opt::value<int>(&relax_phi),
      "relax phi by Cahn-Hilliard free-energy descent before official dynamics")
     ("relax-Q", opt::value<int>(&relax_Q),
-     "relax Q by molecular-field free-energy descent before official dynamics");
+     "relax Q by molecular-field free-energy descent before official dynamics")
+    ("switch-drive", opt::value<string>(&switch_drive),
+     "variable driving phenotype switching: pressure or memory")
+    ("tau-m", opt::value<double>(&tau_m),
+     "relaxation time of the mechanical memory m")
+    ("pmem", opt::value<double>(&pmem),
+     "pressure threshold of the memory source g(P)")
+    ("pmem-width", opt::value<double>(&pmem_width),
+     "smoothing width of g(P); 0 gives a sharp step")
+    ("mc", opt::value<double>(&mc),
+     "memory threshold in the switching potential V = Ochi*(m-mc)*chi")
+    ("m0", opt::value<double>(&m0),
+     "initial mechanical memory");
 
   return options;
 }
