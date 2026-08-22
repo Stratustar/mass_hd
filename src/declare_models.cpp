@@ -11,6 +11,7 @@
 #include "models/lyotropic-with-division-stress.hpp"
 #include "models/go-or-grow.hpp"
 #include "models/dry-go-or-grow.hpp"
+#include "models/confluent-memory.hpp"
 #include "models/nematic.hpp"
 #include "models/dry.hpp"
 #include "models/polar.hpp"
@@ -66,6 +67,17 @@ void DeclareModels()
       "Go-or-grow model with the same Q, phi, and phenotype dynamics, but "
       "with velocity solved from overdamped force balance instead of LB "
       "hydrodynamics."
+      );
+
+  declare_model<ConfluentMemory>(
+      "confluent-memory",
+      "Confluent proliferating active nematic with mechanical memory. Dry "
+      "(overdamped) and phase-field-free: no free boundary, no vacuum, the "
+      "layer is held together by the one-sided crowding modulus B alone. "
+      "Carries a phenotype chi and a mechanical memory m, both transported "
+      "with the cell density; m obeys tau_m*D_t m = g(P) - m with g a smoothed "
+      "step in the pressure, and drives phenotype switching through "
+      "V(chi,m) = Ochi*(m-mc)*chi."
       );
 
   declare_model<Nematic>(
