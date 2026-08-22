@@ -1,0 +1,64 @@
+# 20260819 cm_pcscan: fix for the confluent breakdown found in cm_zscan.
+# cm_zscan showed that no activity is both turbulent and layer-preserving at
+# phi-critical=1.0: zeta<=1 merely coarsens (Ndef and v_rms decay monotonically),
+# while zeta>=2 tears the density open (phi -> 0.004 by t=3000) and trips the
+# phi-floor guard. Cause: the one-sided crowding gives d(mu)/d(phi) = B+CC*Snem^2
+# = 1.1 above phi_c but only CC*Snem^2 = 0.1 below it, and the mean density 1.1
+# sits just 10% above the cliff, so any modest rarefaction loses all stiffness.
+# FIX (keeps the model one-sided, as chosen): move the cliff far below the
+# operating density, phi-critical 1.0 -> 0.3. The stiffness at the operating
+# point is unchanged, P only gains a constant baseline (0.105 -> 0.66) which has
+# zero divergence and is absorbed by the pmem calibration, and the nematic sector
+# (term = Snem*phi - q^2) is untouched, so xi_N and the core structure do not move.
+# Short 5000-step probe at zeta = 1, 2, 3, 5 to find the largest activity the
+# layer now survives, and whether it is turbulent.
+model                       = confluent-memory
+config                      = full
+nsteps                      = 5000
+nstart                      = 0
+ninfo                       = 500
+LX                          = 200
+LY                          = 200
+bc                          = 0
+seed                        = 1001
+GammaQ                      = 0.03
+GammaP                      = 0.05
+zeta                        = 3
+zetaI                       = 0
+friction                    = 100
+rho                         = 40
+xi                          = 1
+CC                          = 0.1
+LL                          = 0.5
+B                           = 1.0
+Snem                        = 1
+conc                        = 1.1
+phi-critical                = 0.3
+initial-order               = 1
+noise                       = 1
+angle                       = 0
+director-config             = uniform
+defect-sep                  = 0
+chi-config                  = uniform
+chi0                        = 0.5
+chi-noise                   = 0
+chi-length                  = 5
+Dchi                        = 0
+Achi                        = 0
+Ochi                        = 0
+mc                          = 0.5
+growTogether                = 1
+alpha                       = 0
+beta                        = 0
+division-rate               = 0
+division-time               = 1
+division-radius             = 0
+division-phi-critical-factor= 0
+death-rate                  = 0
+death-time                  = 1
+death-radius                = 0
+tau-m                       = 1000
+pmem                        = 0
+pmem-width                  = 0
+m0                          = 0.5
+phi-floor                   = 0.001
