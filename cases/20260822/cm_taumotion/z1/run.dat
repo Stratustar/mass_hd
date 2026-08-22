@@ -1,0 +1,60 @@
+# 20260822 cm_taumotion: measure tau_motion(zeta) at LONG time, switching off.
+# Why: the 20260819 cm_tscan grid did not straddle tau_motion. With tau_motion = 99 at
+# zeta=5 and 9148 at zeta=1, the shared grid {100,1000,10000} put tau_motion at the
+# BOTTOM of the range for one family and at the TOP for the other, so only 4 of the 6
+# strict orderings were realised and each by a single case; tau_motion was never
+# cleanly in the middle. Worse, zeta=1 had not reached a steady state at t=28800
+# (defects still decaying 80 -> 18), so its tau_motion was still drifting.
+# This scan runs 60000 steps so tau_motion can be read off a settled state, and covers
+# the intermediate activities so a second (non-turbulent) activity can be chosen whose
+# tau_motion is small enough for a {0.1,1,10}*tau_motion grid to fit inside a run.
+model                       = confluent-memory
+config                      = full
+nsteps                      = 60000
+nstart                      = 0
+ninfo                       = 1000
+LX                          = 200
+LY                          = 200
+bc                          = 0
+seed                        = 1001
+GammaQ                      = 0.03
+GammaP                      = 0.05
+zeta                        = 1
+zetaI                       = 0
+friction                    = 100
+rho                         = 40
+xi                          = 1
+CC                          = 0.1
+LL                          = 0.5
+B                           = 1.0
+Snem                        = 1
+conc                        = 1.1
+phi-critical                = 0.3
+initial-order               = 1
+noise                       = 1
+angle                       = 0
+director-config             = uniform
+defect-sep                  = 0
+chi-config                  = uniform
+chi0                        = 0.5
+chi-noise                   = 0
+chi-length                  = 5
+Dchi                        = 0
+Achi                        = 0
+Ochi                        = 0
+mc                          = 0.5
+growTogether                = 1
+alpha                       = 0
+beta                        = 0
+division-rate               = 0
+division-time               = 1
+division-radius             = 0
+division-phi-critical-factor= 0
+death-rate                  = 0
+death-time                  = 1
+death-radius                = 0
+tau-m                       = 1000
+pmem                        = 0.53
+pmem-width                  = 0.17
+m0                          = 0.5
+phi-floor                   = 0.001
