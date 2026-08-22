@@ -1,0 +1,77 @@
+# 20260819 cm_tscan: THE MAIN TIMESCALE SCAN for the confluent-layer-with-memory project.
+# Three timescales compete: tau_motion (set by the activity), tau_m (mechanoadaptation) and
+# tau_chi (phenotype switching). Activity is FIXED per family to fix tau_motion; tau_m and
+# tau_chi are varied. Proliferation is OFF (alpha=0) and Dchi=0, so exactly three timescales
+# are in play and no fourth one is smuggled in.
+#
+# tau_chi is realised as Ochi = -1/tau_chi. The switching potential V = Ochi*(m-mc)*chi is
+# linear in chi, so dV/dchi is chi-independent and chi drifts at rate |Ochi|*|m-mc|: tau_chi
+# is a TRAVERSAL time for one unit of chi, and the actual traversal is tau_chi/|m-mc|.
+# Ochi < 0 means sustained compression drives chi UP, towards the passive/grow phenotype --
+# the contact-inhibition reading. Since activity is zeta*phi*(1-chi), that is a NEGATIVE
+# feedback and therefore self-limiting.
+#
+# ACTIVITIES (from cm_pcscan, calibrated in cm_calib over the steady window t >= 10000):
+#   zeta=5 TURBULENT: <Ndef>=221 steady, v_rms=1.25e-2, tau_motion = 1/<|E|> = 99 steps
+#   zeta=1 LAMINAR  : Ndef still coarsening 80->18, v_rms=6.3e-4, tau_motion = 9148 steps
+# pmem is the MEDIAN in-layer pressure of that activity's own Ochi=0 baseline, and
+# pmem-width is its IQR/2, so the memory has comparable dynamic range in both families.
+#
+# GRID. tau_motion differs 92x between the two families while the run is only 30000 steps,
+# so a per-family {0.1,1,10}*tau_motion grid is impossible (10*9148 = 91480 > 30000).
+# Both families instead share the absolute log grid tau_m, tau_chi in {100, 1000, 10000},
+# which lands at tau/tau_motion = {1, 10, 101} for zeta=5 and {0.011, 0.11, 1.1} for zeta=1.
+# The two families are complementary halves of the ratio plane, together spanning four
+# decades, and the tau_m-vs-tau_chi ordering is fully covered within each family.
+#
+# THIS CASE: zeta=5, tau_m=100 (1.01 x tau_motion), tau_chi=10000 (101 x tau_motion), Ochi=-1/tau_chi.
+model                       = confluent-memory
+config                      = full
+nsteps                      = 30000
+nstart                      = 0
+ninfo                       = 200
+LX                          = 200
+LY                          = 200
+bc                          = 0
+seed                        = 1001
+GammaQ                      = 0.03
+GammaP                      = 0.05
+zeta                        = 5
+zetaI                       = 0
+friction                    = 100
+rho                         = 40
+xi                          = 1
+CC                          = 0.1
+LL                          = 0.5
+B                           = 1.0
+Snem                        = 1
+conc                        = 1.1
+phi-critical                = 0.3
+initial-order               = 1
+noise                       = 1
+angle                       = 0
+director-config             = uniform
+defect-sep                  = 0
+chi-config                  = uniform
+chi0                        = 0.5
+chi-noise                   = 0
+chi-length                  = 5
+Dchi                        = 0
+Achi                        = 0
+Ochi                        = -0.0001
+mc                          = 0.5
+growTogether                = 1
+alpha                       = 0
+beta                        = 0
+division-rate               = 0
+division-time               = 1
+division-radius             = 0
+division-phi-critical-factor= 0
+death-rate                  = 0
+death-time                  = 1
+death-radius                = 0
+tau-m                       = 100
+pmem                        = 0.528
+pmem-width                  = 0.17
+m0                          = 0.5
+phi-floor                   = 0.001
