@@ -1,0 +1,88 @@
+# 20260822 cm_regime: the timescale-ordering scan, redone properly.
+#
+# WHAT WAS WRONG BEFORE. The 20260819 cm_tscan used one absolute grid {100,1000,10000} for
+# both activities. With tau_motion = 99 at zeta=5 and 9148 at zeta=1 that put tau_motion at
+# the BOTTOM of the range for one family and at the TOP for the other: only 4 of the 6
+# strict orderings were realised, each by a single case, and tau_motion was never cleanly
+# in the middle. tau_chi was also only nominal -- the linear switching potential made chi
+# drift at a constant rate, so its true timescale was 2.2-9.0x longer than 1/|Ochi| and the
+# discrepancy was correlated with tau_m.
+#
+# WHAT CHANGED. (1) Switching is now a RELAXATION, tau_chi*D_t chi = chi*(m) - chi, so
+# tau_chi is exact and directly comparable to tau_m (validated to 8e-7 against the analytic
+# exponential). (2) The grid is set as RATIOS to each activity's own measured tau_motion.
+# (3) zeta=1 is replaced by zeta=3: measured over 60000 steps, zeta=1 has tau_motion=12080,
+# a third of a run and still drifting, whereas zeta=3 has tau_motion=352 while remaining
+# clearly below the turbulence threshold (defects decay to ~23; zeta=4 is the first activity
+# with a flat defect population). (4) L=400, because at L=200 the phenotype correlation
+# function was corrupted beyond r~50 -- C_chichi(L/2) = -0.44, about two domains per box.
+# The blob size itself (~70 lattice) is physical: it is unchanged at L=400, where
+# C_chichi(L/2) = +0.03.
+#
+# CALIBRATION (switching off, steady window t>=30000, from cm_taumotion):
+#   zeta=5 TURBULENT : tau_motion = 89,  pmem = 0.485, IQR/2 = 0.196
+#   zeta=3 NON-TURB  : tau_motion = 352, pmem = 0.582, IQR/2 = 0.0895
+#
+# DESIGN. Two families of 1-D cuts, so each requested regime is a point on a curve:
+#   family tc1  : tau_chi = 1  * tau_motion   (switching comparable to the flow)
+#   family tc10 : tau_chi = 10 * tau_motion   (switching slower than the flow)
+# and along each, tau_m/tau_motion in {0.1, 0.3, 1, 3, 10, 30}: much faster than both,
+# comparable, and much slower than both. The lower end stops at 0.1 because tau_m = 8.9
+# steps already gives dt/tau_m = 0.11; the upper end stops at 30 so the slowest case
+# (tau_m = 10560 at zeta=3) still relaxes ~6 times within the 60000-step run.
+# switch-sign = +1 (compression -> passive, a self-limiting feedback), chi-width = 0.15
+# held fixed (comparable to the typical spread of m, so chi*(m) is neither a hard switch
+# nor a purely linear response).
+#
+# THIS CASE: zeta=5, tau_chi = 10 x tau_motion = 890, tau_m = 10 x tau_motion = 890.0.
+model                         = confluent-memory
+config                        = full
+nsteps                        = 60000
+nstart                        = 0
+ninfo                         = 500
+LX                            = 400
+LY                            = 400
+bc                            = 0
+seed                          = 1001
+GammaQ                        = 0.03
+GammaP                        = 0.05
+zeta                          = 5
+zetaI                         = 0
+friction                      = 100
+rho                           = 40
+xi                            = 1
+CC                            = 0.1
+LL                            = 0.5
+B                             = 1.0
+Snem                          = 1
+conc                          = 1.1
+phi-critical                  = 0.3
+initial-order                 = 1
+noise                         = 1
+angle                         = 0
+director-config               = uniform
+defect-sep                    = 0
+chi-config                    = uniform
+chi0                          = 0.5
+chi-noise                     = 0
+chi-length                    = 5
+Dchi                          = 0
+tau-chi                       = 890.0
+chi-width                     = 0.15
+switch-sign                   = 1
+mc                            = 0.5
+growTogether                  = 1
+alpha                         = 0
+beta                          = 0
+division-rate                 = 0
+division-time                 = 1
+division-radius               = 0
+division-phi-critical-factor  = 0
+death-rate                    = 0
+death-time                    = 1
+death-radius                  = 0
+tau-m                         = 890.0
+pmem                          = 0.485
+pmem-width                    = 0.196
+m0                            = 0.5
+phi-floor                     = 0.001
