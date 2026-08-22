@@ -1,0 +1,57 @@
+# 20260819 cm_zscan: activity threshold scan for the new confluent-memory model.
+# Switching OFF (Ochi=0) so this is the pure active-nematic baseline, proliferation OFF
+# (alpha=0), chi uniform at 0.5. Purpose: locate the onset of defect turbulence so the
+# timescale study can pick one activity INSIDE the turbulent state and one OUTSIDE it.
+# The 20260716 zeta_c ~ 1.5 was measured with the phase field present and does NOT carry
+# over: confluent-memory has no AA/KK terms, so the free energy is different.
+# 200x200, 10000 steps, 11 frames -- enough to see whether defects proliferate.
+model                       = confluent-memory
+config                      = full
+nsteps                      = 10000
+nstart                      = 0
+ninfo                       = 1000
+LX                          = 200
+LY                          = 200
+bc                          = 0
+seed                        = 1001
+GammaQ                      = 0.03
+GammaP                      = 0.05
+zeta                        = 0.5
+zetaI                       = 0
+friction                    = 100
+rho                         = 40
+xi                          = 1
+CC                          = 0.1
+LL                          = 0.5
+B                           = 1.0
+Snem                        = 1
+conc                        = 1.1
+phi-critical                = 1.0
+initial-order               = 1
+noise                       = 1
+angle                       = 0
+director-config             = uniform
+defect-sep                  = 0
+chi-config                  = uniform
+chi0                        = 0.5
+chi-noise                   = 0
+chi-length                  = 5
+Dchi                        = 0
+Achi                        = 0
+Ochi                        = 0
+mc                          = 0.5
+growTogether                = 1
+alpha                       = 0
+beta                        = 0
+division-rate               = 0
+division-time               = 1
+division-radius             = 0
+division-phi-critical-factor= 0
+death-rate                  = 0
+death-time                  = 1
+death-radius                = 0
+tau-m                       = 1000
+pmem                        = 0
+pmem-width                  = 0
+m0                          = 0.5
+phi-floor                   = 0.001
