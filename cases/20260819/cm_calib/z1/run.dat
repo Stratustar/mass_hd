@@ -1,0 +1,63 @@
+# 20260819 cm_calib: the Ochi=0 baseline pair for the timescale study. One run per
+# chosen activity, full length (30000 steps), switching decoupled so the memory
+# evolves as a pure diagnostic and the active nematic is unperturbed.
+# Activities chosen from cm_pcscan: zeta=5 is SUSTAINED TURBULENCE (defect number
+# bottoms out at t~1500 and then grows, v_rms rises monotonically to 1.13e-2, phi std
+# steady at 0.19), zeta=1 is NOT (defects decay 287 -> 48 monotonically, v_rms decays).
+# phi-critical = 0.3 throughout, the fix from cm_pcscan.
+# This pair delivers BOTH calibrations the main scan needs:
+#   (a) pmem = the median of P = -sigma_bulk over the layer, per activity, so that the
+#       memory has comparable dynamic range in the turbulent and laminar cases;
+#   (b) tau_motion, measured from the rms strain rate, which sets the grid of tau_m
+#       and tau_chi as fixed RATIOS to it rather than as absolute step counts.
+# 151 frames so these also serve as the no-feedback reference videos.
+model                       = confluent-memory
+config                      = full
+nsteps                      = 30000
+nstart                      = 0
+ninfo                       = 200
+LX                          = 200
+LY                          = 200
+bc                          = 0
+seed                        = 1001
+GammaQ                      = 0.03
+GammaP                      = 0.05
+zeta                        = 1
+zetaI                       = 0
+friction                    = 100
+rho                         = 40
+xi                          = 1
+CC                          = 0.1
+LL                          = 0.5
+B                           = 1.0
+Snem                        = 1
+conc                        = 1.1
+phi-critical                = 0.3
+initial-order               = 1
+noise                       = 1
+angle                       = 0
+director-config             = uniform
+defect-sep                  = 0
+chi-config                  = uniform
+chi0                        = 0.5
+chi-noise                   = 0
+chi-length                  = 5
+Dchi                        = 0
+Achi                        = 0
+Ochi                        = 0
+mc                          = 0.5
+growTogether                = 1
+alpha                       = 0
+beta                        = 0
+division-rate               = 0
+division-time               = 1
+division-radius             = 0
+division-phi-critical-factor= 0
+death-rate                  = 0
+death-time                  = 1
+death-radius                = 0
+tau-m                       = 1000
+pmem                        = 0
+pmem-width                  = 0
+m0                          = 0.5
+phi-floor                   = 0.001
