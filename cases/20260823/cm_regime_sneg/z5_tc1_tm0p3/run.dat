@@ -1,0 +1,76 @@
+# 20260823 cm_regime_sneg: the SAME timescale scan with the switching sign FLIPPED.
+#
+# switch-sign = -1, i.e. chi*(m) = .5*(1 - tanh((m-mc)/chi_width)): sustained compression
+# now drives chi DOWN, towards the motile/go phenotype (the escape branch) instead of the
+# passive one. Everything else -- activities, tau_motion, the {0.1,0.3,1,3,10,30} tau_m grid,
+# the tau_chi = 1x and 10x families, L=400, pmem, chi-width, mc -- is byte-identical to
+# 20260822/cm_regime, so any difference is attributable to the sign alone. In particular
+# pmem is deliberately NOT recalibrated, even though the feedback shifts the pressure
+# distribution, because recalibrating would confound the comparison.
+#
+# WHY THIS IS EXPECTED TO BEHAVE DIFFERENTLY. The 20260822 scan measured the closing link
+# of the loop and found it has the opposite sign to the naive expectation: suppressing the
+# flow RAISES the median pressure (0.484 -> 0.60-0.64 at zeta=5). With switch-sign=+1 that
+# makes the loop chi^ -> a_ -> flow_ -> P^ -> m^ -> chi^ SELF-REINFORCING, saturating at a
+# new higher-pressure fixed point. Flipping to -1 reverses it into a genuine NEGATIVE
+# feedback: chi_ -> a^ -> flow^ -> P_ -> m_ -> chi^. Negative feedback around a loop that
+# contains two lags (tau_m and tau_chi) is the textbook recipe for a limit cycle, so this
+# scan is the one where oscillations or travelling waves may appear, with a period set by
+# the two lags. 100000 steps (up from 60000) so that at least a few periods fit.
+#
+# RISK: if chi is driven to 0 the effective activity doubles relative to the frozen-chi
+# control (a = zeta*phi instead of zeta*phi*0.5), i.e. zeta=5 behaves like zeta=10. In
+# cm_zscan zeta=8 tore the layer open at phi-critical=1.0. phi-critical=0.3 is far more
+# robust, but a phi-floor abort in the zeta=5 family is a real possibility -- and would
+# itself locate the edge of validity for this branch.
+model                         = confluent-memory
+config                        = full
+nsteps                        = 100000
+nstart                        = 0
+ninfo                         = 500
+LX                            = 400
+LY                            = 400
+bc                            = 0
+seed                          = 1001
+GammaQ                        = 0.03
+GammaP                        = 0.05
+zeta                          = 5
+zetaI                         = 0
+friction                      = 100
+rho                           = 40
+xi                            = 1
+CC                            = 0.1
+LL                            = 0.5
+B                             = 1.0
+Snem                          = 1
+conc                          = 1.1
+phi-critical                  = 0.3
+initial-order                 = 1
+noise                         = 1
+angle                         = 0
+director-config               = uniform
+defect-sep                    = 0
+chi-config                    = uniform
+chi0                          = 0.5
+chi-noise                     = 0
+chi-length                    = 5
+Dchi                          = 0
+tau-chi                       = 89.0
+chi-width                     = 0.15
+switch-sign                   = -1
+mc                            = 0.5
+growTogether                  = 1
+alpha                         = 0
+beta                          = 0
+division-rate                 = 0
+division-time                 = 1
+division-radius               = 0
+division-phi-critical-factor  = 0
+death-rate                    = 0
+death-time                    = 1
+death-radius                  = 0
+tau-m                         = 26.7
+pmem                          = 0.485
+pmem-width                    = 0.196
+m0                            = 0.5
+phi-floor                     = 0.001
