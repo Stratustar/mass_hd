@@ -1,0 +1,64 @@
+# 20260824 cm_L800: repeat the s=-1, zeta=3 family at L=800 to measure the phenotype
+# domain size properly.
+#
+# WHY. At L=400 the phenotype correlation length reaches 65-147 lattice, so only 2-3 domains
+# fit in the periodic box. The frame-to-frame spread of l_chichi over the steady window is
+# then +-25 to 30 lattice -- comparable to the trend being measured -- and for tau_chi=1x the
+# apparent tau_m dependence (65, 68, 93, 84, 92, 104) is not distinguishable from noise. The
+# quantity of interest for this project is exactly l_chichi(tau_m), so it has to be measured
+# in a box that holds 8-12 domains rather than 2-3.
+#
+# Everything except LX/LY (400 -> 800) and ninfo (500 -> 1000, to keep the frame count and
+# hence the data volume the same) is identical to 20260823/cm_regime_sneg. pmem, tau_motion
+# and the tau ratios are all intensive, so they carry over unchanged.
+model                         = confluent-memory
+config                        = full
+nsteps                        = 100000
+nstart                        = 0
+ninfo                         = 1000
+LX                            = 800
+LY                            = 800
+bc                            = 0
+seed                          = 1001
+GammaQ                        = 0.03
+GammaP                        = 0.05
+zeta                          = 3
+zetaI                         = 0
+friction                      = 100
+rho                           = 40
+xi                            = 1
+CC                            = 0.1
+LL                            = 0.5
+B                             = 1.0
+Snem                          = 1
+conc                          = 1.1
+phi-critical                  = 0.3
+initial-order                 = 1
+noise                         = 1
+angle                         = 0
+director-config               = uniform
+defect-sep                    = 0
+chi-config                    = uniform
+chi0                          = 0.5
+chi-noise                     = 0
+chi-length                    = 5
+Dchi                          = 0
+tau-chi                       = 3520.0
+chi-width                     = 0.15
+switch-sign                   = -1
+mc                            = 0.5
+growTogether                  = 1
+alpha                         = 0
+beta                          = 0
+division-rate                 = 0
+division-time                 = 1
+division-radius               = 0
+division-phi-critical-factor  = 0
+death-rate                    = 0
+death-time                    = 1
+death-radius                  = 0
+tau-m                         = 35.2
+pmem                          = 0.582
+pmem-width                    = 0.0895
+m0                            = 0.5
+phi-floor                     = 0.001
