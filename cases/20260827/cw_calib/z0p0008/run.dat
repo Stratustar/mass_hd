@@ -30,7 +30,7 @@
 # is an EXACT fixed point of the closed loop, so all of the loop dynamics will come from the
 # spatial fluctuations of P rather than from a misplaced threshold.
 model           = confluent-wet
-nsteps          = 60000
+nsteps          = 120000
 nstart          = 0
 ninfo           = 500
 LX              = 800

@@ -21,7 +21,11 @@ REPO_ROOT="/home/helu/mass_hd"
 SCRATCH_ROOT="/scratch/helu"
 CONDA_BIN="/home/helu/miniconda3/bin/conda"
 CONDA_ENV="env1"
-PLOT_SCRIPT="${REPO_ROOT}/plot/python/plot_hd.py"
+# Overridable so a model whose frames plot_hd.py cannot read (it needs phi and chi, which
+# confluent-wet has no phase field for) can supply its own driver with the same
+# `inputdir outdir [...]` contract, e.g.
+#   PLOT_SCRIPT=/home/helu/mass_hd/plot/python/confluent_wet_plot.py
+PLOT_SCRIPT="${PLOT_SCRIPT:-${REPO_ROOT}/plot/python/plot_hd.py}"
 MASS_BINARY="/opt/mass_hd/mass"
 # Figures/videos live on SCRATCH, next to the raw output -- /home has a small per-user
 # quota that mp4 export blows through silently (corrupt videos, failed jobs).
