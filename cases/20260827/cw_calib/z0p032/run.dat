@@ -1,0 +1,69 @@
+# 20260827 confluent-wet CALIBRATION (stage 1 of 2): frozen chi, no chi-m coupling.
+#
+# PURPOSE. Two things that cannot be chosen a priori and must be measured:
+#   1. WHERE THE TURBULENCE THRESHOLD IS at these parameters. zeta_c depends on L, Gamma,
+#      LL, eta AND on xi -- the earlier estimate zeta_c ~ 0.0135 was fitted at xi = 0.4 and
+#      does not carry over to xi = 1. This scan brackets it so the production grid can pick
+#      one turbulent and one laminar zeta.
+#   2. THE PRESSURE DISTRIBUTION, from which pmem = median(P) and pmem-width ~ sigma_P/2,
+#      plus the strain rate lambda and the structure scales L_u, L_P (which set Dbio and the
+#      floor on tau_m).
+#
+# WHY chi IS FROZEN AT 0.5 RATHER THAN 0. The production runs start from chi0 = 0.5, so the
+# reference flow must be at the SAME effective activity zeta_eff = zeta*(1-chi) = zeta/2.
+# Nominal zeta here is therefore twice the effective one. The design point is
+# zeta_eff = CC/8 = 0.025, i.e. nominal zeta = 0.05.
+#
+# WHY chi0 = 0.5 AND mc = 0.5 AND pmem = median(P) TOGETHER. With that combination the
+# uniform state is an EXACT fixed point of the closed loop: g(median P) = 0.5 -> m -> 0.5 ->
+# chi*(0.5) = 0.5 -> chi unchanged. All of the loop dynamics then comes from the spatial
+# fluctuations of P, with no bias injected by a misplaced threshold. The previous batch used
+# pmem = 0 while median(P) was +1.3e-2, so the memory was driven by the threshold error.
+#
+# PARAMETERS. Ratios locked by the two resolution criteria:
+#   xi_N     = sqrt(LL/(2*CC)) = sqrt(1.6/0.4) = 2.0        (LL/CC = 8)
+#   l_a/xi_N = sqrt(2*CC/zeta_eff)                          (CC/zeta_eff = 8 at the cap)
+#   eta = rho*(tau-1/2)/3 = 20 ,  Re ~ 1.2 ,  Ma ~ 0.035 ,  Gamma*LL = 0.08
+#   xi  = 1 : exactly the aligning/tumbling boundary (theta_dot = gd*(xi*cos2th - q)/(2q),
+#             fixed point needs xi >= q, and q = 1 at the LdG minimum). Same as the dry
+#             confluent-memory runs, so the two model lines stay comparable.
+#
+# tau-chi = -1 freezes the phenotype; tau-m is set huge so m stays at m0 and this run is
+# pure hydrodynamics plus the pressure diagnostic. Dbio is irrelevant with both frozen.
+model           = confluent-wet
+nsteps          = 60000
+nstart          = 0
+ninfo           = 500
+LX              = 800
+LY              = 800
+bc              = 0
+seed            = 1001
+
+Gamma           = 0.05
+xi              = 1
+CC              = 0.2
+LL              = 1.6
+tau             = 2.0
+rho             = 40
+friction        = 0.0
+zeta            = 0.032
+
+angle           = 0
+noise           = 0.05
+initial-order   = 1
+director-config = uniform
+defect-sep      = 0
+
+Dbio            = 0
+chi-config      = uniform
+chi0            = 0.5
+chi-noise       = 0
+chi-length      = 0
+tau-chi         = -1
+chi-width       = 0.15
+switch-sign     = 1
+mc              = 0.5
+m0              = 0.5
+tau-m           = 1e12
+pmem            = 0
+pmem-width      = 1e-3

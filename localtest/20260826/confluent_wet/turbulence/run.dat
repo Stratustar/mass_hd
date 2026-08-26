@@ -1,0 +1,57 @@
+# 20260826 confluent-wet: active-turbulence check of the wet foundation.
+#
+# Phenotype frozen (tau-chi = -1) and chi = 0 everywhere, so the activity is the full
+# zeta and this reduces to a plain wet active nematic. The memory m still evolves, as a
+# pure diagnostic, so that the P -> m link can be inspected before it is closed.
+#
+#   l_a  = sqrt(LL/zeta) = sqrt(0.4/1.8e-3) ~ 15      active length
+#   xi_N = sqrt(LL/(2CC)) = 1.41                      defect core (resolved)
+# A 200x200 box holds ~180 l_a^2, well inside the turbulent regime.
+model           = confluent-wet
+nsteps          = 20000
+nstart          = 0
+ninfo           = 200
+LX              = 200
+LY              = 200
+bc              = 0
+seed            = 1001
+
+# Landau-de Gennes / Beris-Edwards
+#   H = 2*CC*term*Q  =>  f_bulk = .5*CC*term^2   (same convention as confluent-memory)
+#   xi_N = sqrt(LL/(2*CC)) = sqrt(0.4/0.2) = 1.41   defect core, resolved
+Gamma           = 0.05
+xi              = 0.4
+CC              = 0.1
+LL              = 0.4
+
+# hydrodynamics
+tau             = 1.0
+rho             = 40
+friction        = 0.0
+
+# activity
+zeta            = 1.8e-3
+
+# director initial configuration
+angle           = 0
+noise           = 0.05
+initial-order   = 1
+director-config = uniform
+defect-sep      = 0
+
+# phenotype: frozen at chi = 0 (full activity)
+chi-config      = uniform
+chi0            = 0
+chi-noise       = 0
+chi-length      = 0
+Dbio            = 0
+tau-chi         = -1
+chi-width       = 0.15
+switch-sign     = 1
+mc              = 0.5
+
+# memory: diagnostic only while switching is off
+m0              = 0
+tau-m           = 2000
+pmem            = 0
+pmem-width      = 1e-3

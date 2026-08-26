@@ -1,0 +1,40 @@
+# 20260826 confluent-wet activity scan: why did zeta=1.8e-3, LL=0.4 NOT go turbulent?
+# B = same l_a as A (4.7) but 40x stiffer and 36x more active, at the resolved core xi_N=1.41. Tests whether l_a alone controls the transition or whether Gamma*LL*q^2 damping matters independently.
+#   l_a  = sqrt(LL/zeta)      active length
+#   xi_N = sqrt(LL/(2*CC))    defect core
+# Instability of the aligned state needs  zeta/eta  >  Gamma*LL*q^2  at the largest
+# available mode q = 2pi/L, i.e. (L/l_a)^2 / (4 pi^2 eta Gamma) >> 1.
+model           = confluent-wet
+nsteps          = 20000
+nstart          = 0
+ninfo           = 500
+LX              = 200
+LY              = 200
+bc              = 0
+seed            = 1001
+Gamma           = 0.05
+xi              = 0.4
+CC              = 0.1
+LL              = 0.4
+tau             = 1.0
+rho             = 40
+friction        = 0.0
+zeta            = 0.018
+angle           = 0
+noise           = 0.05
+initial-order   = 1
+director-config = uniform
+defect-sep      = 0
+chi-config      = uniform
+chi0            = 0
+chi-noise       = 0
+chi-length      = 0
+Dbio            = 0
+tau-chi         = -1
+chi-width       = 0.15
+switch-sign     = 1
+mc              = 0.5
+m0              = 0
+tau-m           = 2000
+pmem            = 0
+pmem-width      = 1e-3

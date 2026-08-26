@@ -12,6 +12,7 @@
 #include "models/go-or-grow.hpp"
 #include "models/dry-go-or-grow.hpp"
 #include "models/confluent-memory.hpp"
+#include "models/confluent-wet.hpp"
 #include "models/nematic.hpp"
 #include "models/dry.hpp"
 #include "models/polar.hpp"
@@ -78,6 +79,23 @@ void DeclareModels()
       "with the cell density; m obeys tau_m*D_t m = g(P) - m with g a smoothed "
       "step in the pressure, and drives phenotype switching through "
       "V(chi,m) = Ochi*(m-mc)*chi."
+      );
+
+  declare_model<ConfluentWet>(
+      "confluent-wet",
+      "Confluent, incompressible active nematic with phenotype and mechanical "
+      "memory on a wet (lattice Boltzmann) foundation. Rebuilt WITHOUT a phase "
+      "field: derived from the traditional wet nematic model, so there is no phi, "
+      "no double well, no interface term, no Cahn-Hilliard mobility, no crowding "
+      "modulus and no proliferation. The layer is the whole domain. Because the "
+      "flow is incompressible the pressure is the Lagrange multiplier of the "
+      "constraint rather than an equation of state: the physical field is "
+      "P = -1/2 Tr(Pi) = n/3 - sigma_bulk, which obeys a Poisson equation sourced "
+      "by the deviatoric stress alone. The phenotype chi and the memory m are "
+      "INTENSIVE scalars carried by the material derivative and advected with the "
+      "true material velocity u + F/(2n), not the bare lattice-Boltzmann moment; "
+      "chi modulates the activity as zeta*(1-chi) and is driven by m, which is "
+      "driven by P."
       );
 
   declare_model<Nematic>(

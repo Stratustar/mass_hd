@@ -1,0 +1,54 @@
+# 20260826 confluent-wet: the passive null test.
+#
+# zeta = 0, everything else byte-identical to the turbulence run. Expected:
+#  - the director relaxes to uniform, initial defects annihilate, q^2 -> 1 everywhere;
+#  - u -> 0 and n -> rho, so BOTH pressure fields relax to 0. This is what fixes the zero
+#    of the pressure scale for every later run (in a periodic box <P> is set by rho, not
+#    by the dynamics, so pmem has no absolute meaning and must be calibrated per regime);
+#  - sum(ff) conserved to roundoff;
+#  - chi stays exactly at chi0 (no advection, no switching) -- a direct check that the
+#    transport terms vanish identically when u = 0.
+model           = confluent-wet
+nsteps          = 20000
+nstart          = 0
+ninfo           = 200
+LX              = 200
+LY              = 200
+bc              = 0
+seed            = 1001
+
+# Landau-de Gennes / Beris-Edwards
+#   H = 2*CC*term*Q  =>  f_bulk = .5*CC*term^2   (same convention as confluent-memory)
+#   xi_N = sqrt(LL/(2*CC)) = sqrt(0.4/0.2) = 1.41   defect core, resolved
+Gamma           = 0.05
+xi              = 0.4
+CC              = 0.1
+LL              = 0.4
+
+# hydrodynamics
+tau             = 1.0
+rho             = 40
+friction        = 0.0
+
+zeta            = 0
+
+angle           = 0
+noise           = 0.05
+initial-order   = 1
+director-config = uniform
+defect-sep      = 0
+
+chi-config      = uniform
+chi0            = 0.5
+chi-noise       = 0
+chi-length      = 0
+Dbio            = 0
+tau-chi         = -1
+chi-width       = 0.15
+switch-sign     = 1
+mc              = 0.5
+
+m0              = 0
+tau-m           = 2000
+pmem            = 0
+pmem-width      = 1e-3

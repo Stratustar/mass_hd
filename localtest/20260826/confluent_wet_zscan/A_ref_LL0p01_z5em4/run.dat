@@ -1,0 +1,40 @@
+# 20260826 confluent-wet activity scan: why did zeta=1.8e-3, LL=0.4 NOT go turbulent?
+# A = REFERENCE CONTROL, the repo's own nematic.dat parameters (LL=0.01, zeta=5e-4). l_a=4.5, xi_N=0.22 (core unresolved -- irrelevant here, the only question is whether the CODE can produce active turbulence at all). If this stays laminar too, the problem is a bug, not the parameter choice.
+#   l_a  = sqrt(LL/zeta)      active length
+#   xi_N = sqrt(LL/(2*CC))    defect core
+# Instability of the aligned state needs  zeta/eta  >  Gamma*LL*q^2  at the largest
+# available mode q = 2pi/L, i.e. (L/l_a)^2 / (4 pi^2 eta Gamma) >> 1.
+model           = confluent-wet
+nsteps          = 20000
+nstart          = 0
+ninfo           = 500
+LX              = 200
+LY              = 200
+bc              = 0
+seed            = 1001
+Gamma           = 0.05
+xi              = 0.4
+CC              = 0.1
+LL              = 0.01
+tau             = 1.0
+rho             = 40
+friction        = 0.0
+zeta            = 5e-4
+angle           = 0
+noise           = 0.05
+initial-order   = 1
+director-config = uniform
+defect-sep      = 0
+chi-config      = uniform
+chi0            = 0
+chi-noise       = 0
+chi-length      = 0
+Dbio            = 0
+tau-chi         = -1
+chi-width       = 0.15
+switch-sign     = 1
+mc              = 0.5
+m0              = 0
+tau-m           = 2000
+pmem            = 0
+pmem-width      = 1e-3

@@ -1,0 +1,61 @@
+# 20260826 confluent-wet: the full P -> m -> chi -> activity -> flow loop, closed.
+#
+# switch-sign = +1: sustained compression drives chi UP towards the passive branch, and
+# since the activity is zeta*(1-chi) that is a self-limiting negative feedback.
+#
+# Timescales, all in lattice steps:
+#   acoustic  L/cs   = 1.73*200            ~ 350      (pressure field establishment)
+#   advective l_a/u  = 15/4e-3             ~ 3800     (flow turnover)
+#   tau_m            = 2000                           between the two, deliberately
+#   tau_chi          = 6000                           slower than the flow
+# tau-m is checked against the acoustic time at startup and would be rejected if too fast.
+#
+# pmem = 0 is a PLACEHOLDER. In a periodic box <n> is pinned to rho by mass conservation,
+# so <P> is set by the initial density and not by the dynamics: pmem has no absolute
+# meaning and must be recalibrated from the P distribution of the turbulence run before
+# this case means anything quantitative. pmem-width is set to the active pressure scale
+# zeta ~ 1.8e-3 so g(P) is a genuine sigmoid rather than a step.
+model           = confluent-wet
+nsteps          = 20000
+nstart          = 0
+ninfo           = 200
+LX              = 200
+LY              = 200
+bc              = 0
+seed            = 1001
+
+# Landau-de Gennes / Beris-Edwards
+#   H = 2*CC*term*Q  =>  f_bulk = .5*CC*term^2   (same convention as confluent-memory)
+#   xi_N = sqrt(LL/(2*CC)) = sqrt(0.4/0.2) = 1.41   defect core, resolved
+Gamma           = 0.05
+xi              = 0.4
+CC              = 0.1
+LL              = 0.4
+
+# hydrodynamics
+tau             = 1.0
+rho             = 40
+friction        = 0.0
+
+zeta            = 1.8e-3
+
+angle           = 0
+noise           = 0.05
+initial-order   = 1
+director-config = uniform
+defect-sep      = 0
+
+chi-config      = uniform
+chi0            = 0.5
+chi-noise       = 0
+chi-length      = 0
+Dbio            = 0
+tau-chi         = 6000
+chi-width       = 0.15
+switch-sign     = 1
+mc              = 0.5
+
+m0              = 0.5
+tau-m           = 2000
+pmem            = 0
+pmem-width      = 1.8e-3

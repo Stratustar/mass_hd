@@ -1,0 +1,67 @@
+# 20260826 confluent-wet: PASSIVE-SCALAR ADVECTION TEST -- the one that matters.
+#
+# Switching off (tau-chi = -1) and Dbio = 0, so chi obeys D_t chi = 0 exactly: it is a
+# pure Lagrangian tracer painted on the flow. chi starts as a correlated random field of
+# length 10 (comparable to l_a = 15) with a large amplitude, so the stirring is visible.
+#
+# What this test must show:
+#   1. chi stays inside [0,1] WITHOUT the clamp doing any work. Count clamp hits: if the
+#      centred-difference advection is dispersing, chi overshoots and the clamp fires.
+#   2. The spatial mean of chi is preserved to roundoff. For an incompressible flow and
+#      D_t chi = 0 the mean of a tracer is conserved; drift measures div(u) != 0 plus
+#      the truncation error of the centred scheme.
+#   3. The variance of chi decays only through the physical cascade (filamentation to the
+#      grid scale), NOT through numerical diffusion. Compare against a rerun with a
+#      deliberately upwinded scheme if the decay looks too fast.
+#   4. m is advected by the same terms, so any difference between the two beyond their
+#      source terms would be a bug.
+#
+# NOTE the velocity used for advection is ux_mat/uy_mat = u_code + F/(2n), NOT the bare LB
+# moment. Near a defect core the correction is ~40% of the flow speed, so comparing the
+# tracer pattern against the ux/uy field is expected to show a systematic difference there
+# -- that difference is the point, not an error.
+model           = confluent-wet
+nsteps          = 20000
+nstart          = 0
+ninfo           = 200
+LX              = 200
+LY              = 200
+bc              = 0
+seed            = 1001
+
+# Landau-de Gennes / Beris-Edwards
+#   H = 2*CC*term*Q  =>  f_bulk = .5*CC*term^2   (same convention as confluent-memory)
+#   xi_N = sqrt(LL/(2*CC)) = sqrt(0.4/0.2) = 1.41   defect core, resolved
+Gamma           = 0.05
+xi              = 0.4
+CC              = 0.1
+LL              = 0.4
+
+# hydrodynamics
+tau             = 1.0
+rho             = 40
+friction        = 0.0
+
+zeta            = 1.8e-3
+
+angle           = 0
+noise           = 0.05
+initial-order   = 1
+director-config = uniform
+defect-sep      = 0
+
+# a correlated random tracer, mean .5, std .25, correlation length 10
+chi-config      = noise
+chi0            = 0.5
+chi-noise       = 0.25
+chi-length      = 10
+Dbio            = 0
+tau-chi         = -1
+chi-width       = 0.15
+switch-sign     = 1
+mc              = 0.5
+
+m0              = 0.5
+tau-m           = 2000
+pmem            = 0
+pmem-width      = 1e-3

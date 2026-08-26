@@ -1,0 +1,50 @@
+# 20260826 confluent-wet: the defect-pair initial condition.
+#
+# Checks the +1/2 / -1/2 analytic winding ported from Lyotropic::ConfigureAtNode with the
+# phi part stripped out. noise = 0 so the pair is clean and its motion is deterministic:
+# at this activity the +1/2 defect should self-propel, which is the standard visual check
+# that the sign conventions of the active stress survived the move off the lyotropic base.
+model           = confluent-wet
+nsteps          = 20000
+nstart          = 0
+ninfo           = 200
+LX              = 200
+LY              = 200
+bc              = 0
+seed            = 1001
+
+# Landau-de Gennes / Beris-Edwards
+#   H = 2*CC*term*Q  =>  f_bulk = .5*CC*term^2   (same convention as confluent-memory)
+#   xi_N = sqrt(LL/(2*CC)) = sqrt(0.4/0.2) = 1.41   defect core, resolved
+Gamma           = 0.05
+xi              = 0.4
+CC              = 0.1
+LL              = 0.4
+
+# hydrodynamics
+tau             = 1.0
+rho             = 40
+friction        = 0.0
+
+zeta            = 1.8e-3
+
+angle           = 0
+noise           = 0
+initial-order   = 1
+director-config = defect-pair
+defect-sep      = 50
+
+chi-config      = uniform
+chi0            = 0
+chi-noise       = 0
+chi-length      = 0
+Dbio            = 0
+tau-chi         = -1
+chi-width       = 0.15
+switch-sign     = 1
+mc              = 0.5
+
+m0              = 0
+tau-m           = 2000
+pmem            = 0
+pmem-width      = 1e-3

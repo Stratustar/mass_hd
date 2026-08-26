@@ -1,0 +1,65 @@
+# 20260826 confluent-wet: does Dbio remove the grid-scale filamentation of m and chi?
+#
+# Dbio = 0.05 for this variant. Everything else is identical across the four variants.
+#
+# WHY THIS SCAN. With Dbio = 0 nothing stops chaotic advection from thinning m and chi
+# indefinitely: the only cutoff is the relaxation itself, which needs lambda*tau <~
+# ln(l_a/3) with lambda = u_rms/l_a. In the turbulent case C (zeta=0.18) that gave
+# lambda*tau_m = 114 against a bound of 0.01, and 23% of the m power sat at wavelengths
+# below 3 cells. Combined with the acoustic floor tau_m > sqrt(3)*L = 346 steps, the window
+# for tau_m at Dbio = 0 is EMPTY in any genuinely turbulent state. Switching Dbio on
+# restores a real cutoff at the Batchelor scale sqrt(Dbio/lambda); keeping that at 3 cells
+# needs Dbio ~ 9*lambda.
+#
+# PARAMETERS. zeta = 0.05 sits in the gap between the measured anchors: 0.018 only reached
+# a 1D striped shear state, 0.18 was fully turbulent but at Ma = 0.147 (too compressible)
+# and needed Dbio = 0.51, above the explicit-diffusion ceiling of 0.25. Predictions here:
+#   l_a  = sqrt(LL/zeta)      = 2.83        (xi_N = 1.41, so l_a/xi_N = 2.0 -- POOR
+#                                            separation; this is a diagnostic run for Dbio,
+#                                            NOT a candidate production operating point)
+#   u_rms ~ 2*sqrt(zeta*LL)/eta = 0.042     (Ma ~ 0.073, on the high side)
+#   lambda = u_rms/l_a          = 0.015     ->  Dbio needed ~ 0.135
+# so the four values 0 / 0.02 / 0.05 / 0.15 should bracket the answer: 0 fails, 0.15 works.
+#
+# The loop is CLOSED here (tau-chi > 0) so that all three fields are alive at once, which
+# no run so far has managed. tau_m = 1000 > sqrt(3)*L = 346 satisfies the acoustic floor.
+# pmem-width = 0.025 ~ sigma_P/2, using the measured sigma_P ~ zeta from case C; pmem = 0
+# is still a placeholder and must be recalibrated from the P distribution of this run.
+model           = confluent-wet
+nsteps          = 30000
+nstart          = 0
+ninfo           = 300
+LX              = 200
+LY              = 200
+bc              = 0
+seed            = 1001
+
+Gamma           = 0.05
+xi              = 0.4
+CC              = 0.1
+LL              = 0.4
+tau             = 1.0
+rho             = 40
+friction        = 0.0
+zeta            = 0.05
+
+angle           = 0
+noise           = 0.05
+initial-order   = 1
+director-config = uniform
+defect-sep      = 0
+
+# phenotype and memory: the loop is closed
+Dbio            = 0.05
+chi-config      = uniform
+chi0            = 0.5
+chi-noise       = 0
+chi-length      = 0
+tau-chi         = 3000
+chi-width       = 0.15
+switch-sign     = 1
+mc              = 0.5
+m0              = 0.5
+tau-m           = 1000
+pmem            = 0
+pmem-width      = 0.025
