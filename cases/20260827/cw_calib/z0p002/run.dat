@@ -1,0 +1,68 @@
+# 20260827 confluent-wet CALIBRATION (stage 1 of 2): frozen chi, no chi-m coupling.
+#
+# PURPOSE
+#   1. Locate the turbulence threshold at these parameters. Extrapolating the L=200 anchor
+#      zeta_c = 0.018 by zeta_c ~ Gamma*LL*eta*(2pi/L)^2 puts it near zeta_eff ~ 0.0011 at
+#      L=800, so this scan brackets it: zeta_eff = 0.0004 .. 0.00625.
+#   2. Measure the pressure distribution -> pmem = median(P), pmem-width ~ sigma_P/2, plus
+#      lambda, L_u and L_P, which set Dbio and the floor on tau_m.
+#
+# PARAMETERS -- constrained by a NUMERICAL stability boundary mapped on 2026-08-27, not by
+# physics alone. The explicit Q update coupled to a simply-forced lattice Boltzmann goes
+# unstable well before the physically interesting corner:
+#     xi <= 0.7 for any tau tested; xi = 1.0 only for tau <= 1.5; xi >= 1.2 never.
+#     LL <= 0.4 in general; LL = 0.8 only at xi = 0.4, tau = 1.
+#     raising tau makes it WORSE (grid-scale viscous damping nu*pi^2 passes 2 at tau ~ 1.11,
+#     and the explicit Q update reads those over-relaxed velocity gradients through xi).
+# Hence xi = 0.4, tau = 1, LL = 0.4 -- the conservative corner. Two consequences to keep in
+# mind: we are in the flow-TUMBLING regime (aligning needs xi >= q = 1, unreachable here, so
+# this model line cannot be matched to dry confluent-memory on xi), and Re ~ 2.7 rather than
+# the Stokes limit a real cell layer sits in.
+#
+# Resolution criteria, both satisfied:
+#   xi_N = sqrt(LL/(2*CC)) = sqrt(0.4/0.1) = 2.0
+#   l_a  = sqrt(LL/zeta_eff) = 20.0 -> l_a/xi_N >= 4 (larger for the smaller zeta)
+#   eta = rho*(tau-1/2)/3 = 6.67 ,  Ma <= 0.026 ,  Gamma*LL = 0.02
+#
+# chi is frozen at 0.5 (not 0) so the reference flow runs at the SAME effective activity
+# zeta_eff = zeta*(1-chi) = zeta/2 as the production runs; nominal zeta here is therefore
+# twice the effective one. With chi0 = 0.5, mc = 0.5 and pmem = median(P) the uniform state
+# is an EXACT fixed point of the closed loop, so all of the loop dynamics will come from the
+# spatial fluctuations of P rather than from a misplaced threshold.
+model           = confluent-wet
+nsteps          = 60000
+nstart          = 0
+ninfo           = 500
+LX              = 800
+LY              = 800
+bc              = 0
+seed            = 1001
+
+Gamma           = 0.05
+xi              = 0.4
+CC              = 0.05
+LL              = 0.4
+tau             = 1.0
+rho             = 40
+friction        = 0.0
+zeta            = 0.002
+
+angle           = 0
+noise           = 0.05
+initial-order   = 1
+director-config = uniform
+defect-sep      = 0
+
+Dbio            = 0
+chi-config      = uniform
+chi0            = 0.5
+chi-noise       = 0
+chi-length      = 0
+tau-chi         = -1
+chi-width       = 0.15
+switch-sign     = 1
+mc              = 0.5
+m0              = 0.5
+tau-m           = 1e12
+pmem            = 0
+pmem-width      = 1e-3
