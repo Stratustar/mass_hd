@@ -1,0 +1,51 @@
+# 20260827 A = zeta_eff/CC = 1, scanning the core size xi_N at fixed A.
+#
+# From the parameter table: xi_N and A are the two dimensionless design inputs; CC follows
+# from the Mach budget (Ma <= 0.045) and LL = 2*xi_N^2*CC follows from the definition of the
+# core size. This variant: xi_N = 2.0, CC = 0.03062, LL = 0.2449, zeta_eff = 0.03062.
+#
+# WHAT THIS TESTS. If the physics depends only on the dimensionless pair (xi_N, A), then at
+# fixed A the three xi_N should differ only in how fat the cores are -- same defect count,
+# same morphology. If instead sigma_P, L_P or the defect count move with xi_N, the core size
+# is doing something to our observables and the resolution criterion has real content.
+# That is the question that decides whether the paper's xi_N = 1.0 is admissible for us.
+#
+# The earlier ccll_scale a=8 run is the same A = 1 at a five times smaller overall scale
+# (CC = 0.00625, LL = 0.05), so comparing against it also tests whether only the
+# dimensionless groups matter, or the absolute stress scale does too.
+#
+# chi and m frozen; pure hydrodynamics plus the pressure diagnostic.
+model=confluent-wet
+nsteps=30000
+nstart=0
+ninfo=1000
+LX=200
+LY=200
+bc=0
+seed=1001
+Gamma=0.05
+xi=0.4
+CC=0.03062
+LL=0.2449
+tau=1.0
+rho=40
+friction=0.0
+zeta=0.06124
+angle=0
+noise=0.05
+initial-order=1
+director-config=uniform
+defect-sep=0
+Dbio=0
+chi-config=uniform
+chi0=0.5
+chi-noise=0
+chi-length=0
+tau-chi=-1
+chi-width=0.15
+switch-sign=1
+mc=0.5
+m0=0.5
+tau-m=1e12
+pmem=0
+pmem-width=1e-3

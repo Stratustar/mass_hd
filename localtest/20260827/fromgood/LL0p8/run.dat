@@ -1,0 +1,41 @@
+# 20260827 stability bisection FROM THE KNOWN-GOOD side.
+# base = the local d0 configuration, which ran 30000 steps at L=200 without diverging:
+#   CC=0.1  LL=0.4  xi=0.4  tau=1  zeta=0.05  rho=40
+# Each variant changes exactly ONE of those towards the L=800 calibration parameters
+# (CC=0.2 LL=1.6 xi=1 tau=2). The earlier bisection started from the FAILING side, where
+# LL=1.6 sits so far past threshold that no single change rescues it -- which made it look
+# as though LL were the only parameter that mattered. It is not.
+model=confluent-wet
+nsteps=5000
+nstart=0
+ninfo=250
+LX=200
+LY=200
+bc=0
+seed=1001
+Gamma=0.05
+xi=0.4
+CC=0.1
+LL=0.8
+tau=1.0
+rho=40
+friction=0.0
+zeta=0.05
+angle=0
+noise=0.05
+initial-order=1
+director-config=uniform
+defect-sep=0
+Dbio=0
+chi-config=uniform
+chi0=0.5
+chi-noise=0
+chi-length=0
+tau-chi=-1
+chi-width=0.15
+switch-sign=1
+mc=0.5
+m0=0.5
+tau-m=1e12
+pmem=0
+pmem-width=1e-3

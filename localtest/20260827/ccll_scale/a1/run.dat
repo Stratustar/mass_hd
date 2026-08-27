@@ -1,0 +1,50 @@
+# 20260827 scaling CC and LL down together at fixed zeta, to reach the defect regime.
+#
+# xi_N = sqrt(LL/(2*CC)) depends only on the RATIO, so scaling both by 1/a leaves the
+# defect core size untouched at 2.0 lattice units while raising the one number that decides
+# whether defects exist at all:
+#
+#     zeta_eff/CC >~ 0.5-1   (local distortion energy ~ zeta reaching the LdG barrier ~ CC/2)
+#
+# measured anchors: case C at zeta/CC = 1.8 melted 5.4% of the domain; the L=800 design
+# point at 0.125 melted nothing. Here zeta_eff/CC = 0.125*a.
+#
+# This beats simply raising zeta: same effect on zeta/CC, but u ~ 2*sqrt(zeta*LL)/eta FALLS
+# with LL instead of rising, so the Mach number improves rather than degrades, and the
+# smaller LL is further from the (xi, tau, LL) numerical stability boundary.
+#
+# a=1 : CC=0.05 LL=0.4 -> zeta_eff/CC = 0.125
+model=confluent-wet
+nsteps=40000
+nstart=0
+ninfo=1000
+LX=200
+LY=200
+bc=0
+seed=1001
+Gamma=0.05
+xi=0.4
+CC=0.05
+LL=0.4
+tau=1.0
+rho=40
+friction=0.0
+zeta=0.0125
+angle=0
+noise=0.05
+initial-order=1
+director-config=uniform
+defect-sep=0
+Dbio=0
+chi-config=uniform
+chi0=0.5
+chi-noise=0
+chi-length=0
+tau-chi=-1
+chi-width=0.15
+switch-sign=1
+mc=0.5
+m0=0.5
+tau-m=1e12
+pmem=0
+pmem-width=1e-3

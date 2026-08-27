@@ -1,0 +1,48 @@
+# 20260827 numerical ceiling on LL, at rho = 40.
+#
+# zeta = 0 deliberately: the divergence that killed the L=800 calibration jobs is NOT the
+# active instability -- it appears with zero activity, with Gamma lowered 5x, with xi at
+# 0.4, and with a smoothed initial director. The bisection left LL as the only parameter
+# that mattered (LL=0.4 fine, LL=1.6 diverges).
+#
+# Mechanism: elastic stress -> lattice-Boltzmann body force -> flow -> rotates Q -> larger
+# stress. At the grid scale grad^2 Q ~ -4 dQ, so H ~ -4 LL dQ and the ANTISYMMETRIC stress
+# sigmaA = 2(Qxx Hyx - Qyx Hxx) ~ 8 LL dQ -- note it carries no xi, which is why lowering xi
+# did not help. The force is div(sigma) and the velocity it produces is F/rho, so the loop
+# gain should scale as LL/rho.
+#
+# chi and m frozen; this is pure Q + LB.
+model=confluent-wet
+nsteps=2000
+nstart=0
+ninfo=100
+LX=200
+LY=200
+bc=0
+seed=1001
+Gamma=0.05
+xi=1
+CC=0.2
+LL=0.8
+tau=2.0
+rho=40
+friction=0.0
+zeta=0
+angle=0
+noise=0.05
+initial-order=1
+director-config=uniform
+defect-sep=0
+Dbio=0
+chi-config=uniform
+chi0=0.5
+chi-noise=0
+chi-length=0
+tau-chi=-1
+chi-width=0.15
+switch-sign=1
+mc=0.5
+m0=0.5
+tau-m=1e12
+pmem=0
+pmem-width=1e-3

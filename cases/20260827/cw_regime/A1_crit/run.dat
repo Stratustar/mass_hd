@@ -1,0 +1,65 @@
+# 20260827 confluent-wet: the two activity regimes, phenotype and memory DECOUPLED.
+# REGIME 1 of 2: critical / dilute defect gas. A = 1, zeta_eff = 0.03. Measured at L=200: 24 well-separated point defects, spacing 79 = 40 core radii. t_grow = 3333 steps, so 70000 = 21 growth times -- the local A=1 run stabilised by 13, so this saturates with margin.
+#
+# FROZEN PARAMETER SET. Everything except zeta, tau-m and tau-chi is fixed from here on;
+# each value below is pinned by a measurement, not a guess:
+#   xi   = 0.4   flow-tumbling. xi >= 1.2 diverges at every tau tested and xi = 1 diverges
+#                at tau = 2, so the flow-aligning branch is unreachable in this scheme.
+#   tau  = 2.0   forced by the turbulent regime: at tau = 1 the Mach budget is already blown
+#                at A = 4 (Ma = 0.059), so A = 10 is unreachable. tau = 2 also drops the
+#                Reynolds number from 3.6-10 down to 0.31-1.14, i.e. into the Stokes regime a
+#                cell layer actually lives in. Costs a factor 3 in t_grow.
+#   CC   = 0.03  \  xi_N = sqrt(LL/(2*CC)) = 2.0, measured to be the sweet spot: at 1.0 (the
+#   LL   = 0.24  /  published lyotropic runcard) the core is one lattice cell; at 3.0 the
+#                   cores merge into melted walls and the defect count collapses 24 -> 4.
+#   Gamma= 0.05  Gamma*LL = 0.012 << 0.25, and 200x above the lambda/(4*CC) requirement.
+#   rho  = 40, friction = 0   pure wet limit, no substrate.
+#   chi0 = 0.5   with mc = 0.5 and pmem = median(P) the uniform state is an EXACT fixed point
+#                of the closed loop, so later the loop dynamics comes only from the spatial
+#                fluctuations of P.
+#
+# A = zeta_eff/CC with zeta_eff = zeta*(1-chi0) = zeta/2 is the control parameter for defect
+# density: measured onset at A = 0.5, 24 defects at A = 1 (L=200, saturated).
+#
+# THIS RUN IS DECOUPLED: tau-chi = -1 freezes the phenotype and tau-m = 1e12 freezes the
+# memory, so it is pure hydrodynamics plus the pressure diagnostic. Its job is to deliver
+# median(P), sigma_P, lambda, L_u and L_P, which set pmem, pmem-width, Dbio and the real
+# floor on tau_m for the production grid. pmem/pmem-width below are placeholders and are
+# NOT used while the loop is open.
+model           = confluent-wet
+nsteps          = 70000
+nstart          = 0
+ninfo           = 500
+LX              = 800
+LY              = 800
+bc              = 0
+seed            = 1001
+
+Gamma           = 0.05
+xi              = 0.4
+CC              = 0.03
+LL              = 0.24
+tau             = 2.0
+rho             = 40
+friction        = 0.0
+zeta            = 0.06
+
+angle           = 0
+noise           = 0.05
+initial-order   = 1
+director-config = uniform
+defect-sep      = 0
+
+Dbio            = 0
+chi-config      = uniform
+chi0            = 0.5
+chi-noise       = 0
+chi-length      = 0
+tau-chi         = -1
+chi-width       = 0.15
+switch-sign     = 1
+mc              = 0.5
+m0              = 0.5
+tau-m           = 1e12
+pmem            = 0
+pmem-width      = 1e-3
