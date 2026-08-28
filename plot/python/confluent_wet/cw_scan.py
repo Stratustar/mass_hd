@@ -102,6 +102,23 @@ def analyse(root, nlast, stride, maxlag_frac):
         S[k] = [float(fn(f)) for f in frames]
     S["nd"] = [float(cw.n_defects(f["qxx"], f["qyx"])) for f in frames]
     S["zeta_eff"] = [zeta * (1.0 - c) for c in S["chibar"]]
+    # IS THE MEMORY THRESHOLD STILL CENTRED?  pmem was measured on the OPEN-loop run, where
+    # <chi> = 0.5; once the loop moves <chi> the activity moves with it, and sigma_P scales
+    # with the ACTIVE stress (sigma_P = 0.76*zeta_eff, measured), so the P distribution slides
+    # out from under a threshold that no longer sits in its middle.  <g(P)> says how far:
+    # 0.5 means still centred, and a value near 0 or 1 means g has saturated and the memory
+    # has stopped responding to P at all -- the loop is then effectively open, and any
+    # conclusion about tau_m in that case is about a frozen memory, not a lagging one.
+    pm, pw = out["pmem"], out["pmem_width"]
+    if np.isfinite(pm) and np.isfinite(pw) and pw > 0:
+        g = [float(np.mean(0.5 * (1 + np.tanh((f["P"] - pm) / pw)))) for f in frames]
+        S["gbar"] = g
+        out["g_bar"] = float(np.mean(g))
+        out["threshold_offset"] = float((np.mean(S["Pmed"]) - pm) / pw)
+    else:
+        out["g_bar"] = float("nan")
+        out["threshold_offset"] = float("nan")
+
     out["series"] = S
     out["zeta_eff_mean"] = float(np.mean(S["zeta_eff"]))
     out["A_eff"] = out["zeta_eff_mean"] / CC
@@ -195,7 +212,8 @@ def main():
         print(f"  {c}: A_eff={r['A_eff']:.2f} <chi>={r['chi_bar']:.3f} "
               f"t_eddy={r['t_eddy']:.0f} L_u={r['L_u']:.1f} L_chi={r['L_chi']:.1f} "
               f"lag(P->m)={r['lag_Pm_k0']:.0f}/{r['tau_m_set']:.0f} "
-              f"lag(m->chi)={r['lag_mchi_k0']:.0f}/{r['tau_chi_set']:.0f}", flush=True)
+              f"lag(m->chi)={r['lag_mchi_k0']:.0f}/{r['tau_chi_set']:.0f} "
+              f"<g(P)>={r['g_bar']:.2f}", flush=True)
 
     out = a.out or cw.results_root(*a.study.split("/"), "cw_scan.json")
     os.makedirs(os.path.dirname(out), exist_ok=True)
