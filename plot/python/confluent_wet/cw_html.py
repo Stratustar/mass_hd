@@ -182,17 +182,25 @@ function draw(){
     ORDER[k].forEach(v=>{
       const b=document.createElement('button'); b.textContent=v;
       if(sel[k]===v) b.className='on';
-      b.disabled=!Object.values(CASES).some(c=>c[k]===v&&match(c,k))&&sel[k]!==v;
+      else if(!Object.values(CASES).some(c=>c[k]===v&&match(c,k))) b.className='dim';
+      // A dimmed value is still clickable. The two tau axes are coupled -- tau_chi >= tau_m
+      // always -- so reaching some runs means moving both at once, and a disabled button
+      // makes those runs unreachable: you cannot take the first step of a two-step move.
+      // Clicking one instead snaps the OTHER axes to the nearest run that has this value.
       b.onclick=()=>{
-        sel[k]=v;
-        if(!Object.keys(CASES).some(n=>match(CASES[n]))){
-          for(const [j] of AXES){ if(j===k) continue;
-            const alt=ORDER[j].find(w=>{const o=sel[j];sel[j]=w;
-              const ok=Object.keys(CASES).some(n=>match(CASES[n]));sel[j]=o;return ok;});
-            if(alt!==undefined){sel[j]=alt;
-              if(Object.keys(CASES).some(n=>match(CASES[n])))break;}
+        const cand=Object.entries(CASES).filter(([,c])=>c[k]===v);
+        if(!cand.length) return;
+        let best=null, bestd=1e9;
+        for(const [n,c] of cand){
+          let d=0;
+          for(const [j] of AXES){ if(j===k||c[j]===sel[j]) continue;
+            const o=ORDER[j], a=o.indexOf(c[j]), b2=o.indexOf(sel[j]);
+            d += 1 + Math.abs(a-b2)/o.length;   // prefer the smallest move, on fewest axes
           }
+          if(d<bestd){bestd=d; best=c;}
         }
+        AXES.forEach(([j])=>{sel[j]=best[j];});
+        sel[k]=v;
         draw();
       };
       row.appendChild(b);
