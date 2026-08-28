@@ -143,7 +143,10 @@ def analyse(root, nlast, stride, maxlag_frac):
                         ("mm", "m", None), ("cc", "chi", None), ("QQ", ("qxx", "qyx"), None),
                         ("Pm", "P", "m"), ("mc", "m", "chi"), ("Pc", "P", "chi")):
         c, amp = cw.spatial_corr(rad, frames, pos, fa, fb)
-        sp[key] = {"C": c.tolist(), "amp": amp, "length": rad.length(c),
+        # 1/e is the length; the zero crossing is kept beside it as the box-sensitivity
+        # check (they diverge exactly when the box starts setting the answer)
+        sp[key] = {"C": c.tolist(), "amp": amp,
+                   "length": cw.length_1e(rad, c), "length_zero": rad.length(c),
                    "C0": float(c[0]) if len(c) else float("nan")}
     out["spatial"] = sp
     out["r"] = rad.bins.tolist()
@@ -151,6 +154,9 @@ def analyse(root, nlast, stride, maxlag_frac):
     out["L_P"] = sp["PP"]["length"]
     out["L_chi"] = sp["cc"]["length"]
     out["L_m"] = sp["mm"]["length"]
+    # a length past L/6 is a length the box is helping to set -- flag it rather than plot it
+    out["box_limited"] = bool(max(v for v in (out["L_u"], out["L_P"], out["L_chi"],
+                                              out["L_m"]) if np.isfinite(v)) > L / 6.0)
 
     # ---- lagged correlations, Eulerian and k=0
     tp = {"lags": lags.tolist()}

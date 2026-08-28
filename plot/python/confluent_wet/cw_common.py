@@ -124,6 +124,33 @@ def steady_frames(root, nlast=50, stride=3, span=None):
 
 # --------------------------------------------------------------------------- correlations
 
+def length_1e(rad, c):
+    """Correlation length as the first 1/e crossing -- NOT the first zero crossing.
+
+    MEASURED, and this is why: the same code gives L_u = 55.6 at L = 400 (A = 9) and 100.3 at
+    L = 800 (A = 10), two activities that differ by 11% and two boxes that differ by 2.  The
+    zero crossing of C_uu tracks the BOX, not the flow, because the large-r tail of a radial
+    average in a periodic square wanders through zero wherever the corner statistics put it.
+    Everything genuinely physical does reproduce across those two boxes -- 1/lambda 164 vs 148
+    against a predicted 148, tau_motion 331 vs 290 against 298, d 18.3 vs 17.1 against 17.5 --
+    so the fault is the estimator, not the data.
+
+    The 1/e crossing is read off the small-r part, where the correlation function is steep and
+    the box cannot reach.  Both are reported: a case where they disagree by more than ~2x, or
+    where the 1/e length approaches L/6, is a case whose correlation length the box is
+    starting to set.
+    """
+    r, c = rad.bins, np.asarray(c, float)
+    thr = np.exp(-1.0)
+    for i in range(1, len(c)):
+        if np.isfinite(c[i]) and c[i] <= thr:
+            a, b = c[i - 1], c[i]
+            if a == b:
+                return float(r[i])
+            return float(r[i - 1] + (r[i] - r[i - 1]) * (a - thr) / (a - b))
+    return float("nan")
+
+
 def spatial_corr(rad, frames, positions, fa, fb=None):
     """Isotropic C_ab(r), averaged over the snapshot subset and normalised to C(0) = 1.
 

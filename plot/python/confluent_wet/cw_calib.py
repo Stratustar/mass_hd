@@ -112,7 +112,8 @@ def analyse(root, nlast, stride):
         "lambda": lam, "u_rms": urms, "Ma": urms / CS,
         "N_def": nd, "d": d,
         "melted_frac": melt, "q2_min": q2min,
-        "L_u": rad.length(Cuu), "L_P": rad.length(Cpp),
+        "L_u": cw.length_1e(rad, Cuu), "L_P": cw.length_1e(rad, Cpp),
+        "L_u_zero": rad.length(Cuu), "L_P_zero": rad.length(Cpp),
         "xi_N": float(np.sqrt(par.get("LL", np.nan) / (2 * CC))) if CC else float("nan"),
         "saturation": sat,
         "series": {k: v.tolist() for k, v in ser.items()},
@@ -144,7 +145,8 @@ def main():
         print(f"  {c}: A={r['A']:.2f}  pmem={r['pmem']:+.4e}  IQR/2={r['pmem_width_iqr2']:.4e}"
               f"  sigma_P={r['sigma_P']:.4e}  t_eddy={r['t_eddy']:.0f}"
               f"  tau_motion={r['tau_motion']:.0f}  N={r['N_def']:.0f} d={r['d']:.1f}"
-              f"  L_u={r['L_u']:.1f} L_P={r['L_P']:.1f}  Ma={r['Ma']:.3f}  [{s}]", flush=True)
+              f"  L_u={r['L_u']:.1f}({r['L_u_zero']:.0f}) L_P={r['L_P']:.1f}({r['L_P_zero']:.0f})"
+              f"  Ma={r['Ma']:.3f}  [{s}]", flush=True)
 
     out = a.out or cw.results_root(*a.study.split("/"), "cw_calib.json")
     os.makedirs(os.path.dirname(out), exist_ok=True)
