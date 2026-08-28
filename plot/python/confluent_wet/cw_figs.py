@@ -85,19 +85,32 @@ def fig_auto(r, out, dpi, label):
     fig.savefig(out, bbox_inches="tight"); plt.close(fig)
 
 
-def fig_lag(r, out, dpi, label):
+def fig_lag(r, out, dpi, label, eulerian=False):
+    """Only the k=0 curves by default.
+
+    An unexplained dotted line is worse than an absent one, and the Eulerian estimator needs a
+    paragraph to justify (it also decorrelates on the advection time, so it under-reads the
+    lag whenever tau exceeds t_eddy).  On a slide that paragraph is not available.
+    """
     tp = r["temporal"]
     lags = np.asarray(tp["lags"], float)
     fig, ax = plt.subplots(figsize=(7.6, 5.4), dpi=dpi)
     for k, lab, c in (("Pm", r"$P \to m$", "C0"), ("mc", r"$m \to \chi$", "C1")):
         if "k0" in tp[k]:
             y = np.asarray(tp[k]["k0"], float)
-            ax.plot(lags[:len(y)], y, c=c, lw=2.4, label=lab)
-        y = np.asarray(tp[k]["euler"], float)
-        ax.plot(lags[:len(y)], y, c=c, lw=1.4, ls=":", alpha=.75)
-    for tau, c in ((r["tau_m_set"], "C0"), (r["tau_chi_set"], "C1")):
-        if tau and np.isfinite(tau) and tau < lags[-1]:
-            ax.axvline(tau, c=c, ls="--", lw=1.4, alpha=.7)
+            ax.plot(lags[:len(y)], y, c=c, lw=2.6, label=lab)
+        if eulerian:
+            y = np.asarray(tp[k]["euler"], float)
+            ax.plot(lags[:len(y)], y, c=c, lw=1.4, ls=":", alpha=.8,
+                    label=lab + " (Eulerian)")
+    seen = set()
+    for tau, c, lab in ((r["tau_m_set"], "C0", r"$\tau_m$"),
+                        (r["tau_chi_set"], "C1", r"$\tau_\chi$")):
+        if tau and np.isfinite(tau) and tau < lags[-1] and round(tau) not in seen:
+            seen.add(round(tau))
+            ax.axvline(tau, c=c, ls="--", lw=1.6, alpha=.75)
+            ax.text(tau, 1.01, lab, color=c, fontsize=FS, ha="center", va="bottom",
+                    transform=ax.get_xaxis_transform())
     ax.axhline(0, c="0.4", lw=.9)
     ax.set_xlim(0, lags[-1])
     bare(ax, r"lag $\tau$", r"$C(\tau)$")
@@ -113,13 +126,23 @@ def fig_st(r, out, dpi, label):
     lags = np.asarray(r["temporal"]["lags"], float)
     nr = min(len(rr), st.shape[1])
     nt = min(len(lags), st.shape[0])
+    # Crop to where the correlation still is. Left whole, this map is ~80% empty: the lag axis
+    # runs to 40000 while the 1/e contour closes by 4000, and the eye reads the white, not the
+    # ridge. Cropping to a few decay times is what makes the two scales legible at once.
+    c0 = st[:nt, 0]
+    below = np.where(c0 <= np.exp(-2))[0]
+    tmax = lags[min(nt - 1, int(below[0] * 2.0))] if len(below) else lags[nt - 1]
+    r0 = st[0, :nr]
+    belowr = np.where(r0 <= np.exp(-2))[0]
+    rmax = rr[min(nr - 1, int(belowr[0] * 2.0))] if len(belowr) else rr[nr - 1]
     fig, ax = plt.subplots(figsize=(7.0, 5.6), dpi=dpi)
     im = ax.imshow(st[:nt, :nr], origin="lower", aspect="auto", cmap="RdBu_r",
                    vmin=-1, vmax=1, extent=[0, rr[nr - 1], lags[0], lags[nt - 1]])
     cs = ax.contour(np.linspace(0, rr[nr - 1], nr), np.linspace(lags[0], lags[nt - 1], nt),
                     st[:nt, :nr], levels=[np.exp(-1)], colors="k", linewidths=1.4)
     ax.clabel(cs, fmt={np.exp(-1): "1/e"}, fontsize=11)
-    ax.set_xlim(0, min(rr[nr - 1], 120))
+    ax.set_xlim(0, rmax)
+    ax.set_ylim(0, tmax)
     bare(ax, r"$r$", r"lag $\tau$")
     ax.grid(False)
     cb = fig.colorbar(im, ax=ax, fraction=.046, pad=.02)
@@ -138,6 +161,8 @@ def main():
     ap.add_argument("--dpi", type=int, default=200)
     ap.add_argument("--label", action="store_true",
                     help="add one short parameter line at the bottom")
+    ap.add_argument("--eulerian", action="store_true",
+                    help="also draw the Eulerian lagged curves (dotted) on the lag figure")
     a = ap.parse_args()
 
     with open(a.scan) as f:
@@ -152,7 +177,8 @@ def main():
         for tag, fn in (("crosscorr", fig_cross), ("autocorr", fig_auto),
                         ("lagcorr", fig_lag), ("st", fig_st)):
             try:
-                fn(r, os.path.join(a.outdir, f"{c}_{tag}.png"), a.dpi, a.label)
+                kw = {"eulerian": a.eulerian} if tag == "lagcorr" else {}
+                fn(r, os.path.join(a.outdir, f"{c}_{tag}.png"), a.dpi, a.label, **kw)
                 n += 1
             except Exception as exc:
                 print(f"  {c} {tag}: {type(exc).__name__}: {exc}", flush=True)
