@@ -139,9 +139,10 @@ def captions(root, cases):
         if r:
             base += (f"\nA_eff = {r['A_eff']:.2f}   L_chi/d = {r['L_chi']/r['d']:.2f}   "
                      f"L_chi = {r['L_chi']:.1f}   d = {r['d']:.1f}   "
-                     f"<g(P)> = {r['g_bar']:.2f}   grid-power(chi) = {r['grid_power_chi']:.1e}")
+                     f"mean g(P) = {r['g_bar']:.2f}   "
+                     f"grid-power(chi) = {r['grid_power_chi']:.1e}")
             if r["grid_power_chi"] > 1e-3:
-                base += "   <-- GRID-NOISE DOMINATED, structure not usable"
+                base += "   !! GRID-NOISE DOMINATED, structure not usable"
         out[n] = base
     return out
 
@@ -215,8 +216,9 @@ function draw(){
   const g=document.getElementById('g'); g.innerHTML='';
   const cap=document.getElementById('cap');
   if(!name){ cap.textContent=''; g.innerHTML='<div class="none">no run at this combination</div>'; return; }
-  const txt=name+'\\n'+(CAPS[name]||'');
-  cap.innerHTML=txt.replace(/(<-- GRID-NOISE DOMINATED[^\\n]*)/,'<span class="warn">$1</span>');
+  const esc=t=>t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const txt=esc(name+'\\n'+(CAPS[name]||''));
+  cap.innerHTML=txt.replace(/(!! GRID-NOISE DOMINATED[^\\n]*)/,'<span class="warn">$1</span>');
   const c=CASES[name];
   const add=(h,w)=>{const d=document.createElement('figure');if(w)d.className='wide';
                     d.innerHTML=h;g.appendChild(d);};
