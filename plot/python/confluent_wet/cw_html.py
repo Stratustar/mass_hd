@@ -218,7 +218,7 @@ function draw(){
   const c=CASES[name];
   (c._v||[]).forEach(([n,src])=>{
     const d=document.createElement('figure');
-    d.innerHTML='<video src="'+src+'" autoplay loop muted playsinline></video>';
+    d.innerHTML='<video src="'+src+'" controls autoplay loop muted playsinline></video>';
     v.appendChild(d);
   });
   (c._f||[]).forEach(([lab,src])=>{
