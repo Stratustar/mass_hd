@@ -71,32 +71,51 @@ def legend_key(ax):
 
 
 def fig_loop_lag(rows, figdir):
-    """Measured lag against the tau the runcard set, for both links of the loop."""
-    fig, axes = plt.subplots(1, 2, figsize=(11, 5), dpi=120)
+    """Measured lag against the tau the runcard set, for both links of the loop.
+
+    A measured lag of 0 does not mean "instantaneous", it means "shorter than one output
+    interval", so those points are drawn at that case's own dt and the resolution floor is
+    shaded -- a point sitting in the shaded band carries no information about tau, and
+    pretending otherwise by plotting it at zero on a log axis is what collapsed this figure
+    the first time it was drawn.
+    """
+    fig, axes = plt.subplots(1, 2, figsize=(11.5, 5), dpi=120)
     for ax, (mk, sk, tk, ttl) in zip(axes, [
             ("lag_Pm_k0", "Pm", "tau_m_set", r"memory:  $P \to m$   (expect $\tau_m$)"),
             ("lag_mchi_k0", "mc", "tau_chi_set", r"phenotype:  $m \to \chi$   (expect $\tau_\chi$)")]):
-        xs, ys = [], []
+        xs, ys, dts = [], [], []
         for r in rows:
-            x, y = r.get(tk), r.get(mk)
-            if x is None or y is None or not np.isfinite(x) or not np.isfinite(y):
+            x, dt = r.get(tk), r.get("dt") or 1.0
+            if x is None or not np.isfinite(x):
                 continue
-            xs.append(x); ys.append(y)
-            ax.plot([x], [max(y, 1e-9)], **style(r))
-            ye = r.get("temporal", {}).get(sk, {}).get("euler_peak_lag")
-            if ye is not None and np.isfinite(ye):
-                ax.plot([x], [max(ye, 1e-9)], marker="x", color=style(r)["color"],
-                        ls="none", ms=5, alpha=.45)
+            dts.append(dt)
+            for key, kw in ((mk, style(r)),
+                            (None, dict(marker="x", color=style(r)["color"], ls="none",
+                                        ms=5, alpha=.45))):
+                y = r.get(key) if key else \
+                    r.get("temporal", {}).get(sk, {}).get("euler_peak_lag")
+                if y is None or not np.isfinite(y):
+                    continue
+                yp = max(y, dt)                      # 0 means "below one output interval"
+                ax.plot([x], [yp], **kw)
+                if key:
+                    xs.append(x); ys.append(yp)
         if xs:
-            lim = [0.5 * min(xs + ys or [1]), 2 * max(xs + ys or [1])]
-            ax.plot(lim, lim, "k--", lw=1, label="measured = set")
-            ax.set_xlim(lim); ax.set_ylim(lim)
+            lo = 0.5 * min([v for v in xs + ys if v > 0] or [1.0])
+            hi = 2.0 * max(xs + ys)
+            ax.plot([lo, hi], [lo, hi], "k--", lw=1)
+            ax.set_xlim(lo, hi); ax.set_ylim(lo, hi)
+            if dts:
+                ax.axhspan(lo, max(dts), color="0.85", zorder=0)
+                ax.text(lo * 1.15, max(dts) * 0.8, "below one output interval",
+                        fontsize=7, va="top", color="0.35")
         ax.set_xscale("log"); ax.set_yscale("log")
         ax.set_xlabel(f"{tk}  (steps, set in the runcard)")
         ax.set_ylabel("measured peak lag  (steps)")
         ax.set_title(ttl, fontsize=11)
         ax.grid(alpha=.3, which="both")
-    axes[0].text(.02, .97, "filled/open = k=0 (box average)\nfaint x = Eulerian, point-wise",
+    axes[0].text(.02, .97, "filled/open = k=0 (box average)\nfaint x = Eulerian, point-wise\n"
+                           "dashed = measured equals set",
                  transform=axes[0].transAxes, va="top", fontsize=8)
     legend_key(axes[1])
     fig.tight_layout()
