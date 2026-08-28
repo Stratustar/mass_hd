@@ -101,7 +101,6 @@ class Panel:
         cax = self.fig.add_axes((0.828, 0.012, 0.038, 0.90))
         cb = self.fig.colorbar(self.im, cax=cax)
         cb.ax.tick_params(labelsize=8)
-        self._artists = None
 
     def _clear_streams(self):
         """Remove last frame's streamlines FROM THE AXES, not from the returned container.
@@ -123,35 +122,34 @@ class Panel:
         self.im.set_data(panel_data(fr, self.name).T)
         if self.streams:
             self._clear_streams()
+            self._assert_cleared()
             ux, uy = fr["ux"], fr["uy"]
             if np.hypot(ux, uy).max() > 0:
                 self.ax.streamplot(np.arange(self.L), np.arange(self.L), ux.T, uy.T,
                                    start_points=self.seeds, density=self.density,
                                    linewidth=0.7, arrowsize=0.6, color="white")
-        self._assert_no_leak()
         self.fig.canvas.draw()
         arr = np.asarray(self.fig.canvas.buffer_rgba())[..., :3]
         h, w = arr.shape[:2]
         return np.ascontiguousarray(arr[:h - h % 2, :w - w % 2])
 
-    def _assert_no_leak(self):
-        """Every frame must replace the last one, never add to it.
+    def _assert_cleared(self):
+        """After clearing, the axes must hold NOTHING but the image.
 
-        A frame that only ever adds is the failure mode this driver already shipped once: the
-        arrowheads accumulated silently, each frame looked plausible in isolation, and the
-        damage was only visible after a hundred of them had piled up. The artist count on the
-        axes is constant when the drawing is truly per-frame, so checking it turns that whole
-        class of bug into an immediate, named error instead of a picture someone has to
-        notice is wrong.
+        The obvious invariant -- 'the artist count is the same every frame' -- is wrong here,
+        and saying so cost a run: streamplot returns a different number of curves each frame
+        because the number that integrate successfully depends on the flow, so the count
+        legitimately moved 77 -> 87 and a constant-count check fires on healthy frames.
+
+        What must be true is the weaker, actually-meaningful statement: once the previous
+        frame has been cleared, nothing of it is left. imshow's AxesImage lives in
+        self.ax.images and is reused, so collections and patches should both be empty.
         """
-        n = len(self.ax.collections) + len(self.ax.patches)
-        if self._artists is None:
-            self._artists = n
-        elif n > self._artists:
+        left = len(self.ax.collections) + len(self.ax.patches)
+        if left:
             raise RuntimeError(
-                f"panel {self.name!r}: artist count grew {self._artists} -> {n} between "
-                f"frames; something is being drawn without the previous frame's copy being "
-                f"removed, and it will accumulate over the whole video")
+                f"panel {self.name!r}: {left} artist(s) survived the clear; the previous "
+                f"frame is still on the axes and will accumulate over the whole video")
 
     def close(self):
         plt.close(self.fig)
