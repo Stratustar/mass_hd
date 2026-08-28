@@ -92,95 +92,30 @@ class Canvas:
         plt.close(self.fig)
 
 
-def write_video(root, outdir, name, px, fps, quality, bitrate):
-    import imageio_ffmpeg
-    nf = cw.frame_count(root)
-    oa = cw.loadarchive(root)
-    idx = list(range(nf))
-    clim = sample_limits(oa, name, idx)
-    L = int(oa.parameters["LX"])
-    canvas = Canvas(L, name, clim, px)
-    out = os.path.join(outdir, f"{name}.mp4")
-    writer = None
-    try:
-        for j, i in enumerate(idx):
-            try:
-                fr = cw.load_frame(oa, i)
-            except Exception:
-                break
-            t = cw.ph.frame_time(oa, i)
-            arr = canvas.draw(field_of(fr, name), f"{name}    t = {t:.0f}")
-            if writer is None:
-                h, w = arr.shape[:2]
-                # bitrate, not quality, is the knob that actually bounds the file: at
-                # quality=7 a 201-frame 900px turbulent |u| came out at 18.6 MB.  Size is
-                # then bitrate * nframes/fps, so it is predictable before the render.
-                enc = dict(bitrate=bitrate) if bitrate else dict(quality=quality)
-                writer = imageio_ffmpeg.write_frames(
-                    out, (w, h), fps=fps, codec="libx264",
-                    macro_block_size=2, pix_fmt_out="yuv420p", **enc)
-                writer.send(None)
-            writer.send(arr.tobytes())
-            if j % 40 == 0:
-                print(f"  {name}: {j}/{len(idx)}", flush=True)
-    finally:
-        if writer is not None:
-            writer.close()
-        canvas.close()
-    mb = os.path.getsize(out) / 1e6 if os.path.exists(out) else 0.0
-    print(f"  wrote {out}  ({mb:.1f} MB, {len(idx)} frames @ {fps} fps, "
-          f"clim={clim[0]:.3g}..{clim[1]:.3g})", flush=True)
-    return out
-
-
-def stills(root, outdir, px):
-    """A four-panel chi / m / P / |u| still at the first, middle and last steady frame."""
-    nf = cw.frame_count(root)
-    oa = cw.loadarchive(root)
+def still_panel(fr, t, outdir, px):
+    """A four-panel chi / m / P / |u| snapshot."""
     names = ["chi", "m", "pressure", "speed"]
-    for i in sorted({0, nf // 2, nf - 1}):
-        try:
-            fr = cw.load_frame(oa, i)
-        except Exception:
-            continue
-        fig, axes = plt.subplots(2, 2, figsize=(px / 90.0, px / 90.0), dpi=110)
-        for ax, nm in zip(axes.ravel(), names):
-            d = field_of(fr, nm)
-            spec = FIELDS[nm]
-            cl = spec["clim"]
-            if cl is None:
-                v = float(np.percentile(np.abs(d), 99.5))
-                cl = (-v, v) if nm == "pressure" else (0.0, v)
-            im = ax.imshow(d.T, origin="lower", interpolation="nearest",
-                           cmap=spec["cmap"], vmin=cl[0], vmax=cl[1])
-            ax.set_xticks([]); ax.set_yticks([])
-            ax.set_title(spec["label"], fontsize=10)
-            fig.colorbar(im, ax=ax, fraction=0.046)
-        fig.suptitle(f"t = {cw.ph.frame_time(oa, i):.0f}", fontsize=12)
-        fig.tight_layout()
-        out = os.path.join(outdir, f"fields_{int(cw.ph.frame_time(oa, i))}.png")
-        fig.savefig(out, dpi=110); plt.close(fig)
-        print(f"  wrote {out}", flush=True)
+    fig, axes = plt.subplots(2, 2, figsize=(px / 90.0, px / 90.0), dpi=110)
+    for ax, nm in zip(axes.ravel(), names):
+        d = field_of(fr, nm)
+        spec = FIELDS[nm]
+        cl = spec["clim"]
+        if cl is None:
+            v = float(np.percentile(np.abs(d), 99.5)) or 1.0
+            cl = (-v, v) if nm == "pressure" else (0.0, v)
+        im = ax.imshow(d.T, origin="lower", interpolation="nearest",
+                       cmap=spec["cmap"], vmin=cl[0], vmax=cl[1])
+        ax.set_xticks([]); ax.set_yticks([])
+        ax.set_title(spec["label"], fontsize=10)
+        fig.colorbar(im, ax=ax, fraction=0.046)
+    fig.suptitle(f"t = {t:.0f}", fontsize=12)
+    fig.tight_layout()
+    out = os.path.join(outdir, f"fields_{int(t)}.png")
+    fig.savefig(out, dpi=110); plt.close(fig)
+    print(f"  wrote {out}", flush=True)
 
 
-def scalars(root, outdir):
-    """The loop's own state versus time: <chi>, <m>, median P, u_rms, zeta_eff, N_def."""
-    nf = cw.frame_count(root)
-    oa = cw.loadarchive(root)
-    par = oa.parameters
-    zeta = float(par["zeta"])
-    T, S = [], {k: [] for k in ("chibar", "mbar", "Pmed", "urms", "nd")}
-    for i in range(nf):
-        try:
-            fr = cw.load_frame(oa, i)
-        except Exception:
-            break
-        T.append(cw.ph.frame_time(oa, i))
-        S["chibar"].append(float(fr["chi"].mean()))
-        S["mbar"].append(float(fr["m"].mean()))
-        S["Pmed"].append(float(np.median(fr["P"])))
-        S["urms"].append(float(np.sqrt(np.mean(fr["ux"]**2 + fr["uy"]**2))))
-        S["nd"].append(float(cw.n_defects(fr["qxx"], fr["qyx"])))
+def scalars_figure(T, S, zeta, root, outdir):
     fig, axes = plt.subplots(2, 2, figsize=(11, 7), dpi=110)
     a = axes.ravel()
     a[0].plot(T, S["chibar"], label=r"$\langle\chi\rangle$")
@@ -192,7 +127,7 @@ def scalars(root, outdir):
     a[3].plot(T, S["nd"], c="C4"); a[3].set_ylabel(r"$N_{\rm defect}$")
     for ax in a:
         ax.set_xlabel("t"); ax.grid(alpha=.3)
-    fig.suptitle(os.path.basename(root), fontsize=12)
+    fig.suptitle(os.path.basename(root.rstrip("/")), fontsize=12)
     fig.tight_layout()
     out = os.path.join(outdir, "scalars_vs_t.png")
     fig.savefig(out, dpi=110); plt.close(fig)
@@ -204,7 +139,8 @@ def main():
     ap.add_argument("inputdir")
     ap.add_argument("outdir")
     ap.add_argument("--videos", nargs="*", default=["chi"],
-                    help="fields to animate; chi is the deliverable, the rest cost wall time")
+                    help="fields to animate; chi is the deliverable, each extra one costs "
+                         "only rendering now, not another pass over the archive")
     ap.add_argument("--px", type=int, default=900)
     ap.add_argument("--fps", type=int, default=12)
     ap.add_argument("--quality", type=int, default=7)
@@ -212,12 +148,68 @@ def main():
                     help="explicit x264 bitrate; empty string falls back to --quality")
     a = ap.parse_args()
 
+    import imageio_ffmpeg
     os.makedirs(a.outdir, exist_ok=True)
-    print(f"archive {a.inputdir}: {cw.frame_count(a.inputdir)} frames", flush=True)
-    for name in a.videos:
-        write_video(a.inputdir, a.outdir, name, a.px, a.fps, a.quality, a.bitrate)
-    stills(a.inputdir, a.outdir, a.px)
-    scalars(a.inputdir, a.outdir)
+    root = a.inputdir
+    nf = cw.frame_count(root)
+    oa = cw.loadarchive(root)
+    zeta = float(oa.parameters["zeta"])
+    L = int(oa.parameters["LX"])
+    print(f"archive {root}: {nf} frames, L = {L}", flush=True)
+
+    # ONE pre-pass, and only for the auto-scaled fields: chi and m have fixed limits, so a
+    # chi-only run (the production default) touches the archive exactly once.
+    clims = {n: (FIELDS[n]["clim"] if FIELDS[n]["clim"] is not None
+                 else sample_limits(oa, n, list(range(nf)))) for n in a.videos}
+    canvases = {n: Canvas(L, n, clims[n], a.px) for n in a.videos}
+    writers = {n: None for n in a.videos}
+    still_at = sorted({0, nf // 2, nf - 1})
+
+    T, S = [], {k: [] for k in ("chibar", "mbar", "urms", "nd")}
+    try:
+        for i in range(nf):
+            try:
+                fr = cw.load_frame(oa, i)          # THE one read of this frame
+            except Exception:
+                print(f"  stopping at unreadable frame {i}", flush=True)
+                break
+            t = cw.ph.frame_time(oa, i)
+
+            for n in a.videos:
+                arr = canvases[n].draw(field_of(fr, n), f"{n}    t = {t:.0f}")
+                if writers[n] is None:
+                    h, w = arr.shape[:2]
+                    # bitrate, not quality, is what bounds the file: at quality=7 a 201-frame
+                    # 900px turbulent |u| came out at 18.6 MB, against 4.3 MB at 2000k.
+                    enc = dict(bitrate=a.bitrate) if a.bitrate else dict(quality=a.quality)
+                    writers[n] = imageio_ffmpeg.write_frames(
+                        os.path.join(a.outdir, f"{n}.mp4"), (w, h), fps=a.fps,
+                        codec="libx264", macro_block_size=2, pix_fmt_out="yuv420p", **enc)
+                    writers[n].send(None)
+                writers[n].send(arr.tobytes())
+
+            T.append(t)
+            S["chibar"].append(float(fr["chi"].mean()))
+            S["mbar"].append(float(fr["m"].mean()))
+            S["urms"].append(float(np.sqrt(np.mean(fr["ux"]**2 + fr["uy"]**2))))
+            S["nd"].append(float(cw.n_defects(fr["qxx"], fr["qyx"])))
+
+            if i in still_at:
+                still_panel(fr, t, a.outdir, a.px)
+            if i % 40 == 0:
+                print(f"  frame {i}/{nf}", flush=True)
+    finally:
+        for n, wr in writers.items():
+            if wr is not None:
+                wr.close()
+                mb = os.path.getsize(os.path.join(a.outdir, f"{n}.mp4")) / 1e6
+                print(f"  wrote {a.outdir}/{n}.mp4  ({mb:.1f} MB, {len(T)} frames @ "
+                      f"{a.fps} fps, clim={clims[n][0]:.3g}..{clims[n][1]:.3g})", flush=True)
+        for c in canvases.values():
+            c.close()
+
+    if T:
+        scalars_figure(T, S, zeta, root, a.outdir)
 
 
 if __name__ == "__main__":
