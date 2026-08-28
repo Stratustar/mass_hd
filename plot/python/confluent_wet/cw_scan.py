@@ -68,8 +68,9 @@ def analyse(root, nlast, stride, maxlag_frac):
     par = cw.read_params(root)
     L = int(par["LX"])
     CC, zeta, chi0 = float(par["CC"]), float(par["zeta"]), float(par["chi0"])
-    tau_m = float(par["tau-m"]) if "tau-m" in par else float(par.get("tau_m", np.nan))
-    tau_chi = float(par["tau-chi"]) if "tau-chi" in par else float(par.get("tau_chi", np.nan))
+    # parameters.json keys are the C++ variable names (underscores), not the runcard options
+    tau_m = float(par.get("tau_m", np.nan))
+    tau_chi = float(par.get("tau_chi", np.nan))
 
     times, frames, pos = cw.steady_frames(root, nlast=nlast, stride=stride)
     rad = cw.Radial(L)
@@ -80,9 +81,9 @@ def analyse(root, nlast, stride, maxlag_frac):
     out = {"case": os.path.basename(root), "L": L, "CC": CC, "zeta": zeta,
            "chi0": chi0, "tau_m_set": tau_m, "tau_chi_set": tau_chi,
            "Dbio": float(par.get("Dbio", np.nan)),
-           "switch_sign": int(par.get("switch-sign", par.get("switch_sign", 1))),
+           "switch_sign": int(par.get("switch_sign", 1)),
            "pmem": float(par.get("pmem", np.nan)),
-           "pmem_width": float(par.get("pmem-width", par.get("pmem_width", np.nan))),
+           "pmem_width": float(par.get("pmem_width", np.nan)),
            "frames_total": cw.frame_count(root), "frames_lag": len(frames),
            "frames_map": len(pos), "stride": stride, "dt": dt,
            "window_t": [float(times[0]), float(times[-1])]}
@@ -118,6 +119,11 @@ def analyse(root, nlast, stride, maxlag_frac):
     else:
         out["g_bar"] = float("nan")
         out["threshold_offset"] = float("nan")
+
+    # grid-scale contamination: physics, or the centred-advection instability?
+    for k in ("chi", "m"):
+        S[f"hik_{k}"] = [cw.grid_scale_power(f[k]) for f in frames]
+        out[f"grid_power_{k}"] = float(np.mean(S[f"hik_{k}"]))
 
     out["series"] = S
     out["zeta_eff_mean"] = float(np.mean(S["zeta_eff"]))
@@ -213,7 +219,7 @@ def main():
               f"t_eddy={r['t_eddy']:.0f} L_u={r['L_u']:.1f} L_chi={r['L_chi']:.1f} "
               f"lag(P->m)={r['lag_Pm_k0']:.0f}/{r['tau_m_set']:.0f} "
               f"lag(m->chi)={r['lag_mchi_k0']:.0f}/{r['tau_chi_set']:.0f} "
-              f"<g(P)>={r['g_bar']:.2f}", flush=True)
+              f"<g(P)>={r['g_bar']:.2f} hik(m)={r['grid_power_m']:.1e}", flush=True)
 
     out = a.out or cw.results_root(*a.study.split("/"), "cw_scan.json")
     os.makedirs(os.path.dirname(out), exist_ok=True)

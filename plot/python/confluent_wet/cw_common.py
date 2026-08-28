@@ -50,8 +50,11 @@ def read_params(root):
     """The run's own parameters, flat and correctly typed.
 
     parameters.json stores {name: {type, value}}; the archive class already converts that, so
-    read it through the archive rather than parsing by hand -- and note the keys keep their
-    runcard spelling, dashes included ("tau-m", "switch-sign", "pmem-width").
+    read it through the archive rather than parsing by hand.
+
+    NOTE THE SPELLING: the keys are the C++ VARIABLE names, with underscores -- "tau_m",
+    "tau_chi", "pmem_width", "switch_sign" -- not the runcard option names, which use dashes.
+    Looking one up by its runcard spelling silently returns nothing.
     """
     return dict(loadarchive(root).parameters)
 
@@ -206,6 +209,29 @@ def spatiotemporal_corr(rad, frames, field, maxlag):
             norm = abs(c[0]) if np.isfinite(c[0]) and c[0] != 0 else 1.0
         out.append(c / norm)
     return np.asarray(out)
+
+
+def grid_scale_power(field, cutoff=3.0):
+    """Fraction of a field's variance at wavelengths shorter than `cutoff` lattice cells.
+
+    Centred advection is weakly unstable and the growth goes as CFL^4; the code's own comment
+    sizes that at CFL ~ 4e-3, but the developed-turbulence max|u| is ~0.12, thirty times
+    larger.  Measured in the A = 9 open-loop run, m grew from an exactly uniform 0.5 to
+    std = 2e-2 over 80000 steps with a source term of order 1e-12 -- pure numerical growth at
+    ~2.2e-4/step.  With the loop closed the relaxation damps it at 1/tau_m, which is safe at
+    tau_m = 330 (3e-3/step) but only marginal at tau_m = 3500 (2.9e-4/step) when Dbio = 0.
+    So this number decides whether a slow-memory, no-diffusion case is physics or grid noise.
+    """
+    f = np.asarray(field, float)
+    L = f.shape[-1]
+    F = np.fft.fft2(f - f.mean())
+    P = np.abs(F)**2
+    ky, kx = np.meshgrid(np.fft.fftfreq(L) * L, np.fft.fftfreq(L) * L, indexing="ij")
+    k = np.sqrt(kx**2 + ky**2)
+    tot = P.sum() - P[0, 0]
+    if tot <= 0:
+        return 0.0
+    return float(P[k > L / cutoff].sum() / tot)
 
 
 def detrended_spectrum(t, y):
