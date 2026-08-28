@@ -78,20 +78,22 @@ TC_RATIOS = [1, 3]
 NSTEADY = 180
 
 # fallbacks if no calibration JSON is supplied (t_eddy ~ 85/zeta_eff, sigma_P ~ 0.76*zeta_eff)
-PREDICTED = {A: dict(t_eddy=85.0 / (A * FROZEN["CC"]), pmem=0.0,
+PREDICTED = {A: dict(t_eddy=85.0 / (A * FROZEN["CC"]),
+                     tau_motion=96.0 / (A * FROZEN["CC"]), pmem=0.0,
                      pmem_width=0.674 * 0.76 * A * FROZEN["CC"] / 2)
              for A in ACTIVITIES}
 
 
 def nice(x):
-    """Round a cadence to a readable number without moving it more than a few percent."""
+    """Two significant figures.
+
+    Deliberately gentle: the tau ladder IS the measured clock of each activity, so a rounding
+    that moved a rung by 10% would move it off the ratio-1 point it exists to sit on.
+    """
     if x <= 0:
         return 1
-    mag = 10 ** math.floor(math.log10(x))
-    for step in (mag, mag / 2, mag / 5, mag / 10):
-        if x / step >= 3:
-            return int(max(1, round(x / step) * step))
-    return int(max(1, round(x)))
+    mag = 10 ** (math.floor(math.log10(x)) - 1)
+    return int(max(1, round(x / mag) * mag))
 
 
 def load_calib(path):
@@ -111,9 +113,25 @@ def load_calib(path):
 
 
 def plan(cal):
-    """The full grid as a list of dicts, with every derived number computed once."""
-    t_eddy = {A: cal[A]["t_eddy"] for A in ACTIVITIES}
-    ladder = [nice(t_eddy[A]) for A in sorted(ACTIVITIES, reverse=True)]   # A9, A3, A1
+    """The full grid as a list of dicts, with every derived number computed once.
+
+    THE CLOCK IS tau_motion = d/u_rms, NOT 1/lambda.  Both scale as 1/zeta_eff, and the
+    strain-rate one scales slightly more cleanly (47.6/45.8/44.4 against 104.8/94.2/89.3
+    for tau_motion*zeta_eff), but tau_motion is the one that MEANS something here and the one
+    that reproduces across box sizes:
+      * it is literally the time between defect encounters along a material trajectory, which
+        is what "how many encounters does the memory average over" is asking about;
+      * measured at L = 400 it is 3492 at A = 1, against 3254 measured at L = 800 and an
+        analytic instability time 5*eta/zeta_eff = 3333 -- three numbers within 5%;
+      * the strain-rate 1/lambda measured here (1588) is half the 2823 recorded at L = 800,
+        which is a difference in how the gradient was taken, not in the flow: d, u_rms and the
+        defect density all reproduce between the two boxes.
+    It is also the clock the dry confluent-memory line normalised by, so the two model lines
+    stay comparable on this axis (they cannot be compared on xi -- see the cw_regime runcard).
+    """
+    t_enc = {A: cal[A]["tau_motion"] for A in ACTIVITIES}
+    t_eddy = t_enc                                       # the ladder and the ratios use t_enc
+    ladder = [nice(t_enc[A]) for A in sorted(ACTIVITIES, reverse=True)]   # A9, A3, A1
     rows = []
     for A in ACTIVITIES:
         ze = A * FROZEN["CC"]
@@ -144,15 +162,18 @@ def plan(cal):
 HEADER = """# 20260828 cw_loop: the confluent-wet closed-loop (tau_m, tau_chi) production grid.
 #
 # THIS CASE
-#   A = {A}  (zeta_eff = {zeta_eff:g}, zeta = {zeta:g} at chi0 = 0.5)   t_eddy = {t_eddy:.0f} steps
-#   tau_m   = {tau_m}  =  {rm:.2f} x t_eddy        switch-sign = {switch_sign:+d}   Dbio = {Dbio:g}
-#   tau_chi = {tau_chi}  =  {ratio} x tau_m  =  {rc:.2f} x t_eddy
+#   A = {A}  (zeta_eff = {zeta_eff:g}, zeta = {zeta:g} at chi0 = 0.5)
+#   tau_motion = d/u_rms = {t_eddy:.0f} steps   <- THE clock; all ratios below are against it
+#   tau_m   = {tau_m}  =  {rm:.2f} x tau_motion    switch-sign = {switch_sign:+d}   Dbio = {Dbio:g}
+#   tau_chi = {tau_chi}  =  {ratio} x tau_m  =  {rc:.2f} x tau_motion
 #
-# WHY THESE NUMBERS.  A in {{1,3,9}} is geometric in the model's single material clock
-# (t_eddy ~ 85/zeta_eff -> 2833/944/315), so ONE absolute tau ladder slides across all three
+# WHY THESE NUMBERS.  A in {{1,3,9}} is geometric in the model's single material clock,
+# MEASURED open-loop at this box size: tau_motion = 3492 / 1046 / 331 steps, a factor ~3.3
+# apart each (tau_motion*zeta_eff = 105 / 94 / 89).  So ONE absolute tau ladder slides across all three
 # activities and their ratio windows overlap -- which two regimes at A = 1 and 10 could not do
 # (windows [0.06,2.5] and [0.62,26], nearly disjoint).  The ladder IS the three measured
-# t_eddy values, so this case sits at ratio {rm:.2f} for the memory and {rc:.2f} for the phenotype.
+# tau_motion values rounded to two figures, so this case sits at ratio {rm:.2f} for the memory
+# and {rc:.2f} for the phenotype.
 # tau_m = {tau_m} clears the order-magnitude relaxation floor 1/(4*Gamma*CC) = {floor:.0f} steps, below
 # which the memory would record |Q| transients (and sigma_bulk, part of P, is a function of |Q|).
 # Dbio = {Dbio:g}.
@@ -172,11 +193,11 @@ HEADER = """# 20260828 cw_loop: the confluent-wet closed-loop (tau_m, tau_chi) p
 #
 # LENGTH AND CADENCE, from this case's own clocks
 #   t_grow  = 5*eta/zeta_eff = {t_grow:.0f}      T_trans = max(13*t_grow, 5*tau_chi) = {nstart}
-#   ninfo   = max(min(tau_m,t_eddy)/5, max(tau_chi,t_eddy)/36) = {ninfo}
+#   ninfo   = max(min(tau_m,tau_motion)/5, max(tau_chi,tau_motion)/36) = {ninfo}
 #   nstart  = {nstart}: NOTHING IS WRITTEN before the transient ends.  Without it A = 1 would
 #             spend ~700 frames of a ~870-frame archive warming up.
 #   nsteps  = nstart + {nsteady}*ninfo = {nsteps}, i.e. {frames} steady frames spanning {window} steps
-#             = {wspan:.1f} x max(tau_chi, t_eddy).
+#             = {wspan:.1f} x max(tau_chi, tau_motion).
 #
 # FROZEN PARAMETER SET, unchanged since 20260827 cw_regime -- xi = 0.4 (the flow-aligning
 # branch xi >= 1 is numerically unreachable in this scheme), tau = 2 (tau = 1 blows the Mach
@@ -236,7 +257,7 @@ def main():
         cal = PREDICTED
     rows, ladder = plan(cal)
 
-    print(f"tau_m ladder (= measured t_eddy of A9, A3, A1): {ladder}")
+    print(f"tau_m ladder (= measured tau_motion of A9, A3, A1, to 2 figures): {ladder}")
     print(f"{'case':30s} {'ninfo':>6s} {'nstart':>8s} {'nsteps':>8s} {'win/Tslow':>9s} "
           f"{'GB':>6s} {'sim_min':>8s}")
     tot_gb = tot_min = 0.0
@@ -263,7 +284,7 @@ def main():
         dsp = 49 * r["A"] ** -0.45
         if r["Dbio"] > 0:
             lb = math.sqrt(r["Dbio"] * r["t_eddy"])
-            lB = (f"l_B = sqrt(Dbio*t_eddy) = {lb:.1f} lattice units against a defect "
+            lB = (f"l_B = sqrt(Dbio*tau_motion) = {lb:.1f} lattice units against a defect "
                   f"spacing d ~ {dsp:.0f}, so l_B/d = {lb/dsp:.2f}.")
         else:
             lB = "no biological diffusion at all (the control arm)." 

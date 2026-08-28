@@ -30,21 +30,21 @@ import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import cw_common as cw
 
+# `key` is the name the field carries in a cw_common.load_frame dict, which is the ANALYSIS
+# name and not the name in the archive -- the pressure is "P" there, not "pressure".
 FIELDS = {
-    "chi":      dict(key="chi",      cmap="coolwarm", label=r"$\chi$  (phenotype)", clim=(0, 1)),
-    "m":        dict(key="m",        cmap="viridis",  label=r"$m$  (memory)",       clim=(0, 1)),
-    "speed":    dict(key=None,       cmap="inferno",  label=r"$|u|$",               clim=None),
-    "pressure": dict(key="pressure", cmap="RdBu_r",   label=r"$P$",                 clim=None),
-    "q2":       dict(key=None,       cmap="magma",    label=r"$q^2$ (order)",       clim=(0, 1)),
+    "chi":      dict(key="chi", cmap="coolwarm", label=r"$\chi$  (phenotype)", clim=(0, 1)),
+    "m":        dict(key="m",   cmap="viridis",  label=r"$m$  (memory)",       clim=(0, 1)),
+    "speed":    dict(key=None,  cmap="inferno",  label=r"$|u|$",               clim=None),
+    "pressure": dict(key="P",   cmap="RdBu_r",   label=r"$P$",                 clim=None),
+    "q2":       dict(key="q2",  cmap="magma",    label=r"$q^2$ (order)",       clim=(0, 1)),
 }
 
 
 def field_of(fr, name):
     if name == "speed":
         return np.sqrt(fr["ux"]**2 + fr["uy"]**2)
-    if name == "q2":
-        return fr["q2"]
-    return fr[FIELDS[name]["key"]] if FIELDS[name]["key"] in fr else fr[name]
+    return fr[FIELDS[name]["key"]]
 
 
 def sample_limits(oa, name, indices, pct=99.5):
@@ -92,7 +92,7 @@ class Canvas:
         plt.close(self.fig)
 
 
-def write_video(root, outdir, name, px, fps, quality):
+def write_video(root, outdir, name, px, fps, quality, bitrate):
     import imageio_ffmpeg
     nf = cw.frame_count(root)
     oa = cw.loadarchive(root)
@@ -112,9 +112,13 @@ def write_video(root, outdir, name, px, fps, quality):
             arr = canvas.draw(field_of(fr, name), f"{name}    t = {t:.0f}")
             if writer is None:
                 h, w = arr.shape[:2]
+                # bitrate, not quality, is the knob that actually bounds the file: at
+                # quality=7 a 201-frame 900px turbulent |u| came out at 18.6 MB.  Size is
+                # then bitrate * nframes/fps, so it is predictable before the render.
+                enc = dict(bitrate=bitrate) if bitrate else dict(quality=quality)
                 writer = imageio_ffmpeg.write_frames(
-                    out, (w, h), fps=fps, codec="libx264", quality=quality,
-                    macro_block_size=2, pix_fmt_out="yuv420p")
+                    out, (w, h), fps=fps, codec="libx264",
+                    macro_block_size=2, pix_fmt_out="yuv420p", **enc)
                 writer.send(None)
             writer.send(arr.tobytes())
             if j % 40 == 0:
@@ -124,7 +128,8 @@ def write_video(root, outdir, name, px, fps, quality):
             writer.close()
         canvas.close()
     mb = os.path.getsize(out) / 1e6 if os.path.exists(out) else 0.0
-    print(f"  wrote {out}  ({mb:.1f} MB, clim={clim[0]:.3g}..{clim[1]:.3g})", flush=True)
+    print(f"  wrote {out}  ({mb:.1f} MB, {len(idx)} frames @ {fps} fps, "
+          f"clim={clim[0]:.3g}..{clim[1]:.3g})", flush=True)
     return out
 
 
@@ -203,12 +208,14 @@ def main():
     ap.add_argument("--px", type=int, default=900)
     ap.add_argument("--fps", type=int, default=12)
     ap.add_argument("--quality", type=int, default=7)
+    ap.add_argument("--bitrate", default="2000k",
+                    help="explicit x264 bitrate; empty string falls back to --quality")
     a = ap.parse_args()
 
     os.makedirs(a.outdir, exist_ok=True)
     print(f"archive {a.inputdir}: {cw.frame_count(a.inputdir)} frames", flush=True)
     for name in a.videos:
-        write_video(a.inputdir, a.outdir, name, a.px, a.fps, a.quality)
+        write_video(a.inputdir, a.outdir, name, a.px, a.fps, a.quality, a.bitrate)
     stills(a.inputdir, a.outdir, a.px)
     scalars(a.inputdir, a.outdir)
 
