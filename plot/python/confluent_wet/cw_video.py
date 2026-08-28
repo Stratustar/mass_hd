@@ -63,6 +63,43 @@ def sample_limits(oa, name, indices, pct=99.5):
     return (-v, v) if name == "pressure" else (0.0, v)
 
 
+class QuadCanvas:
+    """Four fields side by side, and nothing else on the figure.
+
+    No parameter line, no time stamp, no case name: a figure that goes on a slide should
+    carry the picture and the colour scale, and let the caption carry the rest.  The
+    per-field label is one symbol.
+    """
+
+    def __init__(self, L, names, clims, px):
+        dpi = 100.0
+        self.fig = plt.figure(figsize=(len(names) * px * 1.16 / dpi, (px + 26) / dpi), dpi=dpi)
+        self.ims = {}
+        w = 1.0 / len(names)
+        for j, n in enumerate(names):
+            spec = FIELDS[n]
+            ax = self.fig.add_axes((j * w + 0.008, 0.012, w * 0.80, 0.90))
+            self.ims[n] = ax.imshow(np.zeros((L, L)), origin="lower",
+                                    interpolation="nearest", cmap=spec["cmap"],
+                                    vmin=clims[n][0], vmax=clims[n][1])
+            ax.set_xticks([]); ax.set_yticks([])
+            ax.set_title(spec["label"].split("  ")[0], fontsize=15, pad=5)
+            cax = self.fig.add_axes((j * w + w * 0.815, 0.012, w * 0.035, 0.90))
+            cb = self.fig.colorbar(self.ims[n], cax=cax)
+            cb.ax.tick_params(labelsize=8)
+
+    def draw(self, fr):
+        for n, im in self.ims.items():
+            im.set_data(field_of(fr, n).T)
+        self.fig.canvas.draw()
+        arr = np.asarray(self.fig.canvas.buffer_rgba())[..., :3]
+        h, w = arr.shape[:2]
+        return np.ascontiguousarray(arr[:h - h % 2, :w - w % 2])
+
+    def close(self):
+        plt.close(self.fig)
+
+
 class Canvas:
     """One figure, one image, one colorbar -- reused for every frame."""
 
@@ -82,7 +119,7 @@ class Canvas:
 
     def draw(self, data, title):
         self.im.set_data(data.T)
-        self.title.set_text(title)
+        self.title.set_text(title)   # caller decides; "" leaves the panel bare
         self.fig.canvas.draw()
         arr = np.asarray(self.fig.canvas.buffer_rgba())[..., :3]
         h, w = arr.shape[:2]                      # h264 wants even dimensions
@@ -146,7 +183,15 @@ def main():
     ap.add_argument("--quality", type=int, default=7)
     ap.add_argument("--bitrate", default="2000k",
                     help="explicit x264 bitrate; empty string falls back to --quality")
+    ap.add_argument("--clean", action="store_true",
+                    help="no time stamp and no field name on the frame -- for slides, where "
+                         "the caption carries what the annotation would have said")
+    ap.add_argument("--quad", nargs="*", default=None, metavar="FIELD",
+                    help="also emit fields.mp4 with these fields side by side "
+                         "(default chi m pressure speed). Same single pass over the archive.")
     a = ap.parse_args()
+    if a.quad is not None and not a.quad:
+        a.quad = ["chi", "m", "pressure", "speed"]
 
     import imageio_ffmpeg
     os.makedirs(a.outdir, exist_ok=True)
@@ -159,10 +204,13 @@ def main():
 
     # ONE pre-pass, and only for the auto-scaled fields: chi and m have fixed limits, so a
     # chi-only run (the production default) touches the archive exactly once.
+    need = list(dict.fromkeys(list(a.videos) + list(a.quad or [])))
     clims = {n: (FIELDS[n]["clim"] if FIELDS[n]["clim"] is not None
-                 else sample_limits(oa, n, list(range(nf)))) for n in a.videos}
+                 else sample_limits(oa, n, list(range(nf)))) for n in need}
     canvases = {n: Canvas(L, n, clims[n], a.px) for n in a.videos}
     writers = {n: None for n in a.videos}
+    quad = QuadCanvas(L, a.quad, clims, a.px) if a.quad else None
+    qwriter = None
     still_at = sorted({0, nf // 2, nf - 1})
 
     T, S = [], {k: [] for k in ("chibar", "mbar", "urms", "nd")}
@@ -176,7 +224,8 @@ def main():
             t = cw.ph.frame_time(oa, i)
 
             for n in a.videos:
-                arr = canvases[n].draw(field_of(fr, n), f"{n}    t = {t:.0f}")
+                arr = canvases[n].draw(field_of(fr, n),
+                                       "" if a.clean else f"{n}    t = {t:.0f}")
                 if writers[n] is None:
                     h, w = arr.shape[:2]
                     # bitrate, not quality, is what bounds the file: at quality=7 a 201-frame
@@ -187,6 +236,17 @@ def main():
                         codec="libx264", macro_block_size=2, pix_fmt_out="yuv420p", **enc)
                     writers[n].send(None)
                 writers[n].send(arr.tobytes())
+
+            if quad is not None:
+                arr = quad.draw(fr)
+                if qwriter is None:
+                    h, w = arr.shape[:2]
+                    enc = dict(bitrate=a.bitrate) if a.bitrate else dict(quality=a.quality)
+                    qwriter = imageio_ffmpeg.write_frames(
+                        os.path.join(a.outdir, "fields.mp4"), (w, h), fps=a.fps,
+                        codec="libx264", macro_block_size=2, pix_fmt_out="yuv420p", **enc)
+                    qwriter.send(None)
+                qwriter.send(arr.tobytes())
 
             T.append(t)
             S["chibar"].append(float(fr["chi"].mean()))
@@ -199,6 +259,12 @@ def main():
             if i % 40 == 0:
                 print(f"  frame {i}/{nf}", flush=True)
     finally:
+        if qwriter is not None:
+            qwriter.close()
+            mb = os.path.getsize(os.path.join(a.outdir, "fields.mp4")) / 1e6
+            print(f"  wrote {a.outdir}/fields.mp4  ({mb:.1f} MB, {len(T)} frames)", flush=True)
+        if quad is not None:
+            quad.close()
         for n, wr in writers.items():
             if wr is not None:
                 wr.close()
