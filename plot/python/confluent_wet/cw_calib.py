@@ -137,14 +137,14 @@ def main():
         try:
             r = analyse(root, a.nlast, a.stride)
         except Exception as exc:
-            print(f"  {c}: FAILED -- {exc}")
+            print(f"  {c}: FAILED -- {type(exc).__name__}: {exc}", flush=True)
             continue
         res.append(r)
         s = "sat" if r["saturation"]["ok"] else f"DRIFT {r['saturation']['drift']:.1%}"
         print(f"  {c}: A={r['A']:.2f}  pmem={r['pmem']:+.4e}  IQR/2={r['pmem_width_iqr2']:.4e}"
               f"  sigma_P={r['sigma_P']:.4e}  t_eddy={r['t_eddy']:.0f}"
               f"  tau_motion={r['tau_motion']:.0f}  N={r['N_def']:.0f} d={r['d']:.1f}"
-              f"  L_u={r['L_u']:.1f} L_P={r['L_P']:.1f}  Ma={r['Ma']:.3f}  [{s}]")
+              f"  L_u={r['L_u']:.1f} L_P={r['L_P']:.1f}  Ma={r['Ma']:.3f}  [{s}]", flush=True)
 
     out = a.out or cw.results_root(*a.study.split("/"), "cw_calib.json")
     os.makedirs(os.path.dirname(out), exist_ok=True)

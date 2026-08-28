@@ -1,0 +1,217 @@
+"""In-job plotting for a confluent-wet closed-loop run: a chi video, stills, and time series.
+
+Same `inputdir outdir [...]` contract as plot_hd.py, so submit_case.sh can select it with
+PLOT_SCRIPT.
+
+WHY THIS EXISTS RATHER THAN confluent_wet_plot.py.  That driver builds a NEW matplotlib
+figure, axes and colorbar for every frame; at L = 800 x 140 frames it spent 1 h 32 min against
+31 min of simulation -- 75% of the wall time was plotting, and at 72 production runs that is
+the dominant cost of the whole campaign.  Here one figure, one image artist and one colorbar
+are built once and only the pixel data and the title change per frame.
+
+RESOLUTION AND FILE SIZE.  The image is rendered at an explicit pixel size (default 900 px of
+field, so a 400-cell lattice is upsampled 2.25x and defect cores are actually visible) with
+`interpolation="nearest"` so the upsampling never invents structure.  Size is controlled by
+the x264 quality and the frame count, both explicit; a 181-frame 900 px chi video lands in the
+few-MB range.
+
+The whole archive is the steady state by construction: the production runcards set nstart past
+the transient, so nothing here needs to trim a warm-up.
+"""
+import argparse
+import os
+import sys
+
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+import numpy as np
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import cw_common as cw
+
+FIELDS = {
+    "chi":      dict(key="chi",      cmap="coolwarm", label=r"$\chi$  (phenotype)", clim=(0, 1)),
+    "m":        dict(key="m",        cmap="viridis",  label=r"$m$  (memory)",       clim=(0, 1)),
+    "speed":    dict(key=None,       cmap="inferno",  label=r"$|u|$",               clim=None),
+    "pressure": dict(key="pressure", cmap="RdBu_r",   label=r"$P$",                 clim=None),
+    "q2":       dict(key=None,       cmap="magma",    label=r"$q^2$ (order)",       clim=(0, 1)),
+}
+
+
+def field_of(fr, name):
+    if name == "speed":
+        return np.sqrt(fr["ux"]**2 + fr["uy"]**2)
+    if name == "q2":
+        return fr["q2"]
+    return fr[FIELDS[name]["key"]] if FIELDS[name]["key"] in fr else fr[name]
+
+
+def sample_limits(oa, name, indices, pct=99.5):
+    """Colour limits fixed ACROSS the video from a sample of frames.
+
+    Per-frame autoscaling makes a field that grows by two decades look constant; that lesson
+    is already paid for (20260827).  Symmetric limits for the signed pressure.
+    """
+    spec = FIELDS[name]
+    if spec["clim"] is not None:
+        return spec["clim"]
+    vals = []
+    for i in indices[:: max(1, len(indices) // 12)]:
+        vals.append(np.abs(field_of(cw.load_frame(oa, i), name)).ravel())
+    v = float(np.percentile(np.concatenate(vals), pct))
+    return (-v, v) if name == "pressure" else (0.0, v)
+
+
+class Canvas:
+    """One figure, one image, one colorbar -- reused for every frame."""
+
+    def __init__(self, L, name, clim, px):
+        spec = FIELDS[name]
+        dpi = 100.0
+        fig_w = (px * 1.22) / dpi
+        fig_h = px / dpi
+        self.fig = plt.figure(figsize=(fig_w, fig_h), dpi=dpi)
+        ax = self.fig.add_axes((0.01, 0.01, 0.80, 0.92))
+        self.im = ax.imshow(np.zeros((L, L)), origin="lower", interpolation="nearest",
+                            cmap=spec["cmap"], vmin=clim[0], vmax=clim[1])
+        ax.set_xticks([]); ax.set_yticks([])
+        self.title = ax.set_title("", fontsize=11)
+        cb = self.fig.colorbar(self.im, cax=self.fig.add_axes((0.835, 0.01, 0.028, 0.92)))
+        cb.set_label(spec["label"])
+
+    def draw(self, data, title):
+        self.im.set_data(data.T)
+        self.title.set_text(title)
+        self.fig.canvas.draw()
+        arr = np.asarray(self.fig.canvas.buffer_rgba())[..., :3]
+        h, w = arr.shape[:2]                      # h264 wants even dimensions
+        return np.ascontiguousarray(arr[:h - h % 2, :w - w % 2])
+
+    def close(self):
+        plt.close(self.fig)
+
+
+def write_video(root, outdir, name, px, fps, quality):
+    import imageio_ffmpeg
+    nf = cw.frame_count(root)
+    oa = cw.loadarchive(root)
+    idx = list(range(nf))
+    clim = sample_limits(oa, name, idx)
+    L = int(oa.parameters["LX"])
+    canvas = Canvas(L, name, clim, px)
+    out = os.path.join(outdir, f"{name}.mp4")
+    writer = None
+    try:
+        for j, i in enumerate(idx):
+            try:
+                fr = cw.load_frame(oa, i)
+            except Exception:
+                break
+            t = cw.ph.frame_time(oa, i)
+            arr = canvas.draw(field_of(fr, name), f"{name}    t = {t:.0f}")
+            if writer is None:
+                h, w = arr.shape[:2]
+                writer = imageio_ffmpeg.write_frames(
+                    out, (w, h), fps=fps, codec="libx264", quality=quality,
+                    macro_block_size=2, pix_fmt_out="yuv420p")
+                writer.send(None)
+            writer.send(arr.tobytes())
+            if j % 40 == 0:
+                print(f"  {name}: {j}/{len(idx)}", flush=True)
+    finally:
+        if writer is not None:
+            writer.close()
+        canvas.close()
+    mb = os.path.getsize(out) / 1e6 if os.path.exists(out) else 0.0
+    print(f"  wrote {out}  ({mb:.1f} MB, clim={clim[0]:.3g}..{clim[1]:.3g})", flush=True)
+    return out
+
+
+def stills(root, outdir, px):
+    """A four-panel chi / m / P / |u| still at the first, middle and last steady frame."""
+    nf = cw.frame_count(root)
+    oa = cw.loadarchive(root)
+    names = ["chi", "m", "pressure", "speed"]
+    for i in sorted({0, nf // 2, nf - 1}):
+        try:
+            fr = cw.load_frame(oa, i)
+        except Exception:
+            continue
+        fig, axes = plt.subplots(2, 2, figsize=(px / 90.0, px / 90.0), dpi=110)
+        for ax, nm in zip(axes.ravel(), names):
+            d = field_of(fr, nm)
+            spec = FIELDS[nm]
+            cl = spec["clim"]
+            if cl is None:
+                v = float(np.percentile(np.abs(d), 99.5))
+                cl = (-v, v) if nm == "pressure" else (0.0, v)
+            im = ax.imshow(d.T, origin="lower", interpolation="nearest",
+                           cmap=spec["cmap"], vmin=cl[0], vmax=cl[1])
+            ax.set_xticks([]); ax.set_yticks([])
+            ax.set_title(spec["label"], fontsize=10)
+            fig.colorbar(im, ax=ax, fraction=0.046)
+        fig.suptitle(f"t = {cw.ph.frame_time(oa, i):.0f}", fontsize=12)
+        fig.tight_layout()
+        out = os.path.join(outdir, f"fields_{int(cw.ph.frame_time(oa, i))}.png")
+        fig.savefig(out, dpi=110); plt.close(fig)
+        print(f"  wrote {out}", flush=True)
+
+
+def scalars(root, outdir):
+    """The loop's own state versus time: <chi>, <m>, median P, u_rms, zeta_eff, N_def."""
+    nf = cw.frame_count(root)
+    oa = cw.loadarchive(root)
+    par = oa.parameters
+    zeta = float(par["zeta"])
+    T, S = [], {k: [] for k in ("chibar", "mbar", "Pmed", "urms", "nd")}
+    for i in range(nf):
+        try:
+            fr = cw.load_frame(oa, i)
+        except Exception:
+            break
+        T.append(cw.ph.frame_time(oa, i))
+        S["chibar"].append(float(fr["chi"].mean()))
+        S["mbar"].append(float(fr["m"].mean()))
+        S["Pmed"].append(float(np.median(fr["P"])))
+        S["urms"].append(float(np.sqrt(np.mean(fr["ux"]**2 + fr["uy"]**2))))
+        S["nd"].append(float(cw.n_defects(fr["qxx"], fr["qyx"])))
+    fig, axes = plt.subplots(2, 2, figsize=(11, 7), dpi=110)
+    a = axes.ravel()
+    a[0].plot(T, S["chibar"], label=r"$\langle\chi\rangle$")
+    a[0].plot(T, S["mbar"], label=r"$\langle m\rangle$")
+    a[0].axhline(0.5, ls=":", c="k", lw=.8); a[0].legend(); a[0].set_ylabel("loop state")
+    a[1].plot(T, [zeta * (1 - c) for c in S["chibar"]], c="C3")
+    a[1].set_ylabel(r"$\zeta_{\rm eff}=\zeta(1-\langle\chi\rangle)$")
+    a[2].plot(T, S["urms"], c="C2"); a[2].set_ylabel(r"$u_{\rm rms}$")
+    a[3].plot(T, S["nd"], c="C4"); a[3].set_ylabel(r"$N_{\rm defect}$")
+    for ax in a:
+        ax.set_xlabel("t"); ax.grid(alpha=.3)
+    fig.suptitle(os.path.basename(root), fontsize=12)
+    fig.tight_layout()
+    out = os.path.join(outdir, "scalars_vs_t.png")
+    fig.savefig(out, dpi=110); plt.close(fig)
+    print(f"  wrote {out}", flush=True)
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("inputdir")
+    ap.add_argument("outdir")
+    ap.add_argument("--videos", nargs="*", default=["chi"],
+                    help="fields to animate; chi is the deliverable, the rest cost wall time")
+    ap.add_argument("--px", type=int, default=900)
+    ap.add_argument("--fps", type=int, default=12)
+    ap.add_argument("--quality", type=int, default=7)
+    a = ap.parse_args()
+
+    os.makedirs(a.outdir, exist_ok=True)
+    print(f"archive {a.inputdir}: {cw.frame_count(a.inputdir)} frames", flush=True)
+    for name in a.videos:
+        write_video(a.inputdir, a.outdir, name, a.px, a.fps, a.quality)
+    stills(a.inputdir, a.outdir, a.px)
+    scalars(a.inputdir, a.outdir)
+
+
+if __name__ == "__main__":
+    main()
