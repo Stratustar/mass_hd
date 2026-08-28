@@ -10,7 +10,7 @@ already in it -- so this never touches the 554 GB of frames and runs in seconds 
 
 Emits, per case:
     <case>_crosscorr.png    spatial cross-correlations C_Pm, C_m,chi, C_P,chi
-    <case>_lagcorr.png      lagged cross-correlations, k=0 and Eulerian, with tau markers
+    <case>_lagcorr.png      Eulerian lagged cross-correlations, with tau markers
     <case>_st.png           the chi spatio-temporal autocorrelation C(r, tau)
     <case>_autocorr.png     spatial autocorrelations (added because a cross-correlation is
                             hard to read without the scales its own fields set)
@@ -85,34 +85,40 @@ def fig_auto(r, out, dpi, label):
     fig.savefig(out, bbox_inches="tight"); plt.close(fig)
 
 
-def fig_lag(r, out, dpi, label, eulerian=False):
-    """Only the k=0 curves by default.
+def fig_lag(r, out, dpi, label, k0=False):
+    """The Eulerian lagged cross-correlations.
 
-    An unexplained dotted line is worse than an absent one, and the Eulerian estimator needs a
-    paragraph to justify (it also decorrelates on the advection time, so it under-reads the
-    lag whenever tau exceeds t_eddy).  On a slide that paragraph is not available.
+    Eulerian, not k=0, because on a slide the Eulerian curve is the one that reads: it rises
+    from lag 0 to a single peak and decays, so the eye lands on the peak and the tau marker
+    beside it. The k=0 (box-average) curve oscillates and changes sign several times over the
+    same axis -- it carries real information about the loop's slow global drift, but that is a
+    separate argument and it is noise in this one. --k0 puts it back.
     """
     tp = r["temporal"]
     lags = np.asarray(tp["lags"], float)
     fig, ax = plt.subplots(figsize=(7.6, 5.4), dpi=dpi)
     for k, lab, c in (("Pm", r"$P \to m$", "C0"), ("mc", r"$m \to \chi$", "C1")):
-        if "k0" in tp[k]:
+        y = np.asarray(tp[k]["euler"], float)
+        ax.plot(lags[:len(y)], y, c=c, lw=2.6, label=lab)
+        if k0 and "k0" in tp[k]:
             y = np.asarray(tp[k]["k0"], float)
-            ax.plot(lags[:len(y)], y, c=c, lw=2.6, label=lab)
-        if eulerian:
-            y = np.asarray(tp[k]["euler"], float)
-            ax.plot(lags[:len(y)], y, c=c, lw=1.4, ls=":", alpha=.8,
-                    label=lab + " (Eulerian)")
+            ax.plot(lags[:len(y)], y, c=c, lw=1.4, ls=":", alpha=.8, label=lab + "  (k=0)")
     seen = set()
     for tau, c, lab in ((r["tau_m_set"], "C0", r"$\tau_m$"),
                         (r["tau_chi_set"], "C1", r"$\tau_\chi$")):
         if tau and np.isfinite(tau) and tau < lags[-1] and round(tau) not in seen:
             seen.add(round(tau))
             ax.axvline(tau, c=c, ls="--", lw=1.6, alpha=.75)
-            ax.text(tau, 1.01, lab, color=c, fontsize=FS, ha="center", va="bottom",
+            ax.text(tau, 1.015, lab, color=c, fontsize=FS, ha="center", va="bottom",
                     transform=ax.get_xaxis_transform())
     ax.axhline(0, c="0.4", lw=.9)
-    ax.set_xlim(0, lags[-1])
+    # the Eulerian curves decay to nothing well before the axis ends; crop to where they live
+    ymax = np.nanmax([np.abs(np.asarray(tp[k]["euler"], float)) for k in ("Pm", "mc")])
+    tail = np.nanmax([np.where(np.abs(np.asarray(tp[k]["euler"], float)) > 0.03 * ymax)[0][-1]
+                      if np.any(np.abs(np.asarray(tp[k]["euler"], float)) > 0.03 * ymax) else 0
+                      for k in ("Pm", "mc")])
+    lim = lags[min(len(lags) - 1, int(tail * 1.25) + 1)]
+    ax.set_xlim(0, max(lim, 2.2 * max(r["tau_m_set"], 1)))
     bare(ax, r"lag $\tau$", r"$C(\tau)$")
     ax.legend(fontsize=FS, frameon=False)
     maybe_label(fig, r, label)
@@ -161,8 +167,8 @@ def main():
     ap.add_argument("--dpi", type=int, default=200)
     ap.add_argument("--label", action="store_true",
                     help="add one short parameter line at the bottom")
-    ap.add_argument("--eulerian", action="store_true",
-                    help="also draw the Eulerian lagged curves (dotted) on the lag figure")
+    ap.add_argument("--k0", action="store_true",
+                    help="also draw the k=0 (box-average) lagged curves, dotted")
     a = ap.parse_args()
 
     with open(a.scan) as f:
@@ -177,7 +183,7 @@ def main():
         for tag, fn in (("crosscorr", fig_cross), ("autocorr", fig_auto),
                         ("lagcorr", fig_lag), ("st", fig_st)):
             try:
-                kw = {"eulerian": a.eulerian} if tag == "lagcorr" else {}
+                kw = {"k0": a.k0} if tag == "lagcorr" else {}
                 fn(r, os.path.join(a.outdir, f"{c}_{tag}.png"), a.dpi, a.label, **kw)
                 n += 1
             except Exception as exc:
