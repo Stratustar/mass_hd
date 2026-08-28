@@ -47,10 +47,13 @@ def results_root(*parts):
 
 
 def read_params(root):
-    """The run's own parameters.json, so the analysis never re-derives what the run recorded."""
-    import json
-    with open(os.path.join(root, "parameters.json")) as f:
-        return json.load(f)
+    """The run's own parameters, flat and correctly typed.
+
+    parameters.json stores {name: {type, value}}; the archive class already converts that, so
+    read it through the archive rather than parsing by hand -- and note the keys keep their
+    runcard spelling, dashes included ("tau-m", "switch-sign", "pmem-width").
+    """
+    return dict(loadarchive(root).parameters)
 
 
 def load_frame(oa, i):
