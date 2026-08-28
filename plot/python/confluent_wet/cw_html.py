@@ -158,9 +158,12 @@ HTML = """<!doctype html><meta charset="utf-8"><title>%(title)s</title>
  .name{color:#a1a1aa;font:12px ui-monospace,SFMono-Regular,monospace;margin:0 0 14px}
  .vids{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:26px}
  .figs{display:grid;grid-template-columns:repeat(auto-fit,minmax(460px,1fr));gap:18px}
- @media(max-width:1400px){.vids{grid-template-columns:repeat(2,1fr)}
-                          .figs{grid-template-columns:repeat(2,1fr)}}
- @media(max-width:820px){.vids,.figs{grid-template-columns:1fr}}
+ /* The four field videos are a ROW, not a grid: the standard is u, p, m, chi read left to
+    right, and wrapping them to 2x2 at a 1400px breakpoint broke that on any normal laptop
+    pane. They stay four-across and simply get smaller; only a genuinely narrow window
+    (<900px, where each would be under 210px) is allowed to wrap. */
+ @media(max-width:900px){.vids{grid-template-columns:repeat(2,1fr)}}
+ @media(max-width:560px){.vids{grid-template-columns:1fr}}
  figure{margin:0}
  video,img{width:100%%;height:auto;display:block;border-radius:5px}
  .none{color:#a1a1aa;padding:34px 0}
