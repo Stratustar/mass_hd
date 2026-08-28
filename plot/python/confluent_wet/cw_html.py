@@ -105,13 +105,17 @@ def parse(name, tmot):
             "_A": A, "_tm": tm, "_tc": tc, "_rm": rm, "_rc": rc, "_tmot": t0}
 
 
-VIDEOS = ["chi", "m", "pressure", "speed"]
-FIGS = [("crosscorr", "spatial cross-correlation"),
-        ("lagcorr", "lagged cross-correlation"),
-        ("st", "spatio-temporal autocorrelation")]
+# THE standard order, matching cw_dash.py. Changing it changes the standard.
+VIDEOS = ["u", "pressure", "m", "chi"]
+VIDEO_DIR = "dash"
+ALL_FIGS = {"crosscorr": "C(r), cross",
+            "autocorr": "C(r), auto",
+            "lagcorr": "lagged cross-correlation",
+            "st": "chi spatio-temporal C(r,tau)"}
+DEFAULT_FIGS = ["crosscorr", "st"]
 
 
-def collect(root, tmot):
+def collect(root, tmot, figs):
     """The four clean field videos and the three correlation figures, and nothing else.
 
     Everything the diagnostic build carried -- the dashboard video, the six-panel sheet, the
@@ -125,10 +129,10 @@ def collect(root, tmot):
         p = parse(d, tmot)
         if p is None:
             continue
-        p["_v"] = [(n, f"{d}/clean/{n}.mp4") for n in VIDEOS
-                   if os.path.exists(os.path.join(root, d, "clean", f"{n}.mp4"))]
-        p["_f"] = [(lab, f"clean/{d}_{tag}.png") for tag, lab in FIGS
-                   if os.path.exists(os.path.join(root, "clean", f"{d}_{tag}.png"))]
+        p["_v"] = [(n, f"{d}/{VIDEO_DIR}/{n}.mp4") for n in VIDEOS
+                   if os.path.exists(os.path.join(root, d, VIDEO_DIR, f"{n}.mp4"))]
+        p["_f"] = [(ALL_FIGS.get(t, t), f"clean/{d}_{t}.png") for t in figs
+                   if os.path.exists(os.path.join(root, "clean", f"{d}_{t}.png"))]
         cases[d] = p
     return cases
 
@@ -153,7 +157,7 @@ HTML = """<!doctype html><meta charset="utf-8"><title>%(title)s</title>
  main{padding:20px 26px 40px}
  .name{color:#a1a1aa;font:12px ui-monospace,SFMono-Regular,monospace;margin:0 0 14px}
  .vids{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:26px}
- .figs{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+ .figs{display:grid;grid-template-columns:repeat(auto-fit,minmax(460px,1fr));gap:18px}
  @media(max-width:1400px){.vids{grid-template-columns:repeat(2,1fr)}
                           .figs{grid-template-columns:repeat(2,1fr)}}
  @media(max-width:820px){.vids,.figs{grid-template-columns:1fr}}
@@ -223,11 +227,14 @@ def main():
     ap.add_argument("--calib", default=None,
                     help="cw_calib.json supplying tau_motion per activity")
     ap.add_argument("--title", default="confluent-wet_closed-loop_scan")
+    ap.add_argument("--figs", nargs="*", default=None,
+                    help=f"static figures to show, in order. default {DEFAULT_FIGS}; "
+                         f"available {sorted(ALL_FIGS)}")
     a = ap.parse_args()
     root = a.resultsdir
 
     tmot = load_tau_motion(a.calib)
-    cases = collect(root, tmot)
+    cases = collect(root, tmot, a.figs or DEFAULT_FIGS)
     if not cases:
         raise SystemExit(f"no variant directories under {root}")
 
