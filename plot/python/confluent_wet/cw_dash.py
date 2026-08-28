@@ -101,15 +101,23 @@ class Panel:
         cax = self.fig.add_axes((0.828, 0.012, 0.038, 0.90))
         cb = self.fig.colorbar(self.im, cax=cax)
         cb.ax.tick_params(labelsize=8)
-        self._stream_art = []
+        self._artists = None
 
     def _clear_streams(self):
-        for a in self._stream_art:
-            try:
-                a.remove()
-            except Exception:
-                pass
-        self._stream_art = []
+        """Remove last frame's streamlines FROM THE AXES, not from the returned container.
+
+        streamplot's return value is a trap for animation. Its `.lines` really is the
+        LineCollection that was added to the axes, but `.arrows` is a PatchCollection built
+        from the arrow patches and never added to anything -- the patches themselves went on
+        one by one via axes.add_patch(). Calling .remove() on that container therefore clears
+        nothing, and every frame's arrowheads stay on the figure: after 181 frames the panel
+        is 46000 accumulated white arrows with the current frame's streamlines buried under
+        them. Clearing the axes' own collections and patches is what actually works.
+        """
+        for coll in list(self.ax.collections):
+            coll.remove()
+        for patch in list(self.ax.patches):
+            patch.remove()
 
     def draw(self, fr):
         self.im.set_data(panel_data(fr, self.name).T)
@@ -117,14 +125,33 @@ class Panel:
             self._clear_streams()
             ux, uy = fr["ux"], fr["uy"]
             if np.hypot(ux, uy).max() > 0:
-                sp = self.ax.streamplot(np.arange(self.L), np.arange(self.L), ux.T, uy.T,
-                                        start_points=self.seeds, density=self.density,
-                                        linewidth=0.5, arrowsize=0.5, color="white")
-                self._stream_art = [sp.lines, sp.arrows]
+                self.ax.streamplot(np.arange(self.L), np.arange(self.L), ux.T, uy.T,
+                                   start_points=self.seeds, density=self.density,
+                                   linewidth=0.7, arrowsize=0.6, color="white")
+        self._assert_no_leak()
         self.fig.canvas.draw()
         arr = np.asarray(self.fig.canvas.buffer_rgba())[..., :3]
         h, w = arr.shape[:2]
         return np.ascontiguousarray(arr[:h - h % 2, :w - w % 2])
+
+    def _assert_no_leak(self):
+        """Every frame must replace the last one, never add to it.
+
+        A frame that only ever adds is the failure mode this driver already shipped once: the
+        arrowheads accumulated silently, each frame looked plausible in isolation, and the
+        damage was only visible after a hundred of them had piled up. The artist count on the
+        axes is constant when the drawing is truly per-frame, so checking it turns that whole
+        class of bug into an immediate, named error instead of a picture someone has to
+        notice is wrong.
+        """
+        n = len(self.ax.collections) + len(self.ax.patches)
+        if self._artists is None:
+            self._artists = n
+        elif n > self._artists:
+            raise RuntimeError(
+                f"panel {self.name!r}: artist count grew {self._artists} -> {n} between "
+                f"frames; something is being drawn without the previous frame's copy being "
+                f"removed, and it will accumulate over the whole video")
 
     def close(self):
         plt.close(self.fig)
