@@ -105,7 +105,19 @@ def parse(name, tmot):
             "_A": A, "_tm": tm, "_tc": tc, "_rm": rm, "_rc": rc, "_tmot": t0}
 
 
+VIDEOS = ["chi", "m", "pressure", "speed"]
+FIGS = [("crosscorr", "spatial cross-correlation"),
+        ("lagcorr", "lagged cross-correlation"),
+        ("st", "spatio-temporal autocorrelation")]
+
+
 def collect(root, tmot):
+    """The four clean field videos and the three correlation figures, and nothing else.
+
+    Everything the diagnostic build carried -- the dashboard video, the six-panel sheet, the
+    scalar series, the field stills -- is still on disk and is deliberately not listed. A page
+    that shows everything is a page nobody reads.
+    """
     cases = {}
     for d in sorted(os.listdir(root)):
         if not os.path.isdir(os.path.join(root, d)):
@@ -113,74 +125,45 @@ def collect(root, tmot):
         p = parse(d, tmot)
         if p is None:
             continue
-        files = sorted(os.listdir(os.path.join(root, d)))
-        p["_v"] = [f for f in ("dashboard.mp4", "chi.mp4") if f in files]
-        p["_img"] = ([os.path.join("figs", f"case_{d}.png")]
-                     if os.path.exists(os.path.join(root, "figs", f"case_{d}.png")) else [])
-        p["_img"] += [f for f in files if f == "scalars_vs_t.png"]
-        p["_img"] += [f for f in files if f.startswith("fields_") and f.endswith(".png")]
+        p["_v"] = [(n, f"{d}/clean/{n}.mp4") for n in VIDEOS
+                   if os.path.exists(os.path.join(root, d, "clean", f"{n}.mp4"))]
+        p["_f"] = [(lab, f"clean/{d}_{tag}.png") for tag, lab in FIGS
+                   if os.path.exists(os.path.join(root, "clean", f"{d}_{tag}.png"))]
         cases[d] = p
     return cases
 
 
 def captions(root, cases):
-    path = os.path.join(root, "cw_scan.json")
-    scan = {}
-    if os.path.exists(path):
-        with open(path) as f:
-            for r in json.load(f):
-                scan[r["case"]] = r
-    out = {}
-    for n, c in cases.items():
-        base = (f"A = {c['_A']}   zeta = {c['zeta']}   tau_motion = {c['_tmot']:.0f}   "
-                f"tau_m = {c['_tm']:.0f} ({c['_rm']:.2f} x tau_motion)   "
-                f"tau_chi = {c['_tc']:.0f} ({c['_rc']:.2f} x tau_motion)")
-        r = scan.get(n)
-        if r:
-            base += (f"\nA_eff = {r['A_eff']:.2f}   L_chi/d = {r['L_chi']/r['d']:.2f}   "
-                     f"L_chi = {r['L_chi']:.1f}   d = {r['d']:.1f}   "
-                     f"mean g(P) = {r['g_bar']:.2f}   "
-                     f"grid-power(chi) = {r['grid_power_chi']:.1e}")
-            if r["grid_power_chi"] > 1e-3:
-                base += "   !! GRID-NOISE DOMINATED, structure not usable"
-        out[n] = base
-    return out
+    """Only the run's name. The buttons already say what the parameters are."""
+    return {n: n for n in cases}
 
 
 HTML = """<!doctype html><meta charset="utf-8"><title>%(title)s</title>
 <style>
  body{font:14px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;margin:0;
-      background:#f7f7f8;color:#18181b}
- header{padding:16px 24px;background:#fff;border-bottom:1px solid #e4e4e7}
- h1{margin:0 0 3px;font-size:19px} .sub{color:#71717a;font-size:13px}
- .filters{padding:12px 24px 16px;background:#fff;border-bottom:1px solid #e4e4e7;
-          position:sticky;top:0;z-index:5}
- .row{display:flex;align-items:center;gap:7px;margin:7px 0;flex-wrap:wrap}
- .row b{min-width:175px;font-weight:600;color:#3f3f46;font-size:13px}
+      background:#fff;color:#18181b}
+ .filters{padding:14px 26px 16px;border-bottom:1px solid #ececef;position:sticky;top:0;
+          background:#fff;z-index:5}
+ .row{display:flex;align-items:center;gap:7px;margin:6px 0;flex-wrap:wrap}
+ .row b{min-width:170px;font-weight:600;color:#3f3f46;font-size:13px}
  button{border:1px solid #d4d4d8;background:#fff;border-radius:6px;padding:5px 13px;
         cursor:pointer;font-size:13px;font-variant-numeric:tabular-nums}
  button.on{background:#1d4ed8;border-color:#1d4ed8;color:#fff}
- button:disabled{opacity:.28;cursor:not-allowed}
- main{padding:18px 24px}
- .cap{color:#3f3f46;margin:0 0 12px;font:12.5px/1.6 ui-monospace,SFMono-Regular,monospace;
-      white-space:pre-wrap;background:#fff;border:1px solid #e4e4e7;border-radius:7px;
-      padding:10px 13px}
- .warn{color:#b91c1c;font-weight:600}
- .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(430px,1fr));gap:15px}
- figure{margin:0;background:#fff;border:1px solid #e4e4e7;border-radius:8px;padding:11px}
- figcaption{font-size:12px;color:#71717a;margin-bottom:7px}
- video,img{width:100%%;height:auto;border-radius:5px;display:block}
- .wide{grid-column:1/-1}
- details{margin-top:22px;background:#fff;border:1px solid #e4e4e7;border-radius:8px;padding:13px}
- summary{cursor:pointer;font-weight:600}
+ button:disabled{opacity:.26;cursor:not-allowed}
+ main{padding:20px 26px 40px}
+ .name{color:#a1a1aa;font:12px ui-monospace,SFMono-Regular,monospace;margin:0 0 14px}
+ .vids{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:26px}
+ .figs{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+ @media(max-width:1400px){.vids{grid-template-columns:repeat(2,1fr)}
+                          .figs{grid-template-columns:repeat(2,1fr)}}
+ @media(max-width:820px){.vids,.figs{grid-template-columns:1fr}}
+ figure{margin:0}
+ video,img{width:100%%;height:auto;display:block;border-radius:5px}
  .none{color:#a1a1aa;padding:34px 0}
 </style>
-<header><h1>%(title)s</h1>
-<div class="sub">%(ncase)d runs &middot; ratio buttons are binned to the {1,3}&times;10<sup>n</sup>
- ladder; the exact values are in the caption &middot; combinations that were not run are greyed out</div></header>
 <div class="filters" id="f"></div>
-<main><div class="cap" id="cap"></div><div class="grid" id="g"></div>
-<details><summary>campaign figures</summary><div class="grid">%(campaign)s</div></details></main>
+<main><p class="name" id="cap"></p>
+<div class="vids" id="v"></div><div class="figs" id="g"></div></main>
 <script>
 const CASES=%(cases)s, CAPS=%(caps)s, AXES=%(axes)s;
 const ORDER={}; AXES.forEach(([k])=>{
@@ -198,12 +181,12 @@ function draw(){
       b.disabled=!Object.values(CASES).some(c=>c[k]===v&&match(c,k))&&sel[k]!==v;
       b.onclick=()=>{
         sel[k]=v;
-        // keep the selection on a run that exists: relax the other axes if needed
         if(!Object.keys(CASES).some(n=>match(CASES[n]))){
           for(const [j] of AXES){ if(j===k) continue;
-            const alt=ORDER[j].find(w=>{const s=sel[j];sel[j]=w;
-              const ok=Object.keys(CASES).some(n=>match(CASES[n]));sel[j]=s;return ok;});
-            if(alt!==undefined){sel[j]=alt; if(Object.keys(CASES).some(n=>match(CASES[n])))break;}
+            const alt=ORDER[j].find(w=>{const o=sel[j];sel[j]=w;
+              const ok=Object.keys(CASES).some(n=>match(CASES[n]));sel[j]=o;return ok;});
+            if(alt!==undefined){sel[j]=alt;
+              if(Object.keys(CASES).some(n=>match(CASES[n])))break;}
           }
         }
         draw();
@@ -213,26 +196,20 @@ function draw(){
     f.appendChild(row);
   });
   const name=Object.keys(CASES).find(n=>match(CASES[n]));
-  const g=document.getElementById('g'); g.innerHTML='';
-  const cap=document.getElementById('cap');
-  if(!name){ cap.textContent=''; g.innerHTML='<div class="none">no run at this combination</div>'; return; }
-  const esc=t=>t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-  const txt=esc(name+'\\n'+(CAPS[name]||''));
-  cap.innerHTML=txt.replace(/(!! GRID-NOISE DOMINATED[^\\n]*)/,'<span class="warn">$1</span>');
+  const v=document.getElementById('v'), g=document.getElementById('g');
+  v.innerHTML=''; g.innerHTML='';
+  document.getElementById('cap').textContent = name ? (CAPS[name]||name) : '';
+  if(!name){ v.innerHTML='<div class="none">no run at this combination</div>'; return; }
   const c=CASES[name];
-  const add=(h,w)=>{const d=document.createElement('figure');if(w)d.className='wide';
-                    d.innerHTML=h;g.appendChild(d);};
-  (c._v||[]).forEach(v=>{
-    const lab = v==='dashboard.mp4'
-      ? 'dashboard &mdash; chi, m, P, |u| with the loop time series'
-      : 'chi';
-    add('<figcaption>'+lab+'</figcaption><video src="'+name+'/'+v+'" controls loop muted '
-        +(v==='dashboard.mp4'?'autoplay ':'')+'></video>', v==='dashboard.mp4');
+  (c._v||[]).forEach(([n,src])=>{
+    const d=document.createElement('figure');
+    d.innerHTML='<video src="'+src+'" autoplay loop muted playsinline></video>';
+    v.appendChild(d);
   });
-  (c._img||[]).forEach(p=>{
-    const src = p.indexOf('/')>=0 ? p : name+'/'+p;
-    add('<figcaption>'+p.split('/').pop()+'</figcaption><img loading="lazy" src="'+src+'">',
-        p.indexOf('figs/')===0);
+  (c._f||[]).forEach(([lab,src])=>{
+    const d=document.createElement('figure');
+    d.innerHTML='<img loading="lazy" alt="'+lab+'" src="'+src+'">';
+    g.appendChild(d);
   });
 }
 draw();
@@ -269,29 +246,22 @@ def main():
 
     caps = captions(root, cases)
     referenced = []
-    for n, c in cases.items():
-        referenced += [os.path.join(n, f) for f in c["_v"]]
-        referenced += [p if p.startswith("figs/") else os.path.join(n, p) for p in c["_img"]]
-    camp_html = ""
-    for f in CAMPAIGN:
-        p = os.path.join("figs", f)
-        if os.path.exists(os.path.join(root, p)):
-            camp_html += (f'<figure class="wide"><figcaption>{f}</figcaption>'
-                          f'<img loading="lazy" src="{p}"></figure>')
-            referenced.append(p)
+    for c in cases.values():
+        referenced += [p for _, p in c["_v"]] + [p for _, p in c["_f"]]
 
-    slim = {n: {**{k: c[k] for k, _ in AXES}, "_v": c["_v"], "_img": c["_img"]}
+    slim = {n: {**{k: c[k] for k, _ in AXES}, "_v": c["_v"], "_f": c["_f"]}
             for n, c in cases.items()}
     with open(os.path.join(root, "index.html"), "w") as f:
-        f.write(HTML % dict(title=a.title, ncase=len(cases), campaign=camp_html,
-                            cases=json.dumps(slim), caps=json.dumps(caps),
-                            axes=json.dumps(AXES)))
+        f.write(HTML % dict(title=a.title, cases=json.dumps(slim),
+                            caps=json.dumps(caps), axes=json.dumps(AXES)))
     referenced = sorted(set(p for p in referenced if os.path.exists(os.path.join(root, p))))
     with open(os.path.join(root, "filelist.txt"), "w") as f:
         f.write("\n".join(["index.html"] + referenced) + "\n")
     mb = sum(os.path.getsize(os.path.join(root, p)) for p in referenced) / 1e6
     print(f"wrote {os.path.join(root, 'index.html')}")
-    print(f"  {len(cases)} runs, {len(referenced)} files, {mb:.0f} MB")
+    nv = sum(len(c["_v"]) for c in cases.values())
+    nf = sum(len(c["_f"]) for c in cases.values())
+    print(f"  {len(cases)} runs, {nv} videos, {nf} figures, {mb:.0f} MB")
     for ax, lab in AXES:
         vals = sorted({c[ax] for c in cases.values()}, key=float)
         print(f"  {lab:24s}: {' '.join(vals)}")
