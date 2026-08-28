@@ -150,6 +150,81 @@ def fig_collapse(rows, figdir):
     print("wrote", out)
 
 
+def fig_scaled(rows, figdir):
+    """L_chi in units of the defect spacing -- the variable that actually collapses.
+
+    Plotting L_chi raw against tau_m/t_eddy looks like a collapse only because the three
+    activities occupy different stretches of the ratio axis.  At a MATCHED ratio of ~2 the raw
+    lengths are 37.6 / 25.1 / 14.8 for A = 1 / 3 / 9, a factor 2.5 apart -- and those are very
+    nearly 0.73 / 0.78 / 0.85 of each run's own defect spacing.  So d is the yardstick.
+
+    What collapses is the PREFACTOR: L_chi/d at ratio 1 is 0.64 / 0.71 / 0.71 for s = +1 and
+    0.49 / 0.53 / 0.50 for s = -1, i.e. independent of activity across a factor 9, and set by
+    the switch sign alone.  What does NOT collapse is the EXPONENT, which climbs with activity
+    (0.07 / 0.22 / 0.46 at s = +1). One ratio is therefore most, but not all, of the story.
+    """
+    fig, axes = plt.subplots(1, 2, figsize=(12, 5), dpi=120)
+    for ax, (yk, dk, yl) in zip(axes, [("L_chi", "d", r"$L_\chi/d$"),
+                                       ("L_m", "d", r"$L_m/d$")]):
+        for r in rows:
+            if r.get("Dbio", 0) <= 0:                 # Dbio = 0 is grid noise, see fig_grid
+                continue
+            te, x, y, d = r.get("t_eddy"), r.get("tau_m_set"), r.get(yk), r.get(dk)
+            if not all(v and np.isfinite(v) for v in (te, x, y, d)):
+                continue
+            ax.plot([x / te], [y / d], **style(r))
+        for s, ls in ((1, "-"), (-1, "--")):
+            S = [r for r in rows if r.get("Dbio", 0) > 0 and r.get("switch_sign") == s
+                 and all(r.get(k) for k in ("t_eddy", "tau_m_set", yk, dk))]
+            if len(S) > 2:
+                lx = np.log([r["tau_m_set"] / r["t_eddy"] for r in S])
+                ly = np.log([r[yk] / r[dk] for r in S])
+                b, a = np.polyfit(lx, ly, 1)
+                xx = np.logspace(lx.min() / np.log(10), lx.max() / np.log(10), 20)
+                ax.plot(xx, np.exp(a) * xx**b, "k" + ls, lw=1, alpha=.6,
+                        label=f"s={s:+d}: {np.exp(a):.2f}$\,r^{{{b:.2f}}}$ (all A)")
+        ax.set_xscale("log"); ax.set_yscale("log")
+        ax.set_xlabel(r"$\tau_m/t_{\rm eddy}$"); ax.set_ylabel(yl)
+        ax.grid(alpha=.3, which="both"); ax.legend(fontsize=8, loc="upper left")
+    legend_key(axes[1])
+    axes[0].set_title("phenotype structure in units of the defect spacing", fontsize=11)
+    axes[1].set_title("memory structure in units of the defect spacing", fontsize=11)
+    fig.suptitle("Dbio = 0.03 only -- the Dbio = 0 arm is grid-noise dominated", fontsize=12)
+    fig.tight_layout()
+    out = os.path.join(figdir, "collapse_scaled.png")
+    fig.savefig(out); plt.close(fig)
+    print("wrote", out)
+
+
+def fig_grid(rows, figdir):
+    """Why the Dbio = 0 arm cannot answer a question about structure.
+
+    grid_power is the fraction of a field's variance at wavelengths below three lattice cells.
+    Physical structure has none.  The Dbio = 0 runs carry a median of 8.9e-2 in chi and up to
+    0.89 -- most of the field is grid noise -- against 2.4e-9 with Dbio = 0.03.
+    """
+    fig, ax = plt.subplots(figsize=(7, 5), dpi=120)
+    for r in rows:
+        te, x = r.get("t_eddy"), r.get("tau_m_set")
+        y = r.get("grid_power_chi")
+        if not all(v is not None and np.isfinite(v) for v in (te, x, y)) or not te:
+            continue
+        ax.plot([x / te], [max(y, 1e-10)], **style(r))
+    ax.axhline(1e-3, ls=":", c="k", lw=1)
+    ax.text(ax.get_xlim()[0] * 1.1 if ax.get_xlim()[0] > 0 else 0.1, 1.4e-3,
+            "0.1% of the variance below 3 cells", fontsize=8, color="0.3")
+    ax.set_xscale("log"); ax.set_yscale("log")
+    ax.set_xlabel(r"$\tau_m/t_{\rm eddy}$")
+    ax.set_ylabel(r"grid-scale power in $\chi$   ($\lambda < 3$ cells)")
+    ax.set_title("Dbio = 0 (open) is grid-noise dominated; 0.03 (filled) is clean", fontsize=11)
+    ax.grid(alpha=.3, which="both")
+    legend_key(ax)
+    fig.tight_layout()
+    out = os.path.join(figdir, "grid_power.png")
+    fig.savefig(out); plt.close(fig)
+    print("wrote", out)
+
+
 def fig_feedback(rows, figdir):
     """How far the closed loop moves the activity, and whether it converges on one value."""
     fig, axes = plt.subplots(1, 3, figsize=(14, 4.6), dpi=120)
@@ -283,6 +358,8 @@ def main():
     os.makedirs(a.figdir, exist_ok=True)
     fig_loop_lag(rows, a.figdir)
     fig_collapse(rows, a.figdir)
+    fig_scaled(rows, a.figdir)
+    fig_grid(rows, a.figdir)
     fig_feedback(rows, a.figdir)
     if a.per_case:
         for r in rows:
