@@ -1,0 +1,82 @@
+# 20260828 cw_loop: the confluent-wet closed-loop (tau_m, tau_chi) production grid.
+#
+# THIS CASE
+#   A = 3  (zeta_eff = 0.09, zeta = 0.18 at chi0 = 0.5)
+#   tau_motion = d/u_rms = 1046 steps   <- THE clock; all ratios below are against it
+#   tau_m   = 330  =  0.32 x tau_motion    switch-sign = -1   Dbio = 0
+#   tau_chi = 990  =  3 x tau_m  =  0.95 x tau_motion
+#
+# WHY THESE NUMBERS.  A in {1,3,9} is geometric in the model's single material clock,
+# MEASURED open-loop at this box size: tau_motion = 3492 / 1046 / 331 steps, a factor ~3.3
+# apart each (tau_motion*zeta_eff = 105 / 94 / 89).  So ONE absolute tau ladder slides across all three
+# activities and their ratio windows overlap -- which two regimes at A = 1 and 10 could not do
+# (windows [0.06,2.5] and [0.62,26], nearly disjoint).  The ladder IS the three measured
+# tau_motion values rounded to two figures, so this case sits at ratio 0.32 for the memory
+# and 0.95 for the phenotype.
+# tau_m = 330 clears the order-magnitude relaxation floor 1/(4*Gamma*CC) = 167 steps, below
+# which the memory would record |Q| transients (and sigma_bulk, part of P, is a function of |Q|).
+# Dbio = 0.
+#   no biological diffusion at all (the control arm).
+#   0.03 is chosen so that l_B is the SAME fraction of the defect spacing (0.17-0.19) at all
+#   three activities, while staying resolved (>3 cells) and far below the 0.2 explicit-
+#   diffusion stability limit.  Dbio = 0 is the control arm.
+#
+# THE LOOP, CLOSED
+#   D_t m   = (g(P) - m)/tau_m          g(P)    = .5*(1 + tanh((P - pmem)/pmem-width))
+#   D_t chi = (chi*(m) - chi)/tau_chi   chi*(m) = .5*(1 + s*tanh((m - mc)/chi-width))
+#   zeta_eff = zeta*(1 - chi)
+# pmem = 0.00514789 is the MEASURED median(P) of the open-loop run at this activity
+# (20260828/cw_pmem/A3) and pmem-width = 0.0456855 its measured IQR/2.  With chi0 = mc = 0.5
+# this makes the uniform state an EXACT fixed point, so the loop is driven only by the spatial
+# fluctuations of P and not by a misplaced threshold -- the error that drove the 20260826 batch.
+#
+# LENGTH AND CADENCE, from this case's own clocks
+#   t_grow  = 5*eta/zeta_eff = 1111      T_trans = max(13*t_grow, 5*tau_chi) = 14454
+#   ninfo   = max(min(tau_m,tau_motion)/5, max(tau_chi,tau_motion)/36) = 66
+#   nstart  = 14454: NOTHING IS WRITTEN before the transient ends.  Without it A = 1 would
+#             spend ~700 frames of a ~870-frame archive warming up.
+#   nsteps  = nstart + 180*ninfo = 26334, i.e. 181 steady frames spanning 11880 steps
+#             = 11.4 x max(tau_chi, tau_motion).
+#
+# FROZEN PARAMETER SET, unchanged since 20260827 cw_regime -- xi = 0.4 (the flow-aligning
+# branch xi >= 1 is numerically unreachable in this scheme), tau = 2 (tau = 1 blows the Mach
+# budget before A = 4; tau = 2 also puts Re in the Stokes range a cell layer lives in),
+# CC = 0.03 and LL = 0.24 giving xi_N = 2.0 (measured sweet spot: core is one cell at 1.0,
+# cores merge into melted walls at 3.0), Gamma = 0.05, rho = 40, friction = 0.
+model           = confluent-wet
+nsteps          = 26334
+nstart          = 14454
+ninfo           = 66
+LX              = 400
+LY              = 400
+bc              = 0
+seed            = 1001
+
+Gamma           = 0.05
+xi              = 0.4
+CC              = 0.03
+LL              = 0.24
+tau             = 2.0
+rho             = 40
+friction        = 0.0
+zeta            = 0.18
+
+angle           = 0
+noise           = 0.05
+initial-order   = 1
+director-config = uniform
+defect-sep      = 0
+
+Dbio            = 0
+chi-config      = uniform
+chi0            = 0.5
+chi-noise       = 0
+chi-length      = 0
+tau-chi         = 990
+chi-width       = 0.15
+switch-sign     = -1
+mc              = 0.5
+m0              = 0.5
+tau-m           = 330
+pmem            = 0.00514789
+pmem-width      = 0.0456855
