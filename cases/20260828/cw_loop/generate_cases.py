@@ -155,9 +155,11 @@ HEADER = """# 20260828 cw_loop: the confluent-wet closed-loop (tau_m, tau_chi) p
 # t_eddy values, so this case sits at ratio {rm:.2f} for the memory and {rc:.2f} for the phenotype.
 # tau_m = {tau_m} clears the order-magnitude relaxation floor 1/(4*Gamma*CC) = {floor:.0f} steps, below
 # which the memory would record |Q| transients (and sigma_bulk, part of P, is a function of |Q|).
-# Dbio = {Dbio:g}: l_B = sqrt(Dbio*t_eddy) = {lB} against a defect spacing d ~ {dsp:.0f}, i.e. the same
-# fraction of the defect spacing at every activity, resolved (>3 cells) and far below the 0.2
-# explicit-diffusion limit.
+# Dbio = {Dbio:g}.
+#   {lB}
+#   0.03 is chosen so that l_B is the SAME fraction of the defect spacing (0.17-0.19) at all
+#   three activities, while staying resolved (>3 cells) and far below the 0.2 explicit-
+#   diffusion stability limit.  Dbio = 0 is the control arm.
 #
 # THE LOOP, CLOSED
 #   D_t m   = (g(P) - m)/tau_m          g(P)    = .5*(1 + tanh((P - pmem)/pmem-width))
@@ -258,13 +260,18 @@ def main():
     for r in rows:
         d = os.path.join(a.outdir, r["name"])
         os.makedirs(d, exist_ok=True)
-        lB = "/".join(f"{math.sqrt(r['Dbio'] * cal[A]['t_eddy']):.1f}" for A in ACTIVITIES) \
-            if r["Dbio"] > 0 else "0 (control)"
+        dsp = 49 * r["A"] ** -0.45
+        if r["Dbio"] > 0:
+            lb = math.sqrt(r["Dbio"] * r["t_eddy"])
+            lB = (f"l_B = sqrt(Dbio*t_eddy) = {lb:.1f} lattice units against a defect "
+                  f"spacing d ~ {dsp:.0f}, so l_B/d = {lb/dsp:.2f}.")
+        else:
+            lB = "no biological diffusion at all (the control arm)." 
         with open(os.path.join(d, "run.dat"), "w") as f:
             f.write(HEADER.format(
                 rm=r["tau_m"] / r["t_eddy"], rc=r["tau_chi"] / r["t_eddy"],
-                floor=TAU_M_FLOOR, lB=lB, dsp=49 * r["A"] ** -0.45,
-                nsteady=NSTEADY, wspan=r["window"] / max(r["tau_chi"], r["t_eddy"]),
+                floor=TAU_M_FLOOR, lB=lB,
+                nsteady=NSTEADY, wspan=r["window"] / max(r["tau_chi"], r["t_eddy"]), dsp=dsp,
                 **FROZEN, **r))
     print(f"wrote {len(rows)} runcards under {a.outdir}")
 
