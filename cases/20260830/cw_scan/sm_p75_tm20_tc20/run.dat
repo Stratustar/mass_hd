@@ -1,0 +1,73 @@
+# 20260830 cw_scan: the tau_m / tau_chi scan at fixed activity.
+#
+# zeta = 0.54 (A = zeta_eff/CC = 9) and every other parameter is frozen; the only things that
+# vary across the 248 runs are tau_m, tau_chi, pmem and switch-sign.
+#
+# THE TWO AXES ARE RATIOS TO tau_motion = l_d / u_rms = 334 steps, the time the flow
+# takes to carry material across one defect spacing, measured open-loop at this activity by
+# 20260830/cw_pre. Along a material trajectory the pressure history is a sequence of defect
+# encounters and tau_motion is the interval between them, so
+#     tau_m   / tau_motion = how many encounters the memory averages over   = 20
+#     tau_chi / tau_motion = how far the phenotype lags behind the flow     = 20
+# The two are kept within a factor 3 of each other; a phenotype relaxing decades away
+# from its own memory is a different problem from the one this scan is about.
+#
+# PMEM IS A PERCENTILE OF THE MEASURED PRESSURE DISTRIBUTION, not a guess: at pmem = P75
+# only the top 25% of the area is above threshold and able to accumulate memory. Measured
+# open-loop: P75 = 1.43272e-01, P90 = 2.57950e-01, IQR = 2.79418e-01.
+# pmem-width = IQR/4 = 6.98545e-02: the tanh transition then spans about half an IQR -- sharp
+# enough to mean "only that fraction accumulates", not so sharp that g(P) becomes a step and
+# leaves the memory source with no gradient to follow.
+#
+# THIS CASE: g1, switch-sign = -1, pmem = P75 (25% of area above threshold),
+#            tau_m = 6688, tau_chi = 6688 steps.
+#
+# FROZEN (unchanged from 20260827 cw_regime / 20260828 cw_loop; each pinned by measurement):
+#   xi = 0.4    flow-tumbling; xi >= 1 is numerically unreachable in this scheme
+#   tau = 2.0, rho = 40, Gamma = 0.05, friction = 0
+#   CC = 0.03, LL = 0.24  ->  xi_N = 2.0, eta = 20
+#   Dbio = 0.03  l_B = sqrt(Dbio*tau_motion) is a fixed fraction ~0.18 of the defect spacing
+#                at every activity, and stays above 3 lattice cells
+#   chi0 = mc = 0.5   with pmem at a percentile the uniform state is NOT a fixed point here,
+#                     unlike the 20260828 scan where pmem = median(P) made it one -- that is
+#                     deliberate: the memory should be driven by the top tail of P.
+#
+# ninfo = 1000 for EVERY case, so all videos share one sampling interval (dashboard rule,
+# 2026-08-28); at L = 800 that is 120 frames per run.
+model           = confluent-wet
+nsteps          = 120000
+nstart          = 0
+ninfo           = 1000
+LX              = 800
+LY              = 800
+bc              = 0
+seed            = 1001
+
+Gamma           = 0.05
+xi              = 0.4
+CC              = 0.03
+LL              = 0.24
+tau             = 2.0
+rho             = 40
+friction        = 0.0
+zeta            = 0.54
+
+angle           = 0
+noise           = 0.05
+initial-order   = 1
+director-config = uniform
+defect-sep      = 0
+
+Dbio            = 0.03
+chi-config      = uniform
+chi0            = 0.5
+chi-noise       = 0
+chi-length      = 0
+tau-chi         = 6688.1
+chi-width       = 0.15
+switch-sign     = -1
+mc              = 0.5
+m0              = 0.5
+tau-m           = 6688.1
+pmem            = 1.432720e-01
+pmem-width      = 6.985450e-02
