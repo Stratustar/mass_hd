@@ -155,6 +155,23 @@ class Panel:
         plt.close(self.fig)
 
 
+def measure_t_eddy(oa, nf, nsample=6):
+    """t_eddy = 1/lambda from the mean strain rate of the last few frames.
+
+    Measured rather than predicted because the number that matters is the run's OWN clock:
+    the closed loop moves t_eddy by a factor of two or more away from the open-loop value
+    (167 -> 92 in the 20260828 scan), so a frame interval picked from a prediction can be
+    several times wrong. 1/lambda rather than d/u_rms because it needs no length scale.
+    """
+    idx = np.unique(np.linspace(max(0, nf - 2 * nsample), nf - 1, nsample).astype(int))
+    lam = []
+    for i in idx:
+        fr = cw.load_frame(oa, int(i))
+        lam.append(float(cw.strain_rate(fr["ux"], fr["uy"]).mean()))
+    lam = float(np.mean(lam))
+    return 1.0 / lam if lam > 0 else float("nan")
+
+
 def select_frames(oa, nf, dt, window):
     """Frame indices for a video: the LAST `window` steps, sampled every `dt` steps.
 
@@ -203,6 +220,13 @@ def main():
     ap.add_argument("--dt", type=float, default=None,
                     help="sampling interval in SIMULATION STEPS, identical across every case "
                          "of a dashboard. Omitted = every stored frame (not comparable).")
+    ap.add_argument("--dt-eddy", type=float, default=None,
+                    help="sampling interval as a FRACTION OF t_eddy, measured from the run "
+                         "itself. Overrides --dt. Use when the run's own clock is not known "
+                         "in advance -- a fixed step interval chosen from a prediction can be "
+                         "off by the factor the closed loop moves t_eddy.")
+    ap.add_argument("--frames", type=int, default=None,
+                    help="how many frames the video should have (sets --window from --dt)")
     ap.add_argument("--window", type=float, default=None,
                     help="how many simulation steps at the END of the run the video covers. "
                          "Omitted = back to the first stored frame.")
@@ -215,7 +239,15 @@ def main():
     os.makedirs(a.outdir, exist_ok=True)
     print(f"{os.path.basename(a.inputdir.rstrip('/'))}: {nf} frames, L = {L}", flush=True)
 
-    idx = select_frames(oa, nf, a.dt, a.window)
+    dt, window = a.dt, a.window
+    if a.dt_eddy:
+        te = measure_t_eddy(oa, nf)
+        dt = a.dt_eddy * te
+        print(f"  t_eddy measured = {te:.0f} steps -> dt = {a.dt_eddy:g} x t_eddy = {dt:.0f}",
+              flush=True)
+    if a.frames and dt:
+        window = a.frames * dt
+    idx = select_frames(oa, nf, dt, window)
     clim = limits(oa, nf)
     seeds = seed_grid(L, a.seed_step)
     print(f"  streamline seeds: {len(seeds)} fixed points every {a.seed_step:g} cells",

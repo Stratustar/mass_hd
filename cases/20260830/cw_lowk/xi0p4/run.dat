@@ -1,0 +1,70 @@
+# 20260830 cw_lowk: does the model survive at a 5x lower stress scale, and can xi reach 1?
+#
+# A CRASH TEST, not a physics run. m and chi are frozen, so this is pure hydrodynamics plus
+# the pressure diagnostic; the question is only whether it runs clean and whether the fields
+# look sane.
+#
+# WHY LOWER THE STRESS SCALE. Ma = u_rms/c_s has been 0.095 at the production point, 2x over
+# the 0.045 weakly-compressible budget, so the incompressibility premise and the p_LB /
+# sigma_bulk gauge cancellation -- hence P itself -- have carried a ~1% systematic.
+# u_rms ~ sqrt(zeta_eff * LL)/eta, so dropping LL 0.24 -> 0.05 and zeta_eff 0.27 -> 0.05
+# scales u_rms by sqrt(0.05*0.05 / (0.27*0.24)) = 0.196:
+#       Ma:  0.095  ->  ~0.019     inside budget for the first time
+#
+# CC IS NOT FREE -- it is fixed by keeping the core resolved:
+#       CC = LL/(2*xi_N^2) = 0.05/8 = 0.00625   ->  xi_N = 2.0
+# xi_N = 2.0 is the measured sweet spot: at 1.0 the core is one lattice cell and every
+# single-defect result there was a lattice artifact; at 3.0 cores merge into melted walls.
+# That then sets the regime:  A = zeta_eff/CC = 0.05/0.00625 = 8.0, still active turbulence
+# (the production runs sit at 9).
+#
+# THE PRICE IS TIME. Every clock slows by the same factor the stress dropped:
+#       t_grow = 5*eta/zeta_eff = 2000 steps      (was 370)
+#       t_eddy ~ 45/zeta_eff    ~ 900 steps       (was 167)
+#       order-magnitude relaxation 1/(4*Gamma*CC) = 800 steps  (was 167)
+# 30000 steps is 15 t_grow. The A=9 run needed 13 to saturate, so this run reaches steady
+# state only near its end -- adequate for a crash test, NOT for measuring a steady state.
+#
+# THIS CASE: xi = 0.4.
+# xi = 1 is the point of the exercise. The 20260827 stability map found xi = 1 with tau = 2
+# DIVERGES at LL = 0.4, which is why the whole model line has been stuck in the flow-tumbling
+# regime and cannot be compared with the dry line (xi = 1) on equal footing. LL is now 8x
+# smaller and the LL ceiling was the binding constraint, so the aligning branch may have
+# become reachable. If xi = 1 still NaNs, tau = 1 is the next thing to try.
+model           = confluent-wet
+nsteps          = 30000
+nstart          = 0
+ninfo           = 60
+LX              = 500
+LY              = 500
+bc              = 0
+seed            = 1001
+
+Gamma           = 0.05
+xi              = 0.4
+CC              = 0.00625
+LL              = 0.05
+tau             = 2.0
+rho             = 40
+friction        = 0.0
+zeta            = 0.1
+
+angle           = 0
+noise           = 0.05
+initial-order   = 1
+director-config = uniform
+defect-sep      = 0
+
+Dbio            = 0
+chi-config      = uniform
+chi0            = 0.5
+chi-noise       = 0
+chi-length      = 0
+tau-chi         = -1
+chi-width       = 0.15
+switch-sign     = 1
+mc              = 0.5
+m0              = 0.5
+tau-m           = 1e12
+pmem            = 0
+pmem-width      = 1e-3
