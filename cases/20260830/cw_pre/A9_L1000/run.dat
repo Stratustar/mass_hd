@@ -1,0 +1,66 @@
+# 20260830 cw_pre: OPEN-LOOP pre-run that calibrates the big tau_m/tau_chi scan.
+#
+# The production scan fixes zeta = 0.54 and varies only tau_m, tau_chi, pmem and pmem-width.
+# Three of those four are meaningless until this run has been measured, so it goes first:
+#
+#   tau_motion = l_d / u_rms   the time for the flow to carry material across one defect
+#                              spacing. The scan's two axes are tau_m/tau_motion and
+#                              tau_chi/tau_motion, so this number sets every runcard.
+#   P distribution             pmem is taken as a PERCENTILE of it (the 75th and the 90th, so
+#                              that only the top 25% / top 10% of the area is above threshold
+#                              and able to accumulate memory), and pmem-width from its spread.
+#
+# Measured at the PRODUCTION geometry -- L = 1000, not a smaller box -- because l_d and the
+# pressure statistics are what the production runs will be read against.
+#
+# DECOUPLED: tau-chi = -1 freezes the phenotype, tau-m = 1e12 freezes the memory, so this is
+# pure hydrodynamics plus the pressure diagnostic. chi is frozen at 0.5, which is the value
+# the closed-loop runs start from, so zeta_eff = zeta/2 = 0.27 here is the activity they
+# begin at. pmem/pmem-width below are placeholders and are NOT used while the loop is open.
+#
+# 40000 steps = 108 x t_grow (5*eta/zeta_eff = 370), so this is deeply saturated; at L = 1000
+# with the expected spacing d ~ 17 there are ~3300 defects per frame, so the statistics come
+# from the box, not from the run length.
+#
+# FROZEN PARAMETER SET, unchanged from 20260827 cw_regime / 20260828 cw_loop. Every value is
+# pinned by a measurement, not a guess -- see the cw_regime runcard for the reasoning:
+#   xi = 0.4 (flow-tumbling; xi >= 1 is numerically unreachable in this scheme)
+#   tau = 2.0, rho = 40, Gamma = 0.05, friction = 0
+#   CC = 0.03, LL = 0.24  ->  xi_N = sqrt(LL/(2*CC)) = 2.0, eta = 20
+model           = confluent-wet
+nsteps          = 40000
+nstart          = 0
+ninfo           = 500
+LX              = 1000
+LY              = 1000
+bc              = 0
+seed            = 1001
+
+Gamma           = 0.05
+xi              = 0.4
+CC              = 0.03
+LL              = 0.24
+tau             = 2.0
+rho             = 40
+friction        = 0.0
+zeta            = 0.54
+
+angle           = 0
+noise           = 0.05
+initial-order   = 1
+director-config = uniform
+defect-sep      = 0
+
+Dbio            = 0
+chi-config      = uniform
+chi0            = 0.5
+chi-noise       = 0
+chi-length      = 0
+tau-chi         = -1
+chi-width       = 0.15
+switch-sign     = 1
+mc              = 0.5
+m0              = 0.5
+tau-m           = 1e12
+pmem            = 0
+pmem-width      = 1e-3
