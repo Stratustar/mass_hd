@@ -155,6 +155,40 @@ class Panel:
         plt.close(self.fig)
 
 
+def select_frames(oa, nf, dt, window):
+    """Frame indices for a video: the LAST `window` steps, sampled every `dt` steps.
+
+    Both are in simulation steps and are meant to be IDENTICAL across every case of a
+    dashboard, because otherwise the apparent speed of a video is set by its own sampling
+    rather than by its physics. That is not hypothetical: the 20260828 scan gave each case a
+    ninfo scaled to its own tau_chi, so at fixed zeta -- where the flow is provably unchanged,
+    t_eddy 159-162 and u_rms 4.8-5.6e-2 across the family -- the frame spacing ran 66 to 290
+    steps and the videos looked 4.4x faster at the top of the tau axis than at the bottom.
+
+    A case can only be sampled on multiples of its own ninfo, so `dt` is rounded to the
+    nearest reachable multiple and the achieved value is printed. Exact equality across a
+    scan therefore has to be bought at runcard time by giving every case the SAME ninfo --
+    the 20260828 runs have seven different ones whose gcd is 1, so no common dt exists there
+    and the best available is a few percent off.
+    """
+    times = np.array([cw.ph.frame_time(oa, i) for i in range(nf)], float)
+    ninfo = float(np.median(np.diff(times))) if nf > 1 else 1.0
+    stride = 1 if not dt else max(1, int(round(dt / ninfo)))
+    achieved = stride * ninfo
+    if dt:
+        off = 100.0 * (achieved - dt) / dt
+        print(f"  dt: asked {dt:g}, ninfo {ninfo:g} -> stride {stride}, achieved {achieved:g} "
+              f"steps ({off:+.1f}%)" + ("   << NOT the requested dt" if abs(off) > 2 else ""),
+              flush=True)
+    idx = list(range(nf - 1, -1, -stride))[::-1]
+    if window:
+        t_end = times[-1]
+        idx = [i for i in idx if times[i] >= t_end - window]
+    print(f"  video: {len(idx)} frames, t = {times[idx[0]]:.0f} .. {times[idx[-1]]:.0f} "
+          f"({times[idx[-1]] - times[idx[0]]:.0f} steps)", flush=True)
+    return idx
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("inputdir")
@@ -166,6 +200,12 @@ def main():
                     help="spacing of the fixed streamline seed lattice, in lattice units")
     ap.add_argument("--density", type=float, default=1.4)
     ap.add_argument("--no-streamlines", action="store_true")
+    ap.add_argument("--dt", type=float, default=None,
+                    help="sampling interval in SIMULATION STEPS, identical across every case "
+                         "of a dashboard. Omitted = every stored frame (not comparable).")
+    ap.add_argument("--window", type=float, default=None,
+                    help="how many simulation steps at the END of the run the video covers. "
+                         "Omitted = back to the first stored frame.")
     a = ap.parse_args()
 
     import imageio_ffmpeg
@@ -175,6 +215,7 @@ def main():
     os.makedirs(a.outdir, exist_ok=True)
     print(f"{os.path.basename(a.inputdir.rstrip('/'))}: {nf} frames, L = {L}", flush=True)
 
+    idx = select_frames(oa, nf, a.dt, a.window)
     clim = limits(oa, nf)
     seeds = seed_grid(L, a.seed_step)
     print(f"  streamline seeds: {len(seeds)} fixed points every {a.seed_step:g} cells",
@@ -187,7 +228,7 @@ def main():
                           seeds=seeds, density=a.density)
         writers[n] = None
     try:
-        for i in range(nf):
+        for k, i in enumerate(idx):
             try:
                 fr = cw.load_frame(oa, i)
             except Exception:
@@ -203,8 +244,8 @@ def main():
                         codec="libx264", macro_block_size=2, pix_fmt_out="yuv420p", **enc)
                     writers[n].send(None)
                 writers[n].send(arr.tobytes())
-            if i % 20 == 0:
-                print(f"  frame {i}/{nf}", flush=True)
+            if k % 20 == 0:
+                print(f"  frame {k}/{len(idx)}", flush=True)
     finally:
         for n, wr in writers.items():
             if wr is not None:
