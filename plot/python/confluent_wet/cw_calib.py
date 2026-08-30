@@ -81,7 +81,7 @@ def analyse(root, nlast, stride):
     rad = cw.Radial(L)
 
     P = np.concatenate([frames[p]["P"].ravel() for p in pos])
-    q1, q3 = np.percentile(P, [25, 75])
+    q1, q3, p90 = np.percentile(P, [25, 75, 90])
     urms = float(np.mean([np.sqrt(np.mean(frames[p]["ux"]**2 + frames[p]["uy"]**2))
                           for p in pos]))
     lam = float(np.mean([cw.strain_rate(frames[p]["ux"], frames[p]["uy"]).mean()
@@ -105,6 +105,9 @@ def analyse(root, nlast, stride):
         # --- what the runcards need
         "pmem": float(np.median(P)),
         "pmem_width_iqr2": float(0.5 * (q3 - q1)),
+        # percentiles, for a pmem set as "only the top X% of the area accumulates memory"
+        # rather than as the median. P75 leaves 25% above threshold, P90 leaves 10%.
+        "P_p75": float(q3), "P_p90": float(p90), "P_iqr": float(q3 - q1),
         "sigma_P": float(P.std()),
         "t_eddy": 1.0 / lam if lam > 0 else float("nan"),
         "tau_motion": d / urms if urms > 0 else float("nan"),
