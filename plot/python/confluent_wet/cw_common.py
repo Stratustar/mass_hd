@@ -152,10 +152,27 @@ def length_1e(rad, c):
 
 
 def spatial_corr(rad, frames, positions, fa, fb=None):
-    """Isotropic C_ab(r), averaged over the snapshot subset and normalised to C(0) = 1.
+    """Isotropic C_ab(r), averaged over the snapshot subset and normalised to C(0) = +1.
 
     Each snapshot is normalised BEFORE averaging, so a frame that happens to have a larger
     variance does not dominate the shape; the amplitude is reported separately.
+
+    Normalisation is by the SIGNED c[0], so every curve -- auto- and cross-correlation alike --
+    starts at exactly +1 and the panels are read on one convention. Two consequences worth
+    knowing rather than rediscovering:
+
+      * the sign of the correlation is no longer in the curve. For a cross-correlation it is a
+        real property (switch-sign = -1 makes chi a decreasing function of m, so <dm dchi> is
+        genuinely negative) and it survives in `amp`, the signed covariance returned beside the
+        curve and stored in the scan JSON.
+      * a snapshot whose c[0] has the opposite sign to the rest gets its whole curve flipped
+        and then adds constructively. Under the previous /abs(c[0]) convention such frames
+        cancelled, and C(0) came out as the mean sign -- 0.936 for C_Pchi, i.e. ~3% of frames
+        momentarily inverted. That diagnostic is gone from C(0); `amp` and the per-pair signs
+        are where to look for it now.
+
+    Neither the decay length nor the shape of a sign-consistent pair is affected: for those the
+    change is a constant rescale.
     """
     acc = np.zeros(len(rad.bins))
     amp = []
@@ -167,7 +184,7 @@ def spatial_corr(rad, frames, positions, fa, fb=None):
         if not np.isfinite(c[0]) or c[0] == 0:
             continue
         amp.append(float(c[0]))
-        acc += c / abs(c[0])
+        acc += c / c[0]
     return acc / max(len(amp), 1), float(np.mean(amp)) if amp else float("nan")
 
 
