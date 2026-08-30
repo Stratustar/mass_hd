@@ -37,7 +37,18 @@ import math
 import os
 import re
 
+# Two scan namings, and they need different axes rather than one regex stretched over both.
+# 20260828 cw_loop:  A9_sp_D0p03_tm330_tc1   -- absolute tau_m, tc is the tau_chi/tau_m factor,
+#                    and zeta and Dbio vary, so the ratio axes have to be DERIVED and binned.
+# 20260830 cw_scan:  sp_p75_tm0p2_tc0p2      -- zeta and Dbio are frozen, pmem is a percentile,
+#                    and the directory already carries both ratios, so nothing is derived and
+#                    nothing is binned: the button value is the number in the name.
 VARIANT = re.compile(r"^A(?P<A>\d+)_s(?P<s>[pm])_D(?P<D>[\dp]+)_tm(?P<tm>\d+)_tc(?P<tc>\d+)$")
+VARIANT_RATIO = re.compile(r"^s(?P<s>[pm])_p(?P<pct>\d+)_tm(?P<rm>[\dp]+)_tc(?P<rc>[\dp]+)$")
+AXES_RATIO = [("rm", "tau_m / tau_motion"),
+              ("rc", "tau_chi / tau_motion"),
+              ("s",  "switch-sign"),
+              ("pct", "pmem percentile of P")]
 AXES = [("zeta", "zeta  (activity)"),
         ("rm",   "tau_m / tau_motion"),
         ("rc",   "tau_chi / tau_motion"),
@@ -88,6 +99,15 @@ def load_tau_motion(path):
 
 
 def parse(name, tmot):
+    mt = VARIANT_RATIO.match(name)
+    if mt:
+        return {"rm": fmt(float(mt["rm"].replace("p", "."))),
+                "rc": fmt(float(mt["rc"].replace("p", "."))),
+                "s": "+1" if mt["s"] == "p" else "-1",
+                "pct": mt["pct"],
+                "_A": None, "_tm": None, "_tc": None,
+                "_rm": float(mt["rm"].replace("p", ".")),
+                "_rc": float(mt["rc"].replace("p", ".")), "_tmot": tmot.get(9)}
     mt = VARIANT.match(name)
     if not mt:
         return None
@@ -246,6 +266,9 @@ def main():
 
     tmot = load_tau_motion(a.calib)
     cases = collect(root, tmot, a.figs or DEFAULT_FIGS)
+    if cases and "rm" in next(iter(cases.values())) and next(iter(cases.values()))["_A"] is None:
+        global AXES
+        AXES = AXES_RATIO
     if not cases:
         raise SystemExit(f"no variant directories under {root}")
 
