@@ -1,0 +1,64 @@
+# 20260831 cw_mem_g5a -- group G5: CONTROLS.
+# 
+# Each arm removes one alternative explanation of the G3 result.
+# 
+#   (a) switch-sign = +1. The SAME grid as G3 with the feedback sign flipped: high memory now
+#       drives chi UP, towards the floor, which is negative feedback. If the two-phase state
+#       survives a sign flip it is not the feedback that makes it, and the G3 result would be
+#       an artifact of the initial condition or of the noise.
+#   (b) tau_chi at 0.1, 1 and 3 tau_c with tau_m fixed at 3 tau_c. The campaign holds
+#       tau_chi = 0.3 tau_c everywhere, so nothing in G3 distinguishes "tau_m matters" from
+#       "the ratio tau_m/tau_chi matters". This arm moves the other clock.
+#   (c) Dbio halved at tau_m = 10 tau_c. The phenotype's structure could be set by its
+#       diffusive cutoff rather than by the memory; if L_chi is unchanged at half the
+#       diffusivity it is not the diffusion that sets it.
+#   (d) chi-width doubled at tau_m = 30 tau_c, from both ends. Halves the loop gain G. If the
+#       two ends still separate at half the gain, the separation is not sitting on the
+#       knife-edge of the gain criterion.
+# 
+# THIS CASE: switch-sign = +1, chi == 1, tau_m = 1 tau_c, seed 1001.
+model            = confluent-wet
+nsteps           = 100000
+nstart           = 0
+ninfo            = 2724
+LX               = 800
+LY               = 800
+bc               = 0
+seed             = 1001
+
+Gamma            = 0.05
+xi               = 0.4
+CC               = 0.00625
+LL               = 0.05
+tau              = 2.0
+rho              = 40
+friction         = 0.0
+zeta             = 0.15
+zeta0-frac       = 0.3
+
+angle            = 0
+noise            = 0.05
+initial-order    = 1
+director-config  = uniform
+defect-sep       = 0
+
+Dbio             = 0.016521
+chi-config       = uniform
+chi0             = 1.0
+chi-noise        = 0
+chi-length       = 0
+tau-chi          = 163.4
+chi-width        = 0.06
+switch-sign      = 1
+mc               = 0.1108
+m0               = 0.009588
+
+tau-m            = 544.8
+pmem             = 0.06766789764881968
+pmem-width       = 0.01691697441220492
+
+nvideo           = 109
+video-stride     = 2
+video-p-scale    = 0.5075092323661476
+video-u-scale    = 0.1104737933590729
+frame-light      = 1

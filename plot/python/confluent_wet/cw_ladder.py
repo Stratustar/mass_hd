@@ -45,6 +45,7 @@ import sys
 
 import numpy as np
 from scipy.interpolate import PchipInterpolator
+from scipy.optimize import brentq
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import cw_common as cw
@@ -372,10 +373,24 @@ def main():
     # what happened to the 20260826 batch (pmem = 0 against a true median of +1.3e-2). With
     # chi == 0.5 and mc = 0.5 the fixed point needs f = 0.5, i.e. pmem = median(P) at the
     # activity a half-switched layer actually runs at, zeta_eff(0.5), NOT at the top rung.
+    # And it is NOT the median of P, for the same reason f is not the time fraction: the
+    # condition is <g(P)> = 0.5, and g is a tanh of finite width against a SKEWED pressure
+    # distribution (the melted cores are a heavy tail). At the median <g> comes out 0.4975,
+    # which puts chi* at 0.5207 rather than 0.5 -- a 2% standing bias in the very quantity
+    # G1 measures fluctuations around. Solve for the threshold that makes it exactly 0.5.
     zeff_g1 = zeta * (z0 + (1 - z0) * 0.5)
-    med = np.array([np.interp(50.0, p["flow"]["P_pctl_levels"], p["flow"]["P_pctl_values"])
-                    for p in parts])
-    pmem_g1 = float(PchipInterpolator(zeff[order], med[order], extrapolate=True)(zeff_g1))
+    lv = parts[0]["flow"]["P_pctl_levels"]
+    Qg1 = np.array([float(PchipInterpolator(zeff[order],
+                                            [p["flow"]["P_pctl_values"][i] for p in
+                                             [parts[j] for j in order]])(zeff_g1))
+                    for i in range(len(lv))])
+    gbar = lambda t: float(np.mean(0.5 * (1 + np.tanh((Qg1 - t) / pmem_width))))
+    lo_t, hi_t = float(Qg1.min()) - 1.0, float(Qg1.max()) + 1.0
+    pmem_g1 = float(brentq(lambda t: gbar(t) - 0.5, lo_t, hi_t))
+    print(f"\n    G1 threshold: <g(P)> = 0.5 at zeta_eff(chi=0.5) = {zeff_g1:.5g} needs "
+          f"pmem = {pmem_g1:+.4e}\n        (the median of P there is "
+          f"{float(np.interp(50.0, lv, Qg1)):+.4e}, where <g> = "
+          f"{gbar(float(np.interp(50.0, lv, Qg1))):.4f})")
 
     tau_chi = max(TAU_CHI_RATIO * tau_c, TAU_CHI_MIN_STEPS)
     Dbio = BATCHELOR_CELLS**2 / tau_c

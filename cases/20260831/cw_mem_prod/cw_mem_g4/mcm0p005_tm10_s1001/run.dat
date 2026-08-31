@@ -1,0 +1,66 @@
+# 20260831 cw_mem_g4 -- group G4: THE STRIPE (FRONT) GROUP.
+# 
+# Half the box at (chi_hi = 0.9694, m = f_hi = 0.0122), half at
+# (chi_lo = 0.0332, m = f_lo = 0.2170), split along x -- so two flat interfaces under
+# the periodic boundary, which check each other. The front direction and speed are read from
+# the slope of <chi>(t) and from the video; mc is scanned around mc* because the front speed
+# is what changes sign there, and a speed that crosses zero is a far sharper locator of the
+# coexistence point than an area fraction is.
+# 
+# THE PHENOTYPE IS FROZEN FOR THE FIRST 2724 STEPS (5 tau_c). The initial condition
+# prescribes chi and m but the flow starts from rest with a nearly uniform director, so
+# without the freeze the front would begin moving while the turbulence that is supposed to
+# drive it does not yet exist, and the first 5 tau_c of every <chi>(t) slope would be an
+# artifact of the spin-up. Only the switching SOURCE is frozen; advection and diffusion keep
+# running, so the interface relaxes to a profile the dynamics can actually produce.
+# 
+# THIS CASE: mc = mc* -0.0050 = 0.1058, tau_m = 10 tau_c = 5448 steps,
+# seed 1001.
+model            = confluent-wet
+nsteps           = 100000
+nstart           = 0
+ninfo            = 2724
+LX               = 800
+LY               = 800
+bc               = 0
+seed             = 1001
+
+Gamma            = 0.05
+xi               = 0.4
+CC               = 0.00625
+LL               = 0.05
+tau              = 2.0
+rho              = 40
+friction         = 0.0
+zeta             = 0.15
+zeta0-frac       = 0.3
+
+angle            = 0
+noise            = 0.05
+initial-order    = 1
+director-config  = uniform
+defect-sep       = 0
+
+Dbio             = 0.016521
+chi-config       = stripe
+chi0             = 0.5
+chi-lo           = 0.033176
+chi-hi           = 0.969374
+m-lo             = 0.217004
+m-hi             = 0.012194
+tau-chi          = 163.4
+chi-width        = 0.06
+switch-sign      = -1
+mc               = 0.105775
+m0               = 0.5
+chi-freeze-steps = 2724
+
+tau-m            = 5447.8
+pmem             = 0.06766789764881968
+pmem-width       = 0.01691697441220492
+
+nvideo           = 109
+video-stride     = 2
+video-p-scale    = 0.5075092323661476
+video-u-scale    = 0.1104737933590729
+frame-light      = 1

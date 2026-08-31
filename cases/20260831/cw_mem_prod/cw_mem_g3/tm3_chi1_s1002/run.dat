@@ -1,0 +1,62 @@
+# 20260831 cw_mem_g3 -- group G3: THE MAIN FIGURE.
+# 
+# At the coexistence threshold mc* = 0.1108 located by G2, the tau_m grid is run from both
+# ends: chi == 0 (fully active) and chi == 1 (at the activity floor). The question is whether
+# a high-activity phase APPEARS and SUSTAINS itself as tau_m grows -- i.e. whether the two
+# starts stop agreeing, and at what tau_m the disagreement sets in.
+# 
+# The story the campaign is testing lives on this axis. At small tau_m the memory tracks the
+# instantaneous pressure, chi is a copy of P, and both starts wash into the same state. As
+# tau_m grows past the flow's own clock the memory averages over many defect encounters, chi
+# stops being a copy and becomes a slow, coarse variable of its own, and the two starts can
+# end up in different places -- which is what a phase is.
+# 
+# Each end starts at its own self-consistent memory, m0 = f(zeta_eff(chi_init)); see A4.
+# 
+# THIS CASE: chi == 1, m0 = 0.0096, tau_m = 3 tau_c = 1634 steps,
+# seed 1002.
+model            = confluent-wet
+nsteps           = 100000
+nstart           = 0
+ninfo            = 2724
+LX               = 800
+LY               = 800
+bc               = 0
+seed             = 1002
+
+Gamma            = 0.05
+xi               = 0.4
+CC               = 0.00625
+LL               = 0.05
+tau              = 2.0
+rho              = 40
+friction         = 0.0
+zeta             = 0.15
+zeta0-frac       = 0.3
+
+angle            = 0
+noise            = 0.05
+initial-order    = 1
+director-config  = uniform
+defect-sep       = 0
+
+Dbio             = 0.016521
+chi-config       = uniform
+chi0             = 1.0
+chi-noise        = 0
+chi-length       = 0
+tau-chi          = 163.4
+chi-width        = 0.06
+switch-sign      = -1
+mc               = 0.1108
+m0               = 0.009588
+
+tau-m            = 1634.3
+pmem             = 0.06766789764881968
+pmem-width       = 0.01691697441220492
+
+nvideo           = 109
+video-stride     = 2
+video-p-scale    = 0.5075092323661476
+video-u-scale    = 0.1104737933590729
+frame-light      = 1

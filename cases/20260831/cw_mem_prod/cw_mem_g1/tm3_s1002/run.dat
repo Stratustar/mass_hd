@@ -1,0 +1,61 @@
+# 20260831 cw_mem_g1 -- group G1: THE PHOTOGRAPH TRACK.
+# 
+# The reference arm. pmem is the MEDIAN of P at zeta_eff(chi = 0.5) = 0.0975, and mc = 0.5,
+# which together make the uniform chi == 0.5 state an EXACT fixed point of the loop: f = 0.5
+# gives m = 0.5 = mc gives chi* = 0.5. The loop therefore has no bias of its own, and
+# everything chi does comes from the spatial fluctuations of P. This is the arm in which the
+# memory is a linear time-average of the pressure and the phenotype is a blurred copy of it --
+# a photograph, not a decision -- and the measurement is how blurred: how std(chi), L_chi and
+# the autocorrelation time of chi scale with tau_m.
+# 
+# That the threshold differs from the one A3 chose is deliberate and is the whole distinction
+# between this arm and G3. A3's pmem maximises the contrast f(zeta) - f(0.3 zeta), i.e. it is
+# chosen to make the loop as nonlinear as possible; this one is chosen to make it as linear as
+# possible.
+# 
+# THIS CASE: tau_m = 3 tau_c = 1634 steps, seed 1002.
+model            = confluent-wet
+nsteps           = 100000
+nstart           = 0
+ninfo            = 2724
+LX               = 800
+LY               = 800
+bc               = 0
+seed             = 1002
+
+Gamma            = 0.05
+xi               = 0.4
+CC               = 0.00625
+LL               = 0.05
+tau              = 2.0
+rho              = 40
+friction         = 0.0
+zeta             = 0.15
+zeta0-frac       = 0.3
+
+angle            = 0
+noise            = 0.05
+initial-order    = 1
+director-config  = uniform
+defect-sep       = 0
+
+Dbio             = 0.016521
+chi-config       = uniform
+chi0             = 0.5
+chi-noise        = 0
+chi-length       = 0
+tau-chi          = 163.4
+chi-width        = 0.06
+switch-sign      = -1
+mc               = 0.5
+m0               = 0.5
+
+tau-m            = 1634.3
+pmem             = 0.004061930253787509
+pmem-width       = 0.01691697441220492
+
+nvideo           = 109
+video-stride     = 2
+video-p-scale    = 0.5075092323661476
+video-u-scale    = 0.1104737933590729
+frame-light      = 1
