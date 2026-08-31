@@ -463,6 +463,41 @@ def main():
                 f"{clip['P']:.2%} for P and {clip['u']:.2%} for |u|; the f table and the "
                 f"lagged correlation are computed on clipped data")
 
+    # ---- the TAIL average, and why the record-window average is not enough
+    #
+    # Checkpoint 2 asks whether two runs started from opposite ends END UP apart. The
+    # record-window mean cannot answer that when the approach is slow: the 20260831 A4 pair
+    # had the chi == 1 arm slide from 1.0 to 0.036 over ~120 tau_c, so its record-window mean
+    # was 0.27 -- a number describing the slide, not the state it slid into, and one that
+    # would have been read as a partial separation from a run that had in fact converged onto
+    # the SAME fixed point as the other arm. The tail mean plus the record-window drift say
+    # which of the two is happening.
+    tail = None
+    if stream is not None:
+        w = stream.window(t_start)
+        if len(w):
+            i0, i1 = int(w[0]), int(w[-1]) + 1
+            half = i0 + (i1 - i0) * 3 // 4
+            cm = stream.meta["chi_mean"]; mm = stream.meta["m_mean"]
+            tail = {
+                "frac": 0.25,
+                "chi_mean_tail": float(np.mean(cm[half:i1])),
+                "m_mean_tail": float(np.mean(mm[half:i1])),
+                "chi_mean_record": float(np.mean(cm[i0:i1])),
+                "chi_drift_record": float(np.mean(cm[half:i1]) - np.mean(cm[i0:half])),
+                "chi_last": float(cm[i1 - 1]),
+                "m_last": float(mm[i1 - 1]),
+            }
+            if abs(tail["chi_drift_record"]) > 0.05:
+                warnings.append(
+                    f"<chi> drifts by {tail['chi_drift_record']:+.3f} across the record window "
+                    f"({tail['chi_mean_record']:.3f} overall vs {tail['chi_mean_tail']:.3f} in "
+                    f"the last quarter): the run has NOT settled, and the record-window mean "
+                    f"describes the approach rather than the state")
+            print(f"  <chi> record {tail['chi_mean_record']:.4f}  tail "
+                  f"{tail['chi_mean_tail']:.4f}  drift {tail['chi_drift_record']:+.4f}",
+                  flush=True)
+
     # ---- the campaign's own sanity criterion
     tau_sum = tau_c + max(u["tau_m"], 0.0) + max(u["tau_chi"], 0.0)
     record_steps = u["nsteps"] - t_start
@@ -503,6 +538,7 @@ def main():
             "l_B_over_xi_N": float(np.sqrt(u["Dbio"] * tau_c)) / u["xi_N"] if u["Dbio"] else 0.0,
         },
         "flow": {k: v for k, v in res.items() if not k.startswith("_")},
+        "settled": tail,
         "f": ftab,
         "time": temporal,
         "warnings": warnings,

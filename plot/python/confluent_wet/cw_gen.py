@@ -208,18 +208,34 @@ THIS CASE: chi == {chi0:g}, m0 = {m0:.4f}, G = {G:g} (chi-width = {w:.4f}), mean
 {rootnote}."""
 
 
-def gen_a4(out, cal, g_list=None):
+def gen_a4(out, cal, g_list=None, wchi_list=None):
+    """One pair of runs per switch width. The width, not the gain, is the knob now.
+
+    G was the campaign's handle on the loop, and it is the wrong one: it is built from the
+    maximum of |df/dchi| anywhere in the reachable range, so it says nothing about the slope
+    where the fixed points actually sit. The 20260831 point that A3 now picks has G = 1.51 --
+    below the campaign's own G >= 1.5 line by a hair -- and three well separated roots, while
+    the first pass had G = 1.78 and a single root. chi-width is what is actually varied, so
+    it is what these runs are indexed by.
+    """
+    byw = {round(e["chi_width"], 4): e for e in cal.get("g_scan", [])}
     scan = {round(e["G"], 3): e for e in cal.get("g_scan", [])}
-    if not g_list:
-        g_list = [round(cal["G"], 3)]
+    if wchi_list:
+        pairs = [(cal["max_df_dchi"] / (2 * w), w) for w in wchi_list]
+    elif g_list:
+        pairs = [(G, (scan[round(G, 3)]["chi_width"] if round(G, 3) in scan
+                      else cal["max_df_dchi"] / (2 * G))) for G in g_list]
+    else:
+        pairs = [(cal["G"], cal["chi_width"])]
     n = 0
-    for G in g_list:
-        e = scan.get(round(G, 3))
-        w = e["chi_width"] if e else cal["max_df_dchi"] / (2 * G)
+    for G, w in pairs:
+        e = byw.get(round(w, 4)) or scan.get(round(G, 3))
         if e and e["n_roots"] >= 3:
             r = e["roots"]
             note = (f"chi_lo = {r[0]:.4f}, chi_mid = {r[len(r)//2]:.4f}, "
-                    f"chi_hi = {r[-1]:.4f} (separation {e['separation']:.3f})")
+                    f"chi_hi = {r[-1]:.4f} (separation {e['separation']:.3f}, weaker basin "
+                    f"{e.get('basin', float('nan')):.3f}, R = "
+                    f"{e.get('robustness', float('nan')):.1f})")
         elif e:
             note = f"a SINGLE root at chi = {e['roots'][0]:.4f} -- the two ends must converge"
         else:
@@ -230,7 +246,7 @@ def gen_a4(out, cal, g_list=None):
                         "chi-length": 0, "m0": round(m0, 6),
                         "mc": round(cal["mc_0"], 6), "chi-width": round(w, 5),
                         "tau-m": round(30.0 * cal["tau_c"], 1)})
-            write_case(os.path.join(out, f"g{tag(G,2)}_chi{int(chi0)}"),
+            write_case(os.path.join(out, f"w{tag(w,3)}_chi{int(chi0)}"),
                        HDR_A4.format(chi0=chi0, m0=m0, G=G, w=w, rootnote=note,
                                      m_hi_act=cal["f_at_full_zeta"],
                                      m_floor=cal["f_at_floor"]), v)
@@ -480,12 +496,14 @@ if __name__ == "__main__":
                     help="the coexistence threshold located by G2 (stage 'rest')")
     ap.add_argument("--g-list", type=float, nargs="*", default=None,
                     help="loop gains to run in stage a4; two runs (chi==0, chi==1) each")
+    ap.add_argument("--wchi-list", type=float, nargs="*", default=None,
+                    help="chi-widths to run in stage a4; overrides --g-list")
     a = ap.parse_args()
     cal = json.load(open(a.calib)) if a.calib else None
     if a.stage == "ladder":
         gen_ladder(a.outdir, a.zeta, a.tau_c_pred)
     elif a.stage == "a4":
-        gen_a4(a.outdir, cal, a.g_list)
+        gen_a4(a.outdir, cal, a.g_list, a.wchi_list)
     elif a.stage == "g2":
         gen_g2(a.outdir, cal)
     else:

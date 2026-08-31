@@ -73,13 +73,31 @@ def load_parts(study_dir):
     return out
 
 
-def f_of(part, pmem):
-    """f = 1 - CDF_P(pmem) from the run's own percentile table."""
-    lv = np.asarray(part["flow"]["P_pctl_levels"], float)
+def f_of(part, pmem, pmem_width):
+    """f = <g(P)>, the ACTUAL fixed point of the memory -- not the time fraction above pmem.
+
+    THIS IS THE DEFINITION THAT MATTERS, and getting it wrong cost the 20260831 A4 wave.
+    The model integrates tau_m D_t m = g(P) - m with the SMOOTH
+
+        g(P) = 1/2 [1 + tanh((P - pmem)/pmem_width)]
+
+    so the steady state of m is <g(P)>, not 1 - CDF_P(pmem). The two agree only when
+    pmem_width is small against the width of the pressure distribution. The first pass used
+    the hard-step fraction with pmem_width = IQR/4 = 0.34 sigma_P(zeta), which at the
+    ACTIVITY FLOOR is 1.0 times that rung's own sigma_P, with the threshold 1.5 sigma out in
+    its tail. There the soft step hands partial credit to the whole bulk of the distribution
+    and <g> came out 2.9x the hard-step fraction -- 0.126 against a predicted 0.044. The
+    error is negligible at full activity (0.332 vs 0.327, threshold near the middle of a
+    wider distribution) and enormous at the floor, i.e. it is concentrated exactly on the
+    phase whose existence the whole campaign is about. Measured consequence: the chi == 1 arm
+    never held, m climbed straight past mc from t = 0, and both ends converged onto the
+    active phase.
+
+    Computed from the percentile table, which is the pooled record-window pressure field at
+    0.1% resolution -- exact and unquantised, unlike the video stream.
+    """
     vals = np.asarray(part["flow"]["P_pctl_values"], float)
-    # vals is non-decreasing in lv; np.interp needs the x axis increasing, so invert
-    below = float(np.interp(pmem, vals, lv, left=0.0, right=100.0))
-    return 1.0 - below / 100.0
+    return float(np.mean(0.5 * (1.0 + np.tanh((vals - pmem) / pmem_width))))
 
 
 def solve_loop(zeta, z0, f_interp, mc, w_chi, sign=-1, n=2001):
@@ -121,7 +139,15 @@ def main():
     ap.add_argument("--g-min", type=float, default=1.5)
     ap.add_argument("--g-target", type=float, default=2.5)
     ap.add_argument("--pmem-coeffs", type=float, nargs="*",
-                    default=[0.0, 0.2, 0.3, 0.4, 0.5, 0.6])
+                    default=[0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9])
+    ap.add_argument("--pmem-width-coeffs", type=float, nargs="*",
+                    default=[0.05, 0.10, 0.15, 0.20],
+                    help="g(P) smoothing widths to scan, in units of sigma_P(zeta)")
+    ap.add_argument("--std-m", type=float, default=0.012,
+                    help="measured spatial std of m in a closed-loop run; sets the scale a "
+                         "phase basin has to beat. Default is the 20260831 A4 value")
+    ap.add_argument("--min-separation", type=float, default=0.4,
+                    help="checkpoint 2's threshold; candidates below it are not considered")
     ap.add_argument("--switch-sign", type=int, default=-1)
     a = ap.parse_args()
 
@@ -154,84 +180,134 @@ def main():
     print(f"\ncheckpoint 1 (turbulence at the floor zeta_eff = {cp1['rung']:.4g}): "
           f"N_def = {cp1['N_def']:.0f} -> {'PASS' if cp1['pass'] else 'FAIL, raise z0'}")
 
-    # ---- A2: the f table, on absolute thresholds fixed by sigma_P(zeta)
+    # ---- A2: the f table. Thresholds are absolute pressures fixed by sigma_P(zeta), and
+    # ---- the SMOOTHING WIDTH is scanned beside them, because f depends on both.
+    wid_coeffs = a.pmem_width_coeffs
     table = []
     for c in a.pmem_coeffs:
-        pmem = c * sigma_P
-        fs = [f_of(p, pmem) for p in parts]
-        f_top = float(np.interp(zeta, zeff, fs))
-        f_flr = float(np.interp(z0 * zeta, zeff, fs))
-        table.append({"coeff": c, "pmem": pmem, "f": fs,
-                      "f_top": f_top, "f_floor": f_flr, "contrast": f_top - f_flr})
-    print(f"\nA2  f(pmem) per rung, thresholds in units of sigma_P(zeta) = {sigma_P:.4e}")
-    print(f"{'c':>5} {'pmem':>11} " + " ".join(f"{r/zeta:>7.2f}" for r in zeff) + "  contrast")
+        for wc in wid_coeffs:
+            pmem, pw = c * sigma_P, wc * sigma_P
+            fs = [f_of(p, pmem, pw) for p in parts]
+            f_top = float(np.interp(zeta, zeff, fs))
+            f_flr = float(np.interp(z0 * zeta, zeff, fs))
+            table.append({"coeff": c, "width_coeff": wc, "pmem": pmem, "pmem_width": pw,
+                          "f": fs, "f_top": f_top, "f_floor": f_flr,
+                          "contrast": f_top - f_flr})
+    print(f"\nA2  f = <g(P)> per rung; pmem and pmem-width in units of "
+          f"sigma_P(zeta) = {sigma_P:.4e}")
+    print(f"{'pmem':>6} {'width':>6} " + " ".join(f"{r/zeta:>7.2f}" for r in zeff) + "  contrast")
     for row in table:
-        print(f"{row['coeff']:5.1f} {row['pmem']:11.4e} "
+        print(f"{row['coeff']:6.2f} {row['width_coeff']:6.2f} "
               + " ".join(f"{v:7.3f}" for v in row["f"])
               + f"  {row['contrast']:+.3f}")
 
-    # ---- A3: pick the threshold with the strongest activity contrast
-    best = max(table, key=lambda r: r["contrast"])
-    pmem = best["pmem"]
-    fs = np.asarray(best["f"], float)
+    # ---- A3: pick the operating point by ROBUSTNESS, not by contrast alone.
+    #
+    # The campaign's rule is "take the pmem with the largest f(zeta) - f(0.3 zeta)", and
+    # contrast is reported below because it is the right first instinct: no contrast, no
+    # loop. But contrast does not decide whether the two phases SURVIVE, and checkpoint 2
+    # tests survival. Two things beyond contrast decide it:
+    #
+    #   * the BASIN of the weaker phase, min(chi_mid - chi_lo, chi_hi - chi_mid). A pair of
+    #     roots with an unstable root hugging one of them is bistable on paper and not in a
+    #     simulation.
+    #   * the size of a MEMORY FLUCTUATION in the same units. A fluctuation std(m) moves the
+    #     phenotype target by std(m)/(2 w_chi), so sharpening the switch widens the basin and
+    #     amplifies the fluctuation in exact proportion. That is why "make the switch harder"
+    #     is not a free way to buy bistability, and why ranking by basin alone drives w_chi to
+    #     zero and lies.
+    #
+    # So rank by  R = (weaker basin) / (std(m) / (2 w_chi)),  the number of memory-fluctuation
+    # widths that fit inside the basin the weaker phase has to hold. R has an interior
+    # maximum in w_chi. std(m) is MEASURED (--std-m, from a closed-loop run); the default is
+    # the 20260831 A4 value, and it is the one input here that a fresh operating point can
+    # change, so it is re-measured with every A4 wave.
+    cands = []
+    for row in table:
+        fs = np.asarray(row["f"], float)
+        fi = PchipInterpolator(zeff[np.argsort(zeff)], fs[np.argsort(zeff)], extrapolate=True)
+        mc = 0.5 * (row["f_top"] + row["f_floor"])
+        slope_r, _, _ = max_df_dchi(zeta, z0, fi)
+        for wchi in np.arange(0.02, 0.3001, 0.002):
+            rt, _, _, _ = solve_loop(zeta, z0, fi, mc, wchi, a.switch_sign)
+            if len(rt) < 3:
+                continue
+            lo, mid, hi = rt[0], rt[len(rt) // 2], rt[-1]
+            sep = hi - lo
+            if sep < a.min_separation:
+                continue
+            basin = min(mid - lo, hi - mid)
+            R = basin / (a.std_m / (2 * wchi))
+            cands.append({"coeff": row["coeff"], "width_coeff": row["width_coeff"],
+                          "pmem": row["pmem"], "pmem_width": row["pmem_width"],
+                          "mc_0": mc, "chi_width": float(wchi), "G": slope_r / (2 * wchi),
+                          "max_df_dchi": slope_r, "roots": rt, "separation": sep,
+                          "basin": basin, "robustness": R, "f": row["f"],
+                          "f_top": row["f_top"], "f_floor": row["f_floor"],
+                          "contrast": row["contrast"]})
+    if not cands:
+        raise RuntimeError("no (pmem, pmem-width, chi-width) in the scan gives three roots "
+                           f"with separation >= {a.min_separation}; the loop is not bistable "
+                           "anywhere on this ladder")
+    cands.sort(key=lambda d: -d["robustness"])
+    print(f"\nA3  top operating points, ranked by R = basin / (chi* shift per std(m) = "
+          f"{a.std_m:g})")
+    print(f"{'pmem':>6} {'width':>6} {'w_chi':>6} {'mc_0':>6} {'f_flr':>6} {'f_top':>6} "
+          f"{'chi_lo':>7} {'chi_mid':>8} {'chi_hi':>7} {'sep':>6} {'basin':>6} {'G':>5} {'R':>5}")
+    seen, shown = set(), []
+    for d in cands:
+        k = (d["coeff"], d["width_coeff"])
+        if k in seen:
+            continue
+        seen.add(k); shown.append(d)
+        r = d["roots"]
+        print(f"{d['coeff']:6.2f} {d['width_coeff']:6.2f} {d['chi_width']:6.3f} {d['mc_0']:6.3f} "
+              f"{d['f_floor']:6.3f} {d['f_top']:6.3f} {r[0]:7.4f} {r[len(r)//2]:8.4f} "
+              f"{r[-1]:7.4f} {d['separation']:6.3f} {d['basin']:6.3f} {d['G']:5.2f} "
+              f"{d['robustness']:5.1f}")
+        if len(shown) >= 8:
+            break
+
+    pick = cands[0]
+    best = {"coeff": pick["coeff"], "pmem": pick["pmem"], "f_top": pick["f_top"],
+            "f_floor": pick["f_floor"], "contrast": pick["contrast"], "f": pick["f"]}
+    pmem, pmem_width = pick["pmem"], pick["pmem_width"]
+    mc0, w_chi = pick["mc_0"], pick["chi_width"]
+    slope = pick["max_df_dchi"]
+    G = pick["G"]
+    note = (f"chosen by robustness R = {pick['robustness']:.1f}; contrast {pick['contrast']:+.3f} "
+            f"(the largest contrast in the scan is "
+            f"{max(t['contrast'] for t in table):+.3f})")
+    fs = np.asarray(pick["f"], float)
     order = np.argsort(zeff)
     f_interp = PchipInterpolator(zeff[order], fs[order], extrapolate=True)
-    mc0 = 0.5 * (best["f_top"] + best["f_floor"])
+    roots = pick["roots"]
+    print(f"\n    PICKED  pmem = {pmem:.4e} ({pick['coeff']:g} sigma_P), "
+          f"pmem-width = {pmem_width:.4e} ({pick['width_coeff']:g} sigma_P)")
+    print(f"            mc_0 = {mc0:.4f}   chi-width = {w_chi:.4f}   G = {G:.2f}   "
+          f"R = {pick['robustness']:.1f}")
+    print(f"            roots chi = {['%.4f' % r for r in roots]}  "
+          f"separation {pick['separation']:.3f}  weaker basin {pick['basin']:.3f}")
+    print(f"            {note}")
 
-    slope, chi_at, f_at = max_df_dchi(zeta, z0, f_interp)
-    w_chi_0 = float(parts[-1]["params"]["chi_width"])
-    G0 = slope / (2 * w_chi_0)
-    if G0 < a.g_min:
-        w_chi = slope / (2 * a.g_target)
-        note = (f"G = {G0:.2f} < {a.g_min} at the runcard chi-width {w_chi_0:g}; "
-                f"chi-width reset to |max df/dchi|/(2 G_target) = {w_chi:.4g} for G = {a.g_target}")
-    else:
-        w_chi, note = w_chi_0, f"G = {G0:.2f} >= {a.g_min}, chi-width kept at {w_chi_0:g}"
-    G = slope / (2 * w_chi)
-
-    roots, chig, fg, Fg = solve_loop(zeta, z0, f_interp, mc0, w_chi, a.switch_sign)
-
-    # THE ROOT STRUCTURE ACROSS THE GAIN, because G is a PROXY and it can mislead.
-    #
-    # G uses the MAXIMUM of |df/dchi| over the whole reachable range, but bistability is
-    # decided by the slope where the fixed point actually SITS. Measured on the 20260831
-    # ladder the two are in different places -- the max slope is at chi = 0.88, the layer
-    # near its activity floor, while the fixed point is at chi = 0.17 -- so G = 1.78 passed
-    # the campaign's G >= 1.5 test while the map had only ONE root. Tabulate the actual root
-    # count rather than trusting the proxy, and record the BASIN GAP chi_hi - chi_mid: with
-    # s = -1 the unstable middle root hugs the high root, so that gap is the margin the
-    # passive phase has before a fluctuation tips it into the active one.
+    # the chi-width scan AT THE PICKED THRESHOLD, so the A4 wave can bracket it
     g_scan = []
-    for Gt in (1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 5.0, 7.0):
-        wt = slope/(2*Gt)
-        rt, _, _, _ = solve_loop(zeta, z0, f_interp, mc0, wt, a.switch_sign)
-        g_scan.append({"G": Gt, "chi_width": wt, "n_roots": len(rt), "roots": rt,
-                       "separation": (rt[-1]-rt[0]) if len(rt) >= 3 else 0.0,
-                       "basin_gap_high": (rt[-1]-rt[len(rt)//2]) if len(rt) >= 3 else 0.0})
-    print("\n    root structure vs loop gain (mc = mc_0):")
-    print(f"    {'G':>5} {'chi_width':>10} {'roots':>6} {'chi_lo':>8} {'chi_mid':>8} "
-          f"{'chi_hi':>8} {'sep':>6} {'basin_hi':>9}")
+    for wchi in (0.04, 0.05, 0.06, 0.07, 0.088, 0.10, 0.12, 0.15, 0.20):
+        rt, _, _, _ = solve_loop(zeta, z0, f_interp, mc0, wchi, a.switch_sign)
+        b = (min(rt[len(rt)//2] - rt[0], rt[-1] - rt[len(rt)//2])
+             if len(rt) >= 3 else 0.0)
+        g_scan.append({"G": slope / (2 * wchi), "chi_width": wchi, "n_roots": len(rt),
+                       "roots": rt, "separation": (rt[-1]-rt[0]) if len(rt) >= 3 else 0.0,
+                       "basin": b, "robustness": b / (a.std_m / (2 * wchi))})
+    print("\n    chi-width scan at the picked threshold:")
+    print(f"    {'w_chi':>7} {'G':>5} {'roots':>6} {'chi_lo':>8} {'chi_mid':>8} {'chi_hi':>8} "
+          f"{'sep':>6} {'basin':>6} {'R':>5}")
     for e in g_scan:
         r = e["roots"]
-        if e["n_roots"] >= 3:
-            cols = (f"{r[0]:8.4f} {r[len(r)//2]:8.4f} {r[-1]:8.4f} {e['separation']:6.3f} "
-                    f"{e['basin_gap_high']:9.3f}")
-        elif r:
-            cols = f"{r[0]:8.4f} {'--':>8} {'--':>8} {'--':>6} {'--':>9}"
-        else:
-            cols = ""
-        print(f"    {e['G']:5.1f} {e['chi_width']:10.4f} {e['n_roots']:6d} {cols}")
-    if len(roots) < 3:
-        print(f"\n    *** the chosen chi-width = {w_chi:.4f} gives {len(roots)} root(s), NOT a"
-              f"\n    *** bistable map, so checkpoint 2 cannot pass there. The campaign's own"
-              f"\n    *** remedy is G = 3.5, which on this ladder is chi-width = {slope/7:.4f}.")
-    print(f"\nA3  pmem = {pmem:.4e} ({best['coeff']:g} sigma_P), contrast "
-          f"{best['contrast']:+.3f}\n    mc_0 = {mc0:.4f}   (f_floor {best['f_floor']:.3f} .. "
-          f"f_top {best['f_top']:.3f})")
-    print(f"    max |df/dchi| = {slope:.4g} at chi = {chi_at:.3f}\n    {note}\n"
-          f"    G = {G:.2f}")
-    print(f"    roots chi = {['%.4f' % r for r in roots]}"
-          + ("   <- BISTABLE" if len(roots) >= 3 else "   <- single fixed point"))
+        cols = (f"{r[0]:8.4f} {r[len(r)//2]:8.4f} {r[-1]:8.4f} {e['separation']:6.3f} "
+                f"{e['basin']:6.3f} {e['robustness']:5.1f}") if e["n_roots"] >= 3 else \
+               (f"{r[0]:8.4f} {'--':>8} {'--':>8} {'--':>6} {'--':>6} {'--':>5}" if r else "")
+        print(f"    {e['chi_width']:7.3f} {e['G']:5.2f} {e['n_roots']:6d} {cols}")
 
     if len(roots) >= 3:
         chi_lo, chi_mid, chi_hi = roots[0], roots[len(roots) // 2], roots[-1]
@@ -269,16 +345,12 @@ def main():
                     "Ma": p["flow"]["Ma"], "melted": p["flow"]["melted_frac"],
                     "L_P": p["flow"]["L_P"], "case": p["case"]} for p in parts],
         "f_table": table,
-        "pmem": pmem, "pmem_coeff": best["coeff"],
-        # IQR/4, the convention carried over from cw_regime / cw_scan: the tanh in g(P) then
-        # spans about half an interquartile range -- sharp enough that "above threshold"
-        # really selects a fraction of the area, soft enough that the memory source still
-        # has a gradient to follow instead of seeing a step.
-        "pmem_width": float(0.25 * (np.interp(75.0, top["flow"]["P_pctl_levels"],
-                                              top["flow"]["P_pctl_values"])
-                                    - np.interp(25.0, top["flow"]["P_pctl_levels"],
-                                                top["flow"]["P_pctl_values"]))),
+        "pmem": pmem, "pmem_coeff": pick["coeff"],
+        "pmem_width": pmem_width, "pmem_width_coeff": pick["width_coeff"],
+        "robustness": pick["robustness"], "basin": pick["basin"],
+        "separation": pick["separation"], "std_m_assumed": a.std_m,
         "mc_0": mc0, "chi_width": w_chi, "chi_width_note": note,
+        "candidates": shown,
         "max_df_dchi": slope, "G": G,
         "g_scan": g_scan,
         "roots": roots,
