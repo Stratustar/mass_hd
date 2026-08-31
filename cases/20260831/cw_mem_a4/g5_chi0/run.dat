@@ -1,0 +1,80 @@
+# 20260831 cw_mem_a4 -- stage A4: the BISTABILITY QUICK CHECK.
+# 
+# Two closed-loop runs at tau_m = 30 tau_c with the stage-A3 parameters, started from the two
+# ends: chi == 0 (fully active) and chi == 1 (at the activity floor). CHECKPOINT 2 is that
+# their record-window <chi> differ by more than 0.4. If they do not, the mean-field roots are
+# not realised and A3 is redone with the loop gain raised to G = 3.5.
+# 
+# WHY THIS CHECK EXISTS. The A3 fixed-point equation chi = chi*(f(zeta_eff(chi))) is a
+# MEAN-FIELD statement: it uses only <m>, and it is blind to var(m). A wide spread of m across
+# the box smears chi*(m) and can wash out a bistability the scalar equation predicts. Nothing
+# in A3 can see that; only running both ends can.
+# 
+# EACH END STARTS AT ITS OWN SELF-CONSISTENT MEMORY. m0 = f(zeta_eff(chi_init)): the chi == 0
+# run starts at m0 = 0.3266, the memory a fully active layer actually accumulates, and
+# the chi == 1 run at m0 = 0.0437. Starting both at m = 0.5 would have both memories
+# drifting towards their own equilibrium for ~tau_m = 30 tau_c, i.e. for a third of the record
+# window, and a separation that merely reflects that transient would be indistinguishable from
+# genuine bistability.
+# 
+# A GAIN SCAN, NOT A SINGLE PAIR. The campaign's recipe is "run the two ends; if <chi>
+# differs by less than 0.4, go back to A3 and raise G to 3.5". On the 20260831 ladder the
+# mean-field map already answers the first round: at the A3 chi-width the map has ONE root, so
+# the two ends must converge and checkpoint 2 cannot pass. Running that round anyway to watch
+# it fail, then running the remedy, is two serial waves for one bit of information. Both are
+# run here instead, in one wave, plus one stiffer setting as the fallback -- which also turns
+# the checkpoint into a measurement: at which loop gain does the separation actually appear,
+# and does it appear where the mean-field says it should?
+# 
+# WHY THE PROXY MISLED. G is built from the MAXIMUM of |df/dchi| over the reachable activity
+# range, but bistability is decided by the slope where the fixed point SITS. Here the maximum
+# is at chi = 0.88 (the layer near its activity floor) and the fixed point is at chi = 0.17, so
+# G = 1.78 cleared the G >= 1.5 test with a map that has a single root.
+# 
+# THIS CASE: chi == 0, m0 = 0.3266, G = 5 (chi-width = 0.0535), mean-field roots
+# chi_lo = 0.0051, chi_mid = 0.7592, chi_hi = 0.9947 (separation 0.990).
+model            = confluent-wet
+nsteps           = 100000
+nstart           = 0
+ninfo            = 2724
+LX               = 800
+LY               = 800
+bc               = 0
+seed             = 1001
+
+Gamma            = 0.05
+xi               = 0.4
+CC               = 0.00625
+LL               = 0.05
+tau              = 2.0
+rho              = 40
+friction         = 0.0
+zeta             = 0.15
+zeta0-frac       = 0.3
+
+angle            = 0
+noise            = 0.05
+initial-order    = 1
+director-config  = uniform
+defect-sep       = 0
+
+Dbio             = 0.016521
+chi-config       = uniform
+chi0             = 0.0
+chi-noise        = 0
+chi-length       = 0
+tau-chi          = 163.4
+chi-width        = 0.05346
+switch-sign      = -1
+mc               = 0.185131
+m0               = 0.326557
+
+tau-m            = 16343.3
+pmem             = 0.042292436030512304
+pmem-width       = 0.028812225
+
+nvideo           = 109
+video-stride     = 2
+video-p-scale    = 0.5075092323661476
+video-u-scale    = 0.1104737933590729
+frame-light      = 1
