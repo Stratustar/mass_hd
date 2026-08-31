@@ -1,6 +1,8 @@
 #ifndef MODELS_CONFLUENT_WET_HPP_
 #define MODELS_CONFLUENT_WET_HPP_
 
+#include <fstream>
+
 #include "models/nematic.hpp"
 
 /** Confluent, incompressible active nematic with phenotype and mechanical memory,
@@ -16,7 +18,7 @@
  *   H      = 2 CC term Q + LL grad^2 Q                 , term = 1 - q^2
  *   D_t Q  = Gamma H + corotation + xi-alignment         (Beris-Edwards)
  *   sigma  = sigma_bulk delta + traceless(elastic + Frank + active)
- *   active stress = -zeta (1 - chi) Q
+ *   active stress = -zeta_eff(chi) Q ,  zeta_eff = zeta [z0 + (1 - z0)(1 - chi)]
  *   LB     : f_v <- f_v + (f^eq_v - f_v)/tau + w_v (F.c_v) , F = div(sigma) - friction u
  *
  *   D_t chi = (chi*(m) - chi)/tau_chi + Dbio lap chi , chi*(m)= .5(1+s tanh((m-mc)/chi_width))
@@ -165,6 +167,35 @@ protected:
   /** Gauge-dependent hydrodynamic pressure (n - rho)/3; diagnostic only */
   ScalarField pressure_lb;
 
+  /** ACTIVITY FLOOR, as a fraction of zeta:
+   *
+   *      zeta_eff(chi) = zeta [ zeta0_frac + (1 - zeta0_frac)(1 - chi) ]
+   *
+   *  so chi = 0 gives the full zeta and chi = 1 gives zeta0_frac*zeta instead of ZERO.
+   *  A layer whose passive phenotype is exactly non-active is a singular limit: at chi = 1
+   *  the flow dies completely, P collapses to the equilibrium value everywhere, and the
+   *  memory can never be re-excited -- chi = 1 is then an absorbing state and no two-phase
+   *  coexistence is possible whatever the parameters. The floor is what makes the passive
+   *  phase a PHASE rather than a trap.
+   *
+   *  DEFAULT 0, which is exactly the pre-2026-09 model (active = zeta*(1-chi)), so every
+   *  earlier runcard reproduces bit for bit. The 2026-09 memory campaign sets 0.3
+   *  EXPLICITLY in every run.dat. */
+  double zeta0_frac = 0.;
+
+  /** OPEN LOOP: m and chi evolve exactly as usual, but the activity is held at the
+   *  constant zeta_open and chi is NOT written back into the stress.
+   *
+   *  This is the calibration mode, and it is not the same as freezing chi (tau_chi <= 0).
+   *  Freezing chi would also freeze the activity at zeta_eff(chi0), but it would kill the
+   *  phenotype dynamics we want to observe; what the activity ladder needs is the response
+   *  of the flow AND of m to a PRESCRIBED activity, so that f -- the fraction of time a
+   *  material point spends above the pressure threshold -- can be tabulated against
+   *  zeta_eff with the feedback cut. Closing the loop then only requires solving
+   *  chi_bar = chi*(f(zeta_eff(chi_bar))) on that table. */
+  int open_loop = 0;
+  double zeta_open = 0.;
+
   /** Biomass (cell-motility) diffusivity, applied IDENTICALLY to chi and m: a cell
    *  carries its phenotype and its memory together. Defaults to 0. */
   double Dbio = 0.;
@@ -176,9 +207,35 @@ protected:
    *  a self-limiting negative feedback since the activity is zeta*(1-chi)). -1 is the
    *  opposite branch. */
   int switch_sign = 1;
-  /** Phenotype initialisation: mode, mean, std and correlation length of the noise */
+  /** Phenotype initialisation: mode, mean, std and correlation length of the noise.
+   *
+   *  Modes:
+   *    uniform   chi = chi0, m = m0 everywhere
+   *    noise     correlated Gaussian noise of width chi_noise and length chi_length
+   *    stripe    two half-boxes split along x: x < LX/2 carries (chi_hi, m_hi), the rest
+   *              (chi_lo, m_lo).  The front-propagation geometry: one flat interface, two
+   *              of them under periodic boundaries, and both phases prepared at their own
+   *              self-consistent (chi, m) so the interface is the only thing out of
+   *              equilibrium.
+   *    blocks    a chi_block x chi_block checkerboard of randomly assigned (chi_hi, m_hi)
+   *              and (chi_lo, m_lo) cells, EXACTLY half of each (a shuffled assignment,
+   *              not an independent coin per block -- with 1600 blocks an independent coin
+   *              leaves a +/- 1.25% drift in the initial area fraction, and the whole point
+   *              of the mixed initial condition is that it starts on the 50/50 line). */
   std::string chi_config = "uniform";
   double chi0 = 0.5, chi_noise = 0., chi_length = 0.;
+  /** The two phases used by chi-config = stripe and blocks */
+  double chi_lo = 0., chi_hi = 1., m_lo = 0., m_hi = 1.;
+  /** Block edge in lattice units (blocks mode); must divide both LX and LY */
+  unsigned chi_block = 0;
+  /** Steps during which the phenotype SWITCHING SOURCE is held off.
+   *
+   *  Transport and diffusion of chi keep running -- freezing those too would hold a
+   *  perfectly sharp initial interface against a flow that is meanwhile developing, and
+   *  the front would then start from a state the dynamics can never produce. What this
+   *  freezes is only the reaction, so the flow and the pressure field can equilibrate to
+   *  the prescribed chi pattern before the pattern is allowed to answer back. */
+  unsigned chi_freeze_steps = 0;
 
   /** Memory relaxation time. Should sit well above the LOCAL acoustic time sqrt(3)*L_P set
    *  by the pressure correlation length -- NOT by the box size, which overestimates it by
@@ -196,6 +253,56 @@ protected:
   double defect_sep = 0.;
   /** Initial amplitude of the nematic order */
   double init_order = 1.;
+
+  /** THE VIDEO STREAM -- a second output channel, on its own clock.
+   *
+   * Every nvideo steps, four fields (|u|, P, m, chi) are block-averaged onto a
+   * video_stride-times coarser lattice, quantised to uint8 against FIXED limits, and
+   * APPENDED to four raw byte streams; a companion CSV carries the exact (double)
+   * per-frame scalars. At L = 800, stride 2 this is 160 kB per field per frame against
+   * ~170 MB for a full frame, i.e. 1000x cheaper, which is what makes a 0.2*tau_c video
+   * affordable in the same run as 5*tau_c analysis frames.
+   *
+   * WHY THE LIMITS ARE FIXED AND EXPLICIT rather than auto-scaled per run. A video whose
+   * colour scale follows its own field animates a quantity that grows by decades as if it
+   * were constant, and two runs at different tau_m then cannot be compared by eye at all.
+   * The campaign convention is one scale for every run, taken from the calibrated
+   * sigma_P(zeta) and u_rms(zeta).
+   *
+   * WHY THE STORED RANGE IS NOT THE DISPLAYED RANGE. video_p_scale is the CLIPPING limit
+   * of the stored byte, not the colour-bar limit; the renderer maps a narrower window
+   * (the campaign convention is +/- 3 sigma_P) inside it. Storing wider than displaying
+   * costs only quantisation resolution -- 128 levels instead of 255 across the displayed
+   * window, still far finer than the eye or than any statistic computed from it -- and it
+   * buys the one thing that cannot be recovered afterwards: the tails are not destroyed.
+   * That matters because these streams are also the TIME SERIES the analysis uses (a
+   * 5*tau_c frame cadence cannot resolve a lag of 3(tau_m + tau_chi) at small tau_m), and
+   * a threshold statistic like f = fraction of time above pmem is meaningless if the
+   * field was clipped near the threshold.
+   *
+   * Streams are opened on the first write and closed by the destructor; the per-frame
+   * clipped fractions are recorded in the CSV so a badly chosen scale is visible in the
+   * data rather than only in a washed-out picture. */
+  unsigned nvideo = 0, video_stride = 2;
+  double video_p_scale = 0., video_u_scale = 0.;
+  /** Write only the seven fields the analysis reads, dropping the LB populations.
+   *
+   * A full frame is 27 field-equivalents, of which the nine ff components are by far the
+   * largest item and the only reason to keep them is restartability. The analysis reads
+   * exactly ux_mat, uy_mat, pressure, chi, m, QQxx, QQyx, so a light frame is ~4x smaller
+   * -- 850 GB -> 220 GB over a 135-run campaign -- at the price of a frame one cannot
+   * restart from. Default 0 (the full, restartable frame). */
+  int frame_light = 0;
+  std::ofstream vid_u, vid_p, vid_m, vid_chi, vid_meta;
+  bool video_open = false;
+
+  /** Steps completed, i.e. calls to Step(). Drives chi_freeze_steps.
+   *
+   * Equals the runcard time only at nsubsteps = 1, which every runcard in this project
+   * uses; with nsubsteps > 1 this counts sub-steps and chi-freeze-steps means sub-steps
+   * too. Initialize() rejects nsubsteps > 1 together with a non-zero freeze rather than
+   * leaving that ambiguous. */
+  unsigned nstep_done = 0;
 
   /** Cached tau_chi > 0; keeps the branch out of the inner loop */
   bool use_switching = false;
@@ -216,6 +323,13 @@ protected:
   double MemoryTarget(unsigned) const;
   /** Clamp a field back into [0,1] */
   static void ClampUnit(ScalarField&, unsigned);
+  /** zeta_eff at one node: the constant zeta_open in open loop, the floored law otherwise */
+  double Activity(unsigned) const;
+  /** Block-average one field onto the video lattice and quantise it into `out` */
+  void VideoPack(std::vector<unsigned char>& out, const ScalarField&,
+                 double lo, double hi) const;
+  /** Open the video streams (truncating) on the first write */
+  void VideoOpen(const std::string& dir);
 
   virtual void UpdateQuantities();
   virtual void UpdateFields(bool);
@@ -224,6 +338,7 @@ protected:
 
 public:
   ConfluentWet(unsigned, unsigned, unsigned);
+  virtual ~ConfluentWet();
 
   // functions from base class Model
   virtual void Initialize();
@@ -231,6 +346,7 @@ public:
   virtual void ConfigureAtNode(unsigned);
   virtual void Step();
   virtual void RuntimeChecks();
+  virtual void WriteAuxiliary(const std::string&, unsigned);
   virtual option_list GetOptions();
 
   /** Serialization of parameters (do not change; append only) */
@@ -254,7 +370,22 @@ public:
        & auto_name(m0)
        & auto_name(director_config)
        & auto_name(defect_sep)
-       & auto_name(init_order);
+       & auto_name(init_order)
+       // appended 2026-09-01 (memory campaign); never reorder the entries above
+       & auto_name(zeta0_frac)
+       & auto_name(open_loop)
+       & auto_name(zeta_open)
+       & auto_name(chi_lo)
+       & auto_name(chi_hi)
+       & auto_name(m_lo)
+       & auto_name(m_hi)
+       & auto_name(chi_block)
+       & auto_name(chi_freeze_steps)
+       & auto_name(nvideo)
+       & auto_name(video_stride)
+       & auto_name(video_p_scale)
+       & auto_name(video_u_scale)
+       & auto_name(frame_light);
   }
 
   /** Serialization of the current frame (time snapshot)
@@ -266,25 +397,32 @@ public:
   template<class Archive>
   void serialize_frame(Archive& ar)
   {
-    ar & auto_name(ff)
-       & auto_name(QQxx)
+    // The seven fields every analysis reads. Always written.
+    ar & auto_name(QQxx)
        & auto_name(QQyx)
        & auto_name(chi)
        & auto_name(m)
-       & auto_name(n)
-       & auto_name(ux)
-       & auto_name(uy)
        & auto_name(ux_mat)
        & auto_name(uy_mat)
-       & auto_name(sigmaXX)
-       & auto_name(sigmaYY)
-       & auto_name(sigmaXY)
-       & auto_name(sigmaYX)
-       & auto_name(sigma_bulk)
-       & auto_name(sigma_active_xx)
-       & auto_name(sigma_active_yx)
-       & auto_name(pressure)
-       & auto_name(pressure_lb);
+       & auto_name(pressure);
+
+    // Everything else: the restart state and the stress decomposition. Skipped by
+    // frame_light, which is safe because the frame archive is write-only (the iarchive
+    // side of serialize_frame is declared but unimplemented, and nothing in the C++ or the
+    // python ever reads a frame back into a model).
+    if(!frame_light)
+      ar & auto_name(ff)
+         & auto_name(n)
+         & auto_name(ux)
+         & auto_name(uy)
+         & auto_name(sigmaXX)
+         & auto_name(sigmaYY)
+         & auto_name(sigmaXY)
+         & auto_name(sigmaYX)
+         & auto_name(sigma_bulk)
+         & auto_name(sigma_active_xx)
+         & auto_name(sigma_active_yx)
+         & auto_name(pressure_lb);
   }
 };
 

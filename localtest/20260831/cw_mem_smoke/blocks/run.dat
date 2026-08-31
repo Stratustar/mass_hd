@@ -1,0 +1,54 @@
+# 20260831 cw_mem_smoke: smoke test of the 2026-09 campaign machinery, NOT physics.
+#
+# THIS CASE: closed loop from the RANDOM MIXED initial condition -- 10-cell blocks, exactly
+# half at (chi_hi, m_hi) and half at (chi_lo, m_lo). Checks the Fisher-Yates assignment
+# (the area fraction must come out at exactly 0.5) and that both phases are prepared as
+# (chi, m) pairs rather than chi alone.
+model           = confluent-wet
+nsteps          = 2000
+nstart          = 0
+ninfo           = 200
+LX              = 100
+LY              = 100
+bc              = 0
+seed            = 1001
+
+Gamma           = 0.05
+xi              = 0.4
+CC              = 0.00625
+LL              = 0.05
+tau             = 2.0
+rho             = 40
+friction        = 0.0
+zeta            = 0.1
+zeta0-frac      = 0.3
+
+angle           = 0
+noise           = 0.05
+initial-order   = 1
+director-config = uniform
+defect-sep      = 0
+
+Dbio            = 0.006
+chi-width       = 0.15
+switch-sign     = -1
+mc              = 0.5
+pmem            = 0
+pmem-width      = 0.01
+
+nvideo          = 20
+video-stride    = 2
+video-p-scale   = 0.18
+video-u-scale   = 0.087
+frame-light     = 1
+open-loop       = 0
+chi-config      = blocks
+chi-block       = 10
+chi-lo          = 0.15
+chi-hi          = 0.85
+m-lo            = 0.2
+m-hi            = 0.8
+chi0            = 0.5
+m0              = 0.5
+tau-chi         = 60
+tau-m           = 200

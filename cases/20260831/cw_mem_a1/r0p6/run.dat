@@ -1,0 +1,86 @@
+# 20260831 cw_mem_a1 -- stage A1 of the memory campaign: the ACTIVITY LADDER.
+# 
+# Six OPEN-LOOP runs. m and chi evolve exactly as they will in production, but the activity
+# is pinned at zeta-open and chi is not fed back, so this measures the RESPONSE of the layer
+# to a prescribed activity rather than a fixed point. What comes out of it:
+# 
+#   tau_c(zeta) = d/u_rms at the top rung -- the smallest tau_c on the ladder, and from here
+#                 on THE time unit of the whole campaign
+#   sigma_P(zeta), u_rms(zeta)   the fixed colour scales of every video in the campaign
+#   f(pmem; zeta_eff)            the fraction of time a lattice point spends above a pressure
+#                                threshold; stage A3 solves chi = chi*(f(zeta_eff(chi))) on it
+# 
+# CHECKPOINT 1 is the r = 0.30 rung, which is the activity FLOOR zeta_0 = 0.3 zeta that the
+# passive phenotype will sit at. It must still be turbulent -- a stable non-zero defect count.
+# If it is not, the floor has to be raised to 0.4 zeta and the ladder re-run, because a
+# passive phase that has stopped stirring generates no pressure, can never be re-excited, and
+# is an absorbing state rather than a phase.
+# 
+# THE ACTIVITY WAS RAISED for this campaign, from the zeta = 0.1 of the 20260830 working point
+# to zeta = 0.15. The reason is run length measured in the layer's own clock: at zeta = 0.1,
+# tau_c was 1541 steps, so a 100000-step run is only 65 tau_c and the tau_m = 30 tau_c corner
+# gets 1.7 memory times of recording. tau_c falls roughly as 1/zeta (u_rms ~ sqrt(zeta) and the
+# defect spacing falls as A^-0.45), so 1.5x the activity buys ~2.8x the tau_c count. The price
+# is Mach: Ma ~ sqrt(zeta_eff), so the top rung is PREDICTED at Ma = 0.043 against the 0.045
+# weakly-compressible budget -- inside it, but not by much, and the prediction is an
+# extrapolation. This ladder measures it. If the top rung comes out over budget, the campaign
+# drops one rung: the r = 0.8 run is already a complete calibration of zeta_eff = 0.12, so
+# the nominal zeta can be lowered WITHOUT re-running anything.
+# 
+# THIS CASE: r = zeta_eff/zeta = 0.6, zeta_eff = 0.09, A = zeta_eff/CC = 14.4.
+# 
+# CADENCE. ninfo and nvideo are set from the PREDICTED tau_c = 540 steps (5 tau_c and
+# 0.2 tau_c). From stage A4 on they are set from the measured value; A1's own cadence being
+# ~20% off costs nothing, because A1 measures rather than compares.
+# 
+# VIDEO SCALES are per rung here and predicted (6 sigma_P, 6 u_rms with sigma_P = 0.625
+# zeta_eff and u_rms extrapolated from the 20260830 anchor). They are the STORED clipping
+# limits, not the colour bar: the renderer displays the inner +/- 3 sigma_P using the MEASURED
+# sigma_P. Storing wide is what keeps the tails -- and hence f near the threshold -- intact.
+model           = confluent-wet
+nsteps          = 100000
+nstart          = 0
+ninfo           = 2700
+LX              = 800
+LY              = 800
+bc              = 0
+seed            = 1001
+
+Gamma           = 0.05
+xi              = 0.4
+CC              = 0.00625
+LL              = 0.05
+tau             = 2.0
+rho             = 40
+friction        = 0.0
+zeta            = 0.15
+zeta0-frac      = 0.3
+open-loop       = 1
+zeta-open       = 0.09
+
+angle           = 0
+noise           = 0.05
+initial-order   = 1
+director-config = uniform
+defect-sep      = 0
+
+Dbio            = 0.016667
+chi-config      = uniform
+chi0            = 0.5
+chi-noise       = 0
+chi-length      = 0
+tau-chi         = 162.0
+chi-width       = 0.15
+switch-sign     = -1
+mc              = 0.5
+m0              = 0.5
+
+tau-m           = 1620.0
+pmem            = 0.0
+pmem-width      = 0.014062
+
+nvideo          = 108
+video-stride    = 2
+video-p-scale   = 0.3375
+video-u-scale   = 0.11619
+frame-light     = 1

@@ -113,6 +113,19 @@ public:
    * purpose please use the function Pre().
    * */
   virtual void PreRunStats() {}
+  /** Auxiliary, model-owned output stream
+   *
+   * Called once per outer time step, before Step(), with the output directory and the
+   * current step, so that a model can emit a SECOND output stream at its own rate,
+   * independent of ninfo. It exists because the two things a run has to record sit on
+   * different clocks: full-resolution frames are wanted rarely (they are ~10^2 MB each at
+   * L = 800) while a video wants ~10^3 cheap, downsampled frames. Writing the video at the
+   * frame rate is unaffordable and writing frames at the video rate is unusable, so
+   * neither ninfo alone nor a post-processing pass over saved frames can produce both.
+   *
+   * Default: nothing. Only a model that opts in pays anything.
+   * */
+  virtual void WriteAuxiliary(const std::string&, unsigned) {}
 };
 
 // =============================================================================

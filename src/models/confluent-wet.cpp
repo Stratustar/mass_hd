@@ -10,6 +10,7 @@ namespace opt = boost::program_options;
 
 // from main.cpp:
 extern unsigned nthreads;
+extern unsigned nsubsteps;
 
 ConfluentWet::ConfluentWet(unsigned LX_, unsigned LY_, unsigned BC_)
   : Nematic(LX_, LY_, BC_)
@@ -21,6 +22,17 @@ ConfluentWet::ConfluentWet(unsigned LX_, unsigned LY_, unsigned BC_)
   Gamma = 0.05; xi = 0.4; tau = 1.; friction = 0.;
   CC = 0.1; LL = 0.4; zeta = 0.;
   angle_deg = 0.; noise = 0.05;
+}
+
+ConfluentWet::~ConfluentWet()
+{
+  // The video streams are appended to for the whole run and are the only file handles this
+  // model owns; closing them here means a run that ends by exception still leaves a stream
+  // whose last complete frame is readable.
+  if(video_open)
+  {
+    vid_u.close(); vid_p.close(); vid_m.close(); vid_chi.close(); vid_meta.close();
+  }
 }
 
 void ConfluentWet::Initialize()
@@ -46,11 +58,63 @@ void ConfluentWet::Initialize()
     throw error_msg("confluent-wet: director-config=defect-pair needs defect-sep > 0.");
   if(init_order < 0.)
     throw error_msg("confluent-wet: initial-order must be non-negative.");
-  if(chi_config != "uniform" && chi_config != "noise")
-    throw error_msg("confluent-wet: chi-config must be 'uniform' or 'noise', got '",
-                    chi_config, "'.");
+  if(chi_config != "uniform" && chi_config != "noise" &&
+     chi_config != "stripe"  && chi_config != "blocks")
+    throw error_msg("confluent-wet: chi-config must be 'uniform', 'noise', 'stripe' or "
+                    "'blocks', got '", chi_config, "'.");
   if(chi0 < 0. || chi0 > 1.)
     throw error_msg("confluent-wet: chi0 must lie in [0,1].");
+  if(chi_lo < 0. || chi_lo > 1. || chi_hi < 0. || chi_hi > 1.)
+    throw error_msg("confluent-wet: chi-lo and chi-hi must lie in [0,1].");
+  if(m_lo < 0. || m_lo > 1. || m_hi < 0. || m_hi > 1.)
+    throw error_msg("confluent-wet: m-lo and m-hi must lie in [0,1].");
+  if(chi_config == "stripe" && LX % 2)
+    throw error_msg("confluent-wet: chi-config=stripe splits the box along x into two "
+                    "equal halves and needs an even LX, got LX=", LX, ".");
+  if(chi_config == "blocks")
+  {
+    if(chi_block == 0)
+      throw error_msg("confluent-wet: chi-config=blocks needs chi-block > 0.");
+    if(LX % chi_block || LY % chi_block)
+      throw error_msg("confluent-wet: chi-block=", chi_block, " must divide both LX=", LX,
+                      " and LY=", LY, "; a partial block at the edge would break the "
+                      "exactly-half area fraction the mixed initial condition relies on.");
+    if((LX/chi_block)*(LY/chi_block) % 2)
+      throw error_msg("confluent-wet: chi-config=blocks needs an EVEN number of blocks so "
+                      "the two phases can be exactly half and half; LX/chi-block * "
+                      "LY/chi-block = ", (LX/chi_block)*(LY/chi_block), " is odd.");
+  }
+  // The activity law and the open-loop override.
+  if(zeta0_frac < 0. || zeta0_frac > 1.)
+    throw error_msg("confluent-wet: zeta0-frac is the activity floor as a FRACTION of "
+                    "zeta and must lie in [0,1], got ", zeta0_frac, ".");
+  if(open_loop != 0 && open_loop != 1)
+    throw error_msg("confluent-wet: open-loop must be 0 or 1.");
+  if(open_loop && zeta_open < 0.)
+    throw error_msg("confluent-wet: open-loop needs zeta-open >= 0, got ", zeta_open, ".");
+  if(!open_loop && zeta_open != 0.)
+    throw error_msg("confluent-wet: zeta-open=", zeta_open, " is set but open-loop=0, so "
+                    "it would be silently ignored and the run would be at a different "
+                    "activity than its runcard reads. Set open-loop=1 or drop zeta-open.");
+  // nstep_done counts Step() calls, which is the runcard time only at nsubsteps = 1.
+  if(chi_freeze_steps && nsubsteps != 1)
+    throw error_msg("confluent-wet: chi-freeze-steps counts Step() calls and is only equal "
+                    "to runcard time at nsubsteps=1, got nsubsteps=", nsubsteps, ".");
+  // The video stream.
+  if(nvideo)
+  {
+    if(video_stride == 0 || LX % video_stride || LY % video_stride)
+      throw error_msg("confluent-wet: video-stride=", video_stride, " must be positive and "
+                      "divide both LX=", LX, " and LY=", LY, ".");
+    if(video_p_scale <= 0. || video_u_scale <= 0.)
+      throw error_msg("confluent-wet: nvideo>0 needs video-p-scale and video-u-scale > 0. "
+                      "They are the CLIPPING limits of the stored byte (P in "
+                      "[-scale,+scale], |u| in [0,scale]), not the colour-bar limits, so "
+                      "set them WIDE -- the campaign convention is 6*sigma_P and 6*u_rms "
+                      "stored, +/-3*sigma_P and 3*u_rms displayed. An auto-scale is "
+                      "deliberately not offered: a per-run scale makes two runs "
+                      "incomparable by eye, which is the whole point of the video.");
+  }
   if(m0 < 0. || m0 > 1.)
     throw error_msg("confluent-wet: m0 must lie in [0,1].");
   if(tau_m <= 0.)
@@ -153,6 +217,47 @@ void ConfluentWet::ConfigurePhenotype()
   for(unsigned k=0; k<DomainSize; ++k)
     m[k] = m0;
 
+  // ---- two-phase initial conditions ---------------------------------------
+  // Both set chi AND m, because a phase is a (chi, m) pair: preparing a half-box at
+  // chi = chi_hi while leaving m at the global m0 starts that half OFF its own fixed
+  // point, and it would then relax on tau_m towards the other phase whether or not the
+  // physics is bistable -- which is exactly the question being asked.
+  if(chi_config == "stripe")
+  {
+    // Split along x, left half (x < LX/2) is the HIGH phase. Periodic boundaries make this
+    // two flat interfaces, not one; the front speed is read off both and they are an
+    // internal consistency check on each other.
+    for(unsigned k=0; k<DomainSize; ++k)
+    {
+      const bool hi = GetXPosition(k) < LX/2;
+      chi[k] = hi ? chi_hi : chi_lo;
+      m[k]   = hi ? m_hi   : m_lo;
+    }
+    return;
+  }
+
+  if(chi_config == "blocks")
+  {
+    const unsigned nbx = LX/chi_block, nby = LY/chi_block, nb = nbx*nby;
+    // EXACTLY half of the blocks are high: build the list, shuffle it, take the first
+    // half. An independent coin per block would leave the initial area fraction scattered
+    // by +/- 1/(2 sqrt(nb)) -- 1.25% at nb = 1600 -- and the mixed initial condition
+    // exists precisely to start on the 50/50 line, so that scatter would be a systematic
+    // seed-dependent bias in the very quantity being measured.
+    std::vector<unsigned char> hi(nb, 0);
+    for(unsigned b=0; b<nb/2; ++b) hi[b] = 1;
+    for(unsigned b=nb; b>1; --b)         // Fisher-Yates, using the run's own seeded RNG
+      swap(hi[b-1], hi[randu()%b]);
+
+    for(unsigned k=0; k<DomainSize; ++k)
+    {
+      const unsigned b = (GetXPosition(k)/chi_block)*nby + GetYPosition(k)/chi_block;
+      chi[k] = hi[b] ? chi_hi : chi_lo;
+      m[k]   = hi[b] ? m_hi   : m_lo;
+    }
+    return;
+  }
+
   if(chi_config == "uniform" || chi_noise == 0.)
   {
     for(unsigned k=0; k<DomainSize; ++k)
@@ -193,6 +298,22 @@ void ConfluentWet::ConfigurePhenotype()
     double v = chi0 + scale*(chi[k]-mean);
     chi[k] = v < 0 ? 0. : (v > 1 ? 1. : v);
   }
+}
+
+double ConfluentWet::Activity(unsigned k) const
+{
+  // OPEN LOOP: the activity is prescribed and chi is not written back into the stress.
+  // chi and m still evolve -- their dynamics is what the calibration measures -- but the
+  // arrow chi -> activity is cut, which is what makes f(zeta_eff) a function rather than a
+  // fixed point condition.
+  if(open_loop) return zeta_open;
+  // CLOSED LOOP with an activity FLOOR:
+  //     zeta_eff = zeta [ z0 + (1 - z0)(1 - chi) ]
+  // z0 = 0 recovers the pre-2026-09 law zeta*(1-chi). z0 > 0 keeps the passive phase
+  // weakly active, so it still stirs, still generates pressure fluctuations, and can still
+  // be driven back -- without it chi = 1 is an absorbing state and coexistence is
+  // impossible by construction rather than by physics.
+  return zeta*(zeta0_frac + (1. - zeta0_frac)*(1. - chi[k]));
 }
 
 double ConfluentWet::ChiStar(double mm) const
@@ -245,7 +366,7 @@ void ConfluentWet::UpdateNodeQuantities(unsigned k)
   // there is no Gibbs-Duhem -mu*phi term, so the isotropic thermodynamic stress reduces to
   // sigma_iso = f - n df/dn = f_bulk itself.
   const double sigmaB = .5*CC*term*term;
-  const double active = zeta*(1. - chi[k]);
+  const double active = Activity(k);
   const double sigmaF = 2*xi*( (Qxx*Qxx-1.)*Hxx + Qxx*Qyx*Hyx )
     - active*Qxx
     + LL*(dyQxx*dyQxx + dyQyx*dyQyx - dxQxx*dxQxx - dxQyx*dxQyx);
@@ -364,7 +485,8 @@ void ConfluentWet::UpdateNodeFields(unsigned k, bool first)
   const double chi_rhs =
     - ax*derivX(chi, d, sB) - ay*derivY(chi, d, sB)
     + Dbio*laplacian(chi, d, sD)
-    + (use_switching ? (ChiStar(m_k) - chi_k)/tau_chi : 0.);
+    + (use_switching && nstep_done >= chi_freeze_steps
+       ? (ChiStar(m_k) - chi_k)/tau_chi : 0.);
 
   const double m_rhs =
     - ax*derivX(m, d, sB) - ay*derivY(m, d, sB)
@@ -535,6 +657,8 @@ void ConfluentWet::Step()
     BoundaryConditionsFields2();
     UpdateFields(false);
   }
+
+  ++nstep_done;
 }
 
 void ConfluentWet::RuntimeChecks()
@@ -553,6 +677,110 @@ void ConfluentWet::RuntimeChecks()
 
   if(abs(ftot-fcheck) > max(1.0, conserve_rel_tol*abs(ftot)))
     throw error_msg("f is not conserved (", ftot, "/", fcheck, ")");
+}
+
+// =============================================================================
+// The video stream
+
+void ConfluentWet::VideoOpen(const string& dir)
+{
+  // Truncating (not appending): a rerun into the same output directory must not glue its
+  // frames onto the previous run's, which would be invisible in the byte stream and would
+  // silently corrupt every time series computed from it.
+  const auto mode = ios::out | ios::binary | ios::trunc;
+  vid_u  .open((dir + "video_u.u8"  ).c_str(), mode);
+  vid_p  .open((dir + "video_P.u8"  ).c_str(), mode);
+  vid_m  .open((dir + "video_m.u8"  ).c_str(), mode);
+  vid_chi.open((dir + "video_chi.u8").c_str(), mode);
+  vid_meta.open((dir + "video_meta.csv").c_str(), ios::out | ios::trunc);
+  if(!vid_u || !vid_p || !vid_m || !vid_chi || !vid_meta)
+    throw error_msg("confluent-wet: cannot open the video streams in '", dir, "'.");
+
+  // Header: everything the renderer needs that is not in parameters.json, plus the exact
+  // per-frame scalars, which are computed in double precision and are therefore NOT
+  // affected by the uint8 quantisation of the fields.
+  vid_meta << "# confluent-wet video stream\n"
+           << "# fields video_{u,P,m,chi}.u8: raw uint8, "
+           << LX/video_stride << "x" << LY/video_stride
+           << " per frame, x-major (reshape (LX/stride, LY/stride))\n"
+           << "# stored range: chi,m in [0,1]; P in [" << -video_p_scale << ","
+           << video_p_scale << "]; |u| in [0," << video_u_scale << "]\n"
+           << "t,chi_mean,chi_std,m_mean,m_std,u_rms,P_mean,P_std,P_clip,u_clip\n";
+  vid_meta.precision(10);
+  video_open = true;
+}
+
+void ConfluentWet::VideoPack(vector<unsigned char>& out, const ScalarField& fld,
+                             double lo, double hi) const
+{
+  // BLOCK MEAN, not subsampling. Subsampling a turbulent field aliases: the defect cores
+  // that dominate |u| and P are a few lattice units across, so every other one would be
+  // dropped or doubled depending on where it sits, and the video would flicker with the
+  // sampling phase rather than with the flow.
+  const unsigned sx = video_stride, nx = LX/sx, ny = LY/sx;
+  const double norm = 1./(sx*sx), span = hi - lo;
+  for(unsigned bx=0; bx<nx; ++bx)
+    for(unsigned by=0; by<ny; ++by)
+    {
+      double acc = 0.;
+      for(unsigned dx=0; dx<sx; ++dx)
+        for(unsigned dy=0; dy<sx; ++dy)
+          acc += fld[GetDomainIndex(bx*sx+dx, by*sx+dy)];
+      const double x = (acc*norm - lo)/span;
+      out[by + ny*bx] = x <= 0. ? 0 : (x >= 1. ? 255
+                                     : static_cast<unsigned char>(lround(255.*x)));
+    }
+}
+
+void ConfluentWet::WriteAuxiliary(const string& dir, unsigned t)
+{
+  if(nvideo == 0 || t % nvideo) return;
+  if(!video_open) VideoOpen(dir);
+
+  const unsigned nx = LX/video_stride, ny = LY/video_stride;
+  vector<unsigned char> buf(nx*ny);
+
+  // |u| has to be built; it is not a stored field. speed_tmp is local rather than a member
+  // because this runs once every ~10^2 steps and the allocation is 1% of the write.
+  ScalarField speed;
+  speed.SetSize(LX, LY, Type);
+  double u2 = 0., cm = 0., c2 = 0., mm = 0., m2 = 0., pm = 0., p2 = 0.;
+  unsigned pclip = 0, uclip = 0;
+  for(unsigned k=0; k<DomainSize; ++k)
+  {
+    const double sp = sqrt(ux_mat[k]*ux_mat[k] + uy_mat[k]*uy_mat[k]);
+    speed[k] = sp;
+    u2 += sp*sp;
+    cm += chi[k];      c2 += chi[k]*chi[k];
+    mm += m[k];        m2 += m[k]*m[k];
+    pm += pressure[k]; p2 += pressure[k]*pressure[k];
+    if(fabs(pressure[k]) > video_p_scale) ++pclip;
+    if(sp > video_u_scale)                ++uclip;
+  }
+  const double N = DomainSize;
+  cm /= N; mm /= N; pm /= N;
+  const double csd = sqrt(max(0., c2/N - cm*cm));
+  const double msd = sqrt(max(0., m2/N - mm*mm));
+  const double psd = sqrt(max(0., p2/N - pm*pm));
+
+  VideoPack(buf, speed,    0.,             video_u_scale); vid_u  .write((char*)buf.data(), buf.size());
+  VideoPack(buf, pressure, -video_p_scale, video_p_scale); vid_p  .write((char*)buf.data(), buf.size());
+  VideoPack(buf, m,        0.,             1.);            vid_m  .write((char*)buf.data(), buf.size());
+  VideoPack(buf, chi,      0.,             1.);            vid_chi.write((char*)buf.data(), buf.size());
+
+  vid_meta << t << ',' << cm << ',' << csd << ',' << mm << ',' << msd << ','
+           << sqrt(u2/N) << ',' << pm << ',' << psd << ','
+           << pclip/N << ',' << uclip/N << '\n';
+
+  // EVERY stream is flushed every frame, and the binary ones are not an afterthought: the
+  // model object is deliberately never deleted (ModelPtr's destructors are commented out),
+  // so no destructor ever runs and nothing closes these files at exit. Without an explicit
+  // flush the last partially-filled buffer is simply dropped -- measured: a 101-frame run
+  // left exactly 100 frames on disk while the CSV, which was already being flushed, listed
+  // 101. That is the worst possible failure mode for this stream, because the missing frame
+  // is the LAST one and every 'what did it settle to' question reads the end of the run.
+  // At ~10^2 steps between frames the cost is not measurable.
+  vid_u.flush(); vid_p.flush(); vid_m.flush(); vid_chi.flush(); vid_meta.flush();
 }
 
 option_list ConfluentWet::GetOptions()
@@ -576,7 +804,28 @@ option_list ConfluentWet::GetOptions()
     ("pmem", opt::value<double>(&pmem),
      "pressure threshold of the memory source g(P)")
     ("pmem-width", opt::value<double>(&pmem_width),
-     "smoothing width of g(P); 0 is a sharp step");
+     "smoothing width of g(P); 0 is a sharp step")
+    ("zeta0-frac", opt::value<double>(&zeta0_frac),
+     "activity floor as a fraction of zeta: zeta_eff = zeta*(z0 + (1-z0)*(1-chi)). "
+     "0 (default) is the pre-2026-09 law zeta*(1-chi)")
+    ("open-loop", opt::value<int>(&open_loop),
+     "1: m and chi evolve but the activity is held at zeta-open and chi is not fed back")
+    ("zeta-open", opt::value<double>(&zeta_open),
+     "the prescribed activity in open-loop mode")
+    ("chi-freeze-steps", opt::value<unsigned>(&chi_freeze_steps),
+     "hold the phenotype switching source off for this many steps (transport stays on)")
+    ("nvideo", opt::value<unsigned>(&nvideo),
+     "steps between video-stream frames; 0 disables the stream")
+    ("video-stride", opt::value<unsigned>(&video_stride),
+     "block-averaging factor of the video lattice (must divide LX and LY)")
+    ("video-p-scale", opt::value<double>(&video_p_scale),
+     "stored clipping limit of P in the video stream (P in [-scale,+scale]); set it WIDE, "
+     "the colour-bar limit is chosen by the renderer")
+    ("video-u-scale", opt::value<double>(&video_u_scale),
+     "stored clipping limit of |u| in the video stream (|u| in [0,scale])")
+    ("frame-light", opt::value<int>(&frame_light),
+     "1: write only the seven fields the analysis reads, dropping the LB populations and "
+     "the stress decomposition (~4x smaller frames, not restartable)");
 
   // options[1] is Nematic's "Initial configuration options"
   options[1].add_options()
@@ -595,7 +844,17 @@ option_list ConfluentWet::GetOptions()
     ("chi-length", opt::value<double>(&chi_length),
      "correlation length of the initial phenotype noise")
     ("m0", opt::value<double>(&m0),
-     "initial memory");
+     "initial memory")
+    ("chi-lo", opt::value<double>(&chi_lo),
+     "phenotype of the LOW phase (chi-config = stripe or blocks)")
+    ("chi-hi", opt::value<double>(&chi_hi),
+     "phenotype of the HIGH phase (chi-config = stripe or blocks)")
+    ("m-lo", opt::value<double>(&m_lo),
+     "memory of the LOW phase (chi-config = stripe or blocks)")
+    ("m-hi", opt::value<double>(&m_hi),
+     "memory of the HIGH phase (chi-config = stripe or blocks)")
+    ("chi-block", opt::value<unsigned>(&chi_block),
+     "block edge in lattice units for chi-config = blocks; must divide LX and LY");
 
   return options;
 }

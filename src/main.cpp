@@ -162,6 +162,15 @@ void Algorithm()
       if(verbose>1)   cout << string(width, '-') << endl;
     }
 
+    // model-owned auxiliary output (the confluent-wet video stream); the model decides
+    // its own rate, so this is called every step and costs one comparison when unused.
+    if(!no_write and t>=nstart)
+    {
+      const auto start = chrono::steady_clock::now();
+      model->WriteAuxiliary(output_dir, t);
+      write_duration += chrono::steady_clock::now() - start;
+    }
+
     // do the computation
     for(unsigned s=0; s<nsubsteps; ++s)
       model->Step();
@@ -194,6 +203,7 @@ void Algorithm()
 
   // finally write final frame
   if(!no_write and nsteps>=nstart) WriteFrame(nsteps);
+  if(!no_write and nsteps>=nstart) model->WriteAuxiliary(output_dir, nsteps);
 }
 
 
