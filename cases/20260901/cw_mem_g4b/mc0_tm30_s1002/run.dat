@@ -1,0 +1,73 @@
+# 20260901 cw_mem_g4b -- group G4, RERUN WITHOUT THE FREEZE.
+# 
+# THE FIRST G4 MEASURED ITS OWN INITIAL CONDITION. Its stripe was held with the phenotype
+# switching source off for 5 tau_c so the flow could develop first -- but only chi was held,
+# while m kept integrating, and the first 5 tau_c is exactly when turbulence is building out
+# of a fluid at rest. The active half drives flow into the passive half and lifts P there, so
+# the passive half accumulated memory it would never hold in a steady two-phase state.
+# Measured at tau_m = 10 tau_c: <m> climbed 0.115 -> 0.173 across the freeze while <chi> sat
+# pinned at 0.50, and at release (m - mc)/w_chi = +0.95 -- the whole box told to go active at
+# once. What followed was a GLOBAL COLLAPSE, not a front, which is fatal to a group whose
+# observable IS a front speed.
+# 
+# The direction was the giveaway. mc = 0.1158 is ABOVE mc* = 0.1108, so G2's own scan says the
+# passive phase wins there, and the random-block start agrees on all three seeds. Only the
+# frozen stripe went the other way.
+# 
+# WHY NO FREEZE RATHER THAN FREEZING m TOO. Freezing both would also work and is arguably
+# cleaner, but it leaves G4 as the only group with a special protocol. G2 and G3 both start
+# cold and let the loop run from t = 0; matching them makes the three comparable without a
+# caveat, and the spin-up costs little front displacement because the flow is weak while it
+# is still building.
+# 
+# THIS CASE: mc = mc* +0.0000 = 0.1108, tau_m = 30 tau_c = 16343 steps, seed 1002.
+# Half the box at (chi_hi = 0.9694, m = f_hi = 0.0122), half at (chi_lo = 0.0332,
+# m = f_lo = 0.2170), split along x -- two flat interfaces under the periodic boundary,
+# which check each other.
+model            = confluent-wet
+nsteps           = 100000
+nstart           = 0
+ninfo            = 2724
+LX               = 800
+LY               = 800
+bc               = 0
+seed             = 1002
+
+Gamma            = 0.05
+xi               = 0.4
+CC               = 0.00625
+LL               = 0.05
+tau              = 2.0
+rho              = 40
+friction         = 0.0
+zeta             = 0.15
+zeta0-frac       = 0.3
+
+angle            = 0
+noise            = 0.05
+initial-order    = 1
+director-config  = uniform
+defect-sep       = 0
+
+Dbio             = 0.016521
+chi-config       = stripe
+chi0             = 0.5
+chi-lo           = 0.033176
+chi-hi           = 0.969374
+m-lo             = 0.217004
+m-hi             = 0.012194
+tau-chi          = 163.4
+chi-width        = 0.06
+switch-sign      = -1
+mc               = 0.1108
+m0               = 0.5
+
+tau-m            = 16343.3
+pmem             = 0.06766789764881968
+pmem-width       = 0.01691697441220492
+
+nvideo           = 109
+video-stride     = 2
+video-p-scale    = 0.5075092323661476
+video-u-scale    = 0.1104737933590729
+frame-light      = 1

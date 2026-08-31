@@ -347,6 +347,60 @@ Each end starts at its own self-consistent memory, m0 = f(zeta_eff(chi_init)); s
 THIS CASE: chi == {chi0:g}, m0 = {m0:.4f}, tau_m = {tmr:g} tau_c = {tm:.0f} steps,
 seed {seed}."""
 
+HDR_G4B = """20260901 cw_mem_g4b -- group G4, RERUN WITHOUT THE FREEZE.
+
+THE FIRST G4 MEASURED ITS OWN INITIAL CONDITION. Its stripe was held with the phenotype
+switching source off for 5 tau_c so the flow could develop first -- but only chi was held,
+while m kept integrating, and the first 5 tau_c is exactly when turbulence is building out
+of a fluid at rest. The active half drives flow into the passive half and lifts P there, so
+the passive half accumulated memory it would never hold in a steady two-phase state.
+Measured at tau_m = 10 tau_c: <m> climbed 0.115 -> 0.173 across the freeze while <chi> sat
+pinned at 0.50, and at release (m - mc)/w_chi = +0.95 -- the whole box told to go active at
+once. What followed was a GLOBAL COLLAPSE, not a front, which is fatal to a group whose
+observable IS a front speed.
+
+The direction was the giveaway. mc = 0.1158 is ABOVE mc* = 0.1108, so G2's own scan says the
+passive phase wins there, and the random-block start agrees on all three seeds. Only the
+frozen stripe went the other way.
+
+WHY NO FREEZE RATHER THAN FREEZING m TOO. Freezing both would also work and is arguably
+cleaner, but it leaves G4 as the only group with a special protocol. G2 and G3 both start
+cold and let the loop run from t = 0; matching them makes the three comparable without a
+caveat, and the spin-up costs little front displacement because the flow is weak while it
+is still building.
+
+THIS CASE: mc = mc* {dmc:+.4f} = {mc:.4f}, tau_m = {tmr:g} tau_c = {tm:.0f} steps, seed {seed}.
+Half the box at (chi_hi = {chi_hi:.4f}, m = f_hi = {m_hi:.4f}), half at (chi_lo = {chi_lo:.4f},
+m = f_lo = {m_lo:.4f}), split along x -- two flat interfaces under the periodic boundary,
+which check each other."""
+
+HDR_PAIR = """20260901 cw_mem_pair -- the decisive test of the freeze diagnosis.
+
+A stripe start with NO freeze, at parameters matching three runs already on disk field by
+field, so that the four initial conditions differ in nothing but the initial condition:
+
+    chi == 0  uniform         cw_mem_a4b/w0p06_chi0     settled at <chi> = 0.053
+    chi == 1  uniform         cw_mem_a4b/w0p06_chi1     settled at <chi> = 0.970
+    random    20-cell blocks  cw_mem_g2/mc0_tm30_*      settled at <chi> = 0.961
+    stripe    WITH freeze     cw_mem_g4/mc0p005_tm30_*  settled at <chi> = 0.049   <- outlier
+    stripe    NO freeze       THIS RUN                  ?
+
+mc is 0.115838 exactly -- the value the other three carry -- not the 0.115825 the G4 grid
+lands on. The difference is 1.3e-5, nothing against a bistable window 0.060 wide, but this
+pair exists to be an exact match and there is no reason to leave a difference in it.
+
+Both mixed starts begin at <chi> = 0.5013 against an unstable root at 0.5065: ON the
+separatrix, with basins 0.47 wide either side. Which way they fall is decided by whatever
+biases the early evolution, which is why a systematic push like the freeze decides it, and
+why the question is worth two runs.
+
+READING IT. Landing on the passive phase with the blocks means the freeze was the whole
+story and the corrected G4 stands. Still landing on the active phase means the difference is
+geometry, not the freeze -- and then mc* from an area fraction (G2) and mc* from a front
+speed (G4) are two different numbers, which changes what the coexistence point means.
+
+THIS CASE: seed {seed}."""
+
 HDR_G4 = """20260831 cw_mem_g4 -- group G4: THE STRIPE (FRONT) GROUP.
 
 Half the box at (chi_hi = {chi_hi:.4f}, m = f_hi = {m_hi:.4f}), half at
@@ -492,9 +546,41 @@ def gen_rest(out, cal, mc_star):
     print(f"G1/G3/G4/G5: {n} runcards under {out}")
 
 
+def gen_g4b(out, cal, mc_star, freeze_tau_c=0.0, match_mc=None):
+    """The corrected stripe group, plus the exact-match pair that tests the diagnosis."""
+    tc = cal["tau_c"]
+    frz = int(round(freeze_tau_c * tc))
+    phase = {"chi-lo": round(cal["chi_lo"], 6), "chi-hi": round(cal["chi_hi"], 6),
+             "m-lo": round(cal["f_lo"], 6), "m-hi": round(cal["f_hi"], 6),
+             "chi0": 0.5, "m0": 0.5, "chi-config": "stripe"}
+    n = 0
+    for dmc in [0.5 * o for o in cal["mc_scan_offsets"]]:
+        for tmr in (10.0, 30.0):
+            for seed in SEEDS_STRIPE:
+                mc = mc_star + dmc
+                v = base(cal, seed=seed, mc=round(mc, 6),
+                         **{**phase, "tau-m": round(tmr * tc, 1)})
+                if frz:
+                    v["chi-freeze-steps"] = frz
+                write_case(os.path.join(out, "cw_mem_g4b",
+                                        f"mc{tag(dmc, 3)}_tm{tag(tmr, 1)}_s{seed}"),
+                           HDR_G4B.format(chi_hi=cal["chi_hi"], chi_lo=cal["chi_lo"],
+                                          m_hi=cal["f_hi"], m_lo=cal["f_lo"], dmc=dmc,
+                                          mc=mc, tmr=tmr, tm=tmr * tc, seed=seed), v)
+                n += 1
+    if match_mc is not None:
+        for seed in SEEDS_STRIPE:
+            v = base(cal, seed=seed, mc=match_mc,
+                     **{**phase, "tau-m": round(30.0 * tc, 1)})
+            write_case(os.path.join(out, "cw_mem_pair", f"stripe_nofreeze_s{seed}"),
+                       HDR_PAIR.format(seed=seed), v)
+            n += 1
+    print(f"G4b + pair: {n} runcards under {out}")
+
+
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("stage", choices=["ladder", "a4", "g2", "rest"])
+    ap.add_argument("stage", choices=["ladder", "a4", "g2", "rest", "g4b"])
     ap.add_argument("outdir")
     ap.add_argument("--zeta", type=float, default=0.15)
     ap.add_argument("--tau-c-pred", type=float, default=540.0)
@@ -505,6 +591,10 @@ if __name__ == "__main__":
                     help="loop gains to run in stage a4; two runs (chi==0, chi==1) each")
     ap.add_argument("--wchi-list", type=float, nargs="*", default=None,
                     help="chi-widths to run in stage a4; overrides --g-list")
+    ap.add_argument("--freeze-tau-c", type=float, default=0.0,
+                    help="phenotype freeze length in tau_c for stage g4b; 0 = none")
+    ap.add_argument("--match-mc", type=float, default=None,
+                    help="also emit the no-freeze stripe pair at this exact mc")
     a = ap.parse_args()
     cal = json.load(open(a.calib)) if a.calib else None
     if a.stage == "ladder":
@@ -513,6 +603,10 @@ if __name__ == "__main__":
         gen_a4(a.outdir, cal, a.g_list, a.wchi_list)
     elif a.stage == "g2":
         gen_g2(a.outdir, cal)
+    elif a.stage == "g4b":
+        if a.mc_star is None:
+            raise SystemExit("stage 'g4b' needs --mc-star")
+        gen_g4b(a.outdir, cal, a.mc_star, a.freeze_tau_c, a.match_mc)
     else:
         if a.mc_star is None:
             raise SystemExit("stage 'rest' needs --mc-star from the G2 scan")

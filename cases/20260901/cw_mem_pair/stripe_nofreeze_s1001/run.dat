@@ -1,0 +1,73 @@
+# 20260901 cw_mem_pair -- the decisive test of the freeze diagnosis.
+# 
+# A stripe start with NO freeze, at parameters matching three runs already on disk field by
+# field, so that the four initial conditions differ in nothing but the initial condition:
+# 
+#     chi == 0  uniform         cw_mem_a4b/w0p06_chi0     settled at <chi> = 0.053
+#     chi == 1  uniform         cw_mem_a4b/w0p06_chi1     settled at <chi> = 0.970
+#     random    20-cell blocks  cw_mem_g2/mc0_tm30_*      settled at <chi> = 0.961
+#     stripe    WITH freeze     cw_mem_g4/mc0p005_tm30_*  settled at <chi> = 0.049   <- outlier
+#     stripe    NO freeze       THIS RUN                  ?
+# 
+# mc is 0.115838 exactly -- the value the other three carry -- not the 0.115825 the G4 grid
+# lands on. The difference is 1.3e-5, nothing against a bistable window 0.060 wide, but this
+# pair exists to be an exact match and there is no reason to leave a difference in it.
+# 
+# Both mixed starts begin at <chi> = 0.5013 against an unstable root at 0.5065: ON the
+# separatrix, with basins 0.47 wide either side. Which way they fall is decided by whatever
+# biases the early evolution, which is why a systematic push like the freeze decides it, and
+# why the question is worth two runs.
+# 
+# READING IT. Landing on the passive phase with the blocks means the freeze was the whole
+# story and the corrected G4 stands. Still landing on the active phase means the difference is
+# geometry, not the freeze -- and then mc* from an area fraction (G2) and mc* from a front
+# speed (G4) are two different numbers, which changes what the coexistence point means.
+# 
+# THIS CASE: seed 1001.
+model            = confluent-wet
+nsteps           = 100000
+nstart           = 0
+ninfo            = 2724
+LX               = 800
+LY               = 800
+bc               = 0
+seed             = 1001
+
+Gamma            = 0.05
+xi               = 0.4
+CC               = 0.00625
+LL               = 0.05
+tau              = 2.0
+rho              = 40
+friction         = 0.0
+zeta             = 0.15
+zeta0-frac       = 0.3
+
+angle            = 0
+noise            = 0.05
+initial-order    = 1
+director-config  = uniform
+defect-sep       = 0
+
+Dbio             = 0.016521
+chi-config       = stripe
+chi0             = 0.5
+chi-lo           = 0.033176
+chi-hi           = 0.969374
+m-lo             = 0.217004
+m-hi             = 0.012194
+tau-chi          = 163.4
+chi-width        = 0.06
+switch-sign      = -1
+mc               = 0.115838
+m0               = 0.5
+
+tau-m            = 16343.3
+pmem             = 0.06766789764881968
+pmem-width       = 0.01691697441220492
+
+nvideo           = 109
+video-stride     = 2
+video-p-scale    = 0.5075092323661476
+video-u-scale    = 0.1104737933590729
+frame-light      = 1
