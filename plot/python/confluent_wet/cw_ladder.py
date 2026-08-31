@@ -190,6 +190,41 @@ def main():
     G = slope / (2 * w_chi)
 
     roots, chig, fg, Fg = solve_loop(zeta, z0, f_interp, mc0, w_chi, a.switch_sign)
+
+    # THE ROOT STRUCTURE ACROSS THE GAIN, because G is a PROXY and it can mislead.
+    #
+    # G uses the MAXIMUM of |df/dchi| over the whole reachable range, but bistability is
+    # decided by the slope where the fixed point actually SITS. Measured on the 20260831
+    # ladder the two are in different places -- the max slope is at chi = 0.88, the layer
+    # near its activity floor, while the fixed point is at chi = 0.17 -- so G = 1.78 passed
+    # the campaign's G >= 1.5 test while the map had only ONE root. Tabulate the actual root
+    # count rather than trusting the proxy, and record the BASIN GAP chi_hi - chi_mid: with
+    # s = -1 the unstable middle root hugs the high root, so that gap is the margin the
+    # passive phase has before a fluctuation tips it into the active one.
+    g_scan = []
+    for Gt in (1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 5.0, 7.0):
+        wt = slope/(2*Gt)
+        rt, _, _, _ = solve_loop(zeta, z0, f_interp, mc0, wt, a.switch_sign)
+        g_scan.append({"G": Gt, "chi_width": wt, "n_roots": len(rt), "roots": rt,
+                       "separation": (rt[-1]-rt[0]) if len(rt) >= 3 else 0.0,
+                       "basin_gap_high": (rt[-1]-rt[len(rt)//2]) if len(rt) >= 3 else 0.0})
+    print("\n    root structure vs loop gain (mc = mc_0):")
+    print(f"    {'G':>5} {'chi_width':>10} {'roots':>6} {'chi_lo':>8} {'chi_mid':>8} "
+          f"{'chi_hi':>8} {'sep':>6} {'basin_hi':>9}")
+    for e in g_scan:
+        r = e["roots"]
+        if e["n_roots"] >= 3:
+            cols = (f"{r[0]:8.4f} {r[len(r)//2]:8.4f} {r[-1]:8.4f} {e['separation']:6.3f} "
+                    f"{e['basin_gap_high']:9.3f}")
+        elif r:
+            cols = f"{r[0]:8.4f} {'--':>8} {'--':>8} {'--':>6} {'--':>9}"
+        else:
+            cols = ""
+        print(f"    {e['G']:5.1f} {e['chi_width']:10.4f} {e['n_roots']:6d} {cols}")
+    if len(roots) < 3:
+        print(f"\n    *** the chosen chi-width = {w_chi:.4f} gives {len(roots)} root(s), NOT a"
+              f"\n    *** bistable map, so checkpoint 2 cannot pass there. The campaign's own"
+              f"\n    *** remedy is G = 3.5, which on this ladder is chi-width = {slope/7:.4f}.")
     print(f"\nA3  pmem = {pmem:.4e} ({best['coeff']:g} sigma_P), contrast "
           f"{best['contrast']:+.3f}\n    mc_0 = {mc0:.4f}   (f_floor {best['f_floor']:.3f} .. "
           f"f_top {best['f_top']:.3f})")
@@ -245,6 +280,7 @@ def main():
                                                 top["flow"]["P_pctl_values"]))),
         "mc_0": mc0, "chi_width": w_chi, "chi_width_note": note,
         "max_df_dchi": slope, "G": G,
+        "g_scan": g_scan,
         "roots": roots,
         "chi_lo": chi_lo, "chi_mid": chi_mid, "chi_hi": chi_hi,
         "f_lo": f_at_chi(chi_lo), "f_mid": f_at_chi(chi_mid), "f_hi": f_at_chi(chi_hi),

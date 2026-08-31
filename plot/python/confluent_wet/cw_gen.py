@@ -190,19 +190,52 @@ drifting towards their own equilibrium for ~tau_m = 30 tau_c, i.e. for a third o
 window, and a separation that merely reflects that transient would be indistinguishable from
 genuine bistability.
 
-THIS CASE: chi == {chi0:g}, m0 = {m0:.4f}."""
+A GAIN SCAN, NOT A SINGLE PAIR. The campaign's recipe is "run the two ends; if <chi>
+differs by less than 0.4, go back to A3 and raise G to 3.5". On the 20260831 ladder the
+mean-field map already answers the first round: at the A3 chi-width the map has ONE root, so
+the two ends must converge and checkpoint 2 cannot pass. Running that round anyway to watch
+it fail, then running the remedy, is two serial waves for one bit of information. Both are
+run here instead, in one wave, plus one stiffer setting as the fallback -- which also turns
+the checkpoint into a measurement: at which loop gain does the separation actually appear,
+and does it appear where the mean-field says it should?
+
+WHY THE PROXY MISLED. G is built from the MAXIMUM of |df/dchi| over the reachable activity
+range, but bistability is decided by the slope where the fixed point SITS. Here the maximum
+is at chi = 0.88 (the layer near its activity floor) and the fixed point is at chi = 0.17, so
+G = 1.78 cleared the G >= 1.5 test with a map that has a single root.
+
+THIS CASE: chi == {chi0:g}, m0 = {m0:.4f}, G = {G:g} (chi-width = {w:.4f}), mean-field roots
+{rootnote}."""
 
 
-def gen_a4(out, cal):
-    for chi0, m0 in ((0.0, cal["f_at_full_zeta"]), (1.0, cal["f_at_floor"])):
-        v = base(cal, seed=SEEDS_SINGLE[0],
-                 **{"chi-config": "uniform", "chi0": chi0, "chi-noise": 0, "chi-length": 0,
-                    "m0": round(m0, 6), "mc": round(cal["mc_0"], 6),
-                    "tau-m": round(30.0 * cal["tau_c"], 1)})
-        write_case(os.path.join(out, f"chi{int(chi0)}"),
-                   HDR_A4.format(chi0=chi0, m0=m0, m_hi_act=cal["f_at_full_zeta"],
-                                 m_floor=cal["f_at_floor"]), v)
-    print(f"A4: 2 runcards under {out}")
+def gen_a4(out, cal, g_list=None):
+    scan = {round(e["G"], 3): e for e in cal.get("g_scan", [])}
+    if not g_list:
+        g_list = [round(cal["G"], 3)]
+    n = 0
+    for G in g_list:
+        e = scan.get(round(G, 3))
+        w = e["chi_width"] if e else cal["max_df_dchi"] / (2 * G)
+        if e and e["n_roots"] >= 3:
+            r = e["roots"]
+            note = (f"chi_lo = {r[0]:.4f}, chi_mid = {r[len(r)//2]:.4f}, "
+                    f"chi_hi = {r[-1]:.4f} (separation {e['separation']:.3f})")
+        elif e:
+            note = f"a SINGLE root at chi = {e['roots'][0]:.4f} -- the two ends must converge"
+        else:
+            note = "not tabulated"
+        for chi0, m0 in ((0.0, cal["f_at_full_zeta"]), (1.0, cal["f_at_floor"])):
+            v = base(cal, seed=SEEDS_SINGLE[0],
+                     **{"chi-config": "uniform", "chi0": chi0, "chi-noise": 0,
+                        "chi-length": 0, "m0": round(m0, 6),
+                        "mc": round(cal["mc_0"], 6), "chi-width": round(w, 5),
+                        "tau-m": round(30.0 * cal["tau_c"], 1)})
+            write_case(os.path.join(out, f"g{tag(G,2)}_chi{int(chi0)}"),
+                       HDR_A4.format(chi0=chi0, m0=m0, G=G, w=w, rootnote=note,
+                                     m_hi_act=cal["f_at_full_zeta"],
+                                     m_floor=cal["f_at_floor"]), v)
+            n += 1
+    print(f"A4: {n} runcards under {out}")
 
 
 # ------------------------------------------------------------------- group G2
@@ -445,12 +478,14 @@ if __name__ == "__main__":
     ap.add_argument("--calib", default=None)
     ap.add_argument("--mc-star", type=float, default=None,
                     help="the coexistence threshold located by G2 (stage 'rest')")
+    ap.add_argument("--g-list", type=float, nargs="*", default=None,
+                    help="loop gains to run in stage a4; two runs (chi==0, chi==1) each")
     a = ap.parse_args()
     cal = json.load(open(a.calib)) if a.calib else None
     if a.stage == "ladder":
         gen_ladder(a.outdir, a.zeta, a.tau_c_pred)
     elif a.stage == "a4":
-        gen_a4(a.outdir, cal)
+        gen_a4(a.outdir, cal, a.g_list)
     elif a.stage == "g2":
         gen_g2(a.outdir, cal)
     else:
