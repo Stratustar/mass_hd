@@ -37,50 +37,50 @@
 # zeta_eff and u_rms extrapolated from the 20260830 anchor). They are the STORED clipping
 # limits, not the colour bar: the renderer displays the inner +/- 3 sigma_P using the MEASURED
 # sigma_P. Storing wide is what keeps the tails -- and hence f near the threshold -- intact.
-model           = confluent-wet
-nsteps          = 100000
-nstart          = 0
-ninfo           = 2700
-LX              = 800
-LY              = 800
-bc              = 0
-seed            = 1001
+model            = confluent-wet
+nsteps           = 100000
+nstart           = 0
+ninfo            = 2700
+LX               = 800
+LY               = 800
+bc               = 0
+seed             = 1001
 
-Gamma           = 0.05
-xi              = 0.4
-CC              = 0.00625
-LL              = 0.05
-tau             = 2.0
-rho             = 40
-friction        = 0.0
-zeta            = 0.15
-zeta0-frac      = 0.3
-open-loop       = 1
-zeta-open       = 0.0225
+Gamma            = 0.05
+xi               = 0.4
+CC               = 0.00625
+LL               = 0.05
+tau              = 2.0
+rho              = 40
+friction         = 0.0
+zeta             = 0.15
+zeta0-frac       = 0.3
+open-loop        = 1
+zeta-open        = 0.0225
 
-angle           = 0
-noise           = 0.05
-initial-order   = 1
-director-config = uniform
-defect-sep      = 0
+angle            = 0
+noise            = 0.05
+initial-order    = 1
+director-config  = uniform
+defect-sep       = 0
 
-Dbio            = 0.016667
-chi-config      = uniform
-chi0            = 0.5
-chi-noise       = 0
-chi-length      = 0
-tau-chi         = 162.0
-chi-width       = 0.15
-switch-sign     = -1
-mc              = 0.5
-m0              = 0.5
+Dbio             = 0.016667
+chi-config       = uniform
+chi0             = 0.5
+chi-noise        = 0
+chi-length       = 0
+tau-chi          = 162.0
+chi-width        = 0.15
+switch-sign      = -1
+mc               = 0.5
+m0               = 0.5
 
-tau-m           = 1620.0
-pmem            = 0.0
-pmem-width      = 0.003516
+tau-m            = 1620.0
+pmem             = 0.0
+pmem-width       = 0.003516
 
-nvideo          = 108
-video-stride    = 2
-video-p-scale   = 0.084375
-video-u-scale   = 0.058095
-frame-light     = 1
+nvideo           = 108
+video-stride     = 2
+video-p-scale    = 0.084375
+video-u-scale    = 0.058095
+frame-light      = 1

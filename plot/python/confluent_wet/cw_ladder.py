@@ -206,6 +206,18 @@ def main():
     def f_at_chi(c):
         return float(f_interp(zeta * (z0 + (1 - z0) * (1 - c))))
 
+    # G1 needs a DIFFERENT threshold from the one A3 just chose. Its question is the
+    # scaling of chi's statistics with tau_m when the phenotype is a smoothed copy of the
+    # pressure, and for that the uniform state has to be an EXACT fixed point -- otherwise
+    # the loop is driven by a misplaced threshold rather than by the fluctuations, which is
+    # what happened to the 20260826 batch (pmem = 0 against a true median of +1.3e-2). With
+    # chi == 0.5 and mc = 0.5 the fixed point needs f = 0.5, i.e. pmem = median(P) at the
+    # activity a half-switched layer actually runs at, zeta_eff(0.5), NOT at the top rung.
+    zeff_g1 = zeta * (z0 + (1 - z0) * 0.5)
+    med = np.array([np.interp(50.0, p["flow"]["P_pctl_levels"], p["flow"]["P_pctl_values"])
+                    for p in parts])
+    pmem_g1 = float(PchipInterpolator(zeff[order], med[order], extrapolate=True)(zeff_g1))
+
     tau_chi = max(TAU_CHI_RATIO * tau_c, TAU_CHI_MIN_STEPS)
     Dbio = BATCHELOR_CELLS**2 / tau_c
 
@@ -237,6 +249,7 @@ def main():
         "chi_lo": chi_lo, "chi_mid": chi_mid, "chi_hi": chi_hi,
         "f_lo": f_at_chi(chi_lo), "f_mid": f_at_chi(chi_mid), "f_hi": f_at_chi(chi_hi),
         "f_at_full_zeta": best["f_top"], "f_at_floor": best["f_floor"],
+        "pmem_g1": pmem_g1, "zeta_eff_g1": zeff_g1,
         "tau_chi": tau_chi, "tau_m_grid": [r * tau_c for r in TAU_M_GRID],
         "tau_m_ratios": list(TAU_M_GRID),
         "Dbio": Dbio,

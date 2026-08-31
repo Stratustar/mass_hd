@@ -68,7 +68,7 @@ def write_case(path, header, vals):
         elif key in vals:
             v = vals[key]
             v = f"{v:.6e}" if isinstance(v, float) and (abs(v) < 1e-3 and v != 0) else v
-            lines.append(f"{key:<16}= {v}")
+            lines.append(f"{key:<17}= {v}")
     unknown = set(vals) - set(ORDER)
     if unknown:
         raise RuntimeError(f"keys not in ORDER (they would be silently dropped): {unknown}")
@@ -256,18 +256,204 @@ def gen_g2(out, cal):
     print(f"G2: {n} runcards under {out}")
 
 
+# ------------------------------------------------------------- groups G1..G5
+
+HDR_G1 = """20260831 cw_mem_g1 -- group G1: THE PHOTOGRAPH TRACK.
+
+The reference arm. pmem is the MEDIAN of P at zeta_eff(chi = 0.5) = {zg1:.4g}, and mc = 0.5,
+which together make the uniform chi == 0.5 state an EXACT fixed point of the loop: f = 0.5
+gives m = 0.5 = mc gives chi* = 0.5. The loop therefore has no bias of its own, and
+everything chi does comes from the spatial fluctuations of P. This is the arm in which the
+memory is a linear time-average of the pressure and the phenotype is a blurred copy of it --
+a photograph, not a decision -- and the measurement is how blurred: how std(chi), L_chi and
+the autocorrelation time of chi scale with tau_m.
+
+That the threshold differs from the one A3 chose is deliberate and is the whole distinction
+between this arm and G3. A3's pmem maximises the contrast f(zeta) - f(0.3 zeta), i.e. it is
+chosen to make the loop as nonlinear as possible; this one is chosen to make it as linear as
+possible.
+
+THIS CASE: tau_m = {tmr:g} tau_c = {tm:.0f} steps, seed {seed}."""
+
+HDR_G3 = """20260831 cw_mem_g3 -- group G3: THE MAIN FIGURE.
+
+At the coexistence threshold mc* = {mcs:.4f} located by G2, the tau_m grid is run from both
+ends: chi == 0 (fully active) and chi == 1 (at the activity floor). The question is whether
+a high-activity phase APPEARS and SUSTAINS itself as tau_m grows -- i.e. whether the two
+starts stop agreeing, and at what tau_m the disagreement sets in.
+
+The story the campaign is testing lives on this axis. At small tau_m the memory tracks the
+instantaneous pressure, chi is a copy of P, and both starts wash into the same state. As
+tau_m grows past the flow's own clock the memory averages over many defect encounters, chi
+stops being a copy and becomes a slow, coarse variable of its own, and the two starts can
+end up in different places -- which is what a phase is.
+
+Each end starts at its own self-consistent memory, m0 = f(zeta_eff(chi_init)); see A4.
+
+THIS CASE: chi == {chi0:g}, m0 = {m0:.4f}, tau_m = {tmr:g} tau_c = {tm:.0f} steps,
+seed {seed}."""
+
+HDR_G4 = """20260831 cw_mem_g4 -- group G4: THE STRIPE (FRONT) GROUP.
+
+Half the box at (chi_hi = {chi_hi:.4f}, m = f_hi = {m_hi:.4f}), half at
+(chi_lo = {chi_lo:.4f}, m = f_lo = {m_lo:.4f}), split along x -- so two flat interfaces under
+the periodic boundary, which check each other. The front direction and speed are read from
+the slope of <chi>(t) and from the video; mc is scanned around mc* because the front speed
+is what changes sign there, and a speed that crosses zero is a far sharper locator of the
+coexistence point than an area fraction is.
+
+THE PHENOTYPE IS FROZEN FOR THE FIRST {frz:.0f} STEPS (5 tau_c). The initial condition
+prescribes chi and m but the flow starts from rest with a nearly uniform director, so
+without the freeze the front would begin moving while the turbulence that is supposed to
+drive it does not yet exist, and the first 5 tau_c of every <chi>(t) slope would be an
+artifact of the spin-up. Only the switching SOURCE is frozen; advection and diffusion keep
+running, so the interface relaxes to a profile the dynamics can actually produce.
+
+THIS CASE: mc = mc* {dmc:+.2f} = {mc:.4f}, tau_m = {tmr:g} tau_c = {tm:.0f} steps,
+seed {seed}."""
+
+HDR_G5 = """20260831 cw_mem_g5{arm} -- group G5: CONTROLS.
+
+Each arm removes one alternative explanation of the G3 result.
+
+  (a) switch-sign = +1. The SAME grid as G3 with the feedback sign flipped: high memory now
+      drives chi UP, towards the floor, which is negative feedback. If the two-phase state
+      survives a sign flip it is not the feedback that makes it, and the G3 result would be
+      an artifact of the initial condition or of the noise.
+  (b) tau_chi at 0.1, 1 and 3 tau_c with tau_m fixed at 3 tau_c. The campaign holds
+      tau_chi = 0.3 tau_c everywhere, so nothing in G3 distinguishes "tau_m matters" from
+      "the ratio tau_m/tau_chi matters". This arm moves the other clock.
+  (c) Dbio halved at tau_m = 10 tau_c. The phenotype's structure could be set by its
+      diffusive cutoff rather than by the memory; if L_chi is unchanged at half the
+      diffusivity it is not the diffusion that sets it.
+  (d) chi-width doubled at tau_m = 30 tau_c, from both ends. Halves the loop gain G. If the
+      two ends still separate at half the gain, the separation is not sitting on the
+      knife-edge of the gain criterion.
+
+THIS CASE: {this}."""
+
+
+def gen_rest(out, cal, mc_star):
+    tc = cal["tau_c"]
+    n = 0
+
+    # ---- G1: the photograph track
+    for tmr in TAU_M_RATIOS:
+        for seed in SEEDS_SINGLE:
+            v = base(cal, seed=seed,
+                     **{"chi-config": "uniform", "chi0": 0.5, "chi-noise": 0,
+                        "chi-length": 0, "m0": 0.5, "mc": 0.5,
+                        "pmem": cal["pmem_g1"], "tau-m": round(tmr * tc, 1)})
+            write_case(os.path.join(out, "cw_mem_g1", f"tm{tag(tmr,1)}_s{seed}"),
+                       HDR_G1.format(zg1=cal["zeta_eff_g1"], tmr=tmr, tm=tmr * tc,
+                                     seed=seed), v)
+            n += 1
+
+    ends = ((0.0, cal["f_at_full_zeta"]), (1.0, cal["f_at_floor"]))
+
+    def single(mc, tmr, chi0, m0, seed, **extra):
+        return base(cal, seed=seed,
+                    **{"chi-config": "uniform", "chi0": chi0, "chi-noise": 0,
+                       "chi-length": 0, "m0": round(m0, 6), "mc": round(mc, 6),
+                       "tau-m": round(tmr * tc, 1), **extra})
+
+    # ---- G3: the main figure
+    for tmr in TAU_M_RATIOS:
+        for chi0, m0 in ends:
+            for seed in SEEDS_SINGLE:
+                write_case(os.path.join(out, "cw_mem_g3",
+                                        f"tm{tag(tmr,1)}_chi{int(chi0)}_s{seed}"),
+                           HDR_G3.format(mcs=mc_star, chi0=chi0, m0=m0, tmr=tmr,
+                                         tm=tmr * tc, seed=seed),
+                           single(mc_star, tmr, chi0, m0, seed))
+                n += 1
+
+    # ---- G4: the stripe group
+    frz = int(round(5 * tc))
+    for dmc in (-0.04, -0.02, 0.0, 0.02, 0.04):
+        for tmr in (10.0, 30.0):
+            for seed in SEEDS_STRIPE:
+                mc = mc_star + dmc
+                v = base(cal, seed=seed,
+                         **{"chi-config": "stripe",
+                            "chi-lo": round(cal["chi_lo"], 6),
+                            "chi-hi": round(cal["chi_hi"], 6),
+                            "m-lo": round(cal["f_lo"], 6), "m-hi": round(cal["f_hi"], 6),
+                            "chi0": 0.5, "m0": 0.5, "mc": round(mc, 6),
+                            "tau-m": round(tmr * tc, 1), "chi-freeze-steps": frz})
+                write_case(os.path.join(out, "cw_mem_g4",
+                                        f"mc{tag(dmc)}_tm{tag(tmr,1)}_s{seed}"),
+                           HDR_G4.format(chi_hi=cal["chi_hi"], chi_lo=cal["chi_lo"],
+                                         m_hi=cal["f_hi"], m_lo=cal["f_lo"], frz=frz,
+                                         dmc=dmc, mc=mc, tmr=tmr, tm=tmr * tc, seed=seed), v)
+                n += 1
+
+    # ---- G5a: the feedback sign flipped
+    for tmr in TAU_M_RATIOS:
+        for chi0, m0 in ends:
+            for seed in SEEDS_SINGLE:
+                v = single(mc_star, tmr, chi0, m0, seed, **{"switch-sign": 1})
+                write_case(os.path.join(out, "cw_mem_g5a",
+                                        f"tm{tag(tmr,1)}_chi{int(chi0)}_s{seed}"),
+                           HDR_G5.format(arm="a", this=f"switch-sign = +1, chi == {chi0:g}, "
+                                         f"tau_m = {tmr:g} tau_c, seed {seed}"), v)
+                n += 1
+
+    # ---- G5b: the other clock
+    for tcr in (0.1, 1.0, 3.0):
+        for chi0, m0 in ends:
+            for seed in SEEDS_SINGLE:
+                v = single(mc_star, 3.0, chi0, m0, seed,
+                           **{"tau-chi": round(max(tcr * tc, 20.0), 1)})
+                write_case(os.path.join(out, "cw_mem_g5b",
+                                        f"tc{tag(tcr,1)}_chi{int(chi0)}_s{seed}"),
+                           HDR_G5.format(arm="b", this=f"tau_chi = {tcr:g} tau_c = "
+                                         f"{max(tcr*tc, 20.0):.0f} steps at tau_m = 3 tau_c, "
+                                         f"chi == {chi0:g}, seed {seed}"), v)
+                n += 1
+
+    # ---- G5c: half the biomass diffusivity
+    for chi0, m0 in ends:
+        for seed in SEEDS_SINGLE:
+            v = single(mc_star, 10.0, chi0, m0, seed,
+                       **{"Dbio": round(cal["Dbio"] / 2, 6)})
+            write_case(os.path.join(out, "cw_mem_g5c", f"chi{int(chi0)}_s{seed}"),
+                       HDR_G5.format(arm="c", this=f"Dbio = {cal['Dbio']/2:.4g} (half) at "
+                                     f"tau_m = 10 tau_c, chi == {chi0:g}, seed {seed}"), v)
+            n += 1
+
+    # ---- G5d: half the loop gain
+    for chi0, m0 in ends:
+        for seed in SEEDS_SINGLE:
+            v = single(mc_star, 30.0, chi0, m0, seed,
+                       **{"chi-width": round(2 * cal["chi_width"], 5)})
+            write_case(os.path.join(out, "cw_mem_g5d", f"chi{int(chi0)}_s{seed}"),
+                       HDR_G5.format(arm="d", this=f"chi-width = {2*cal['chi_width']:.4g} "
+                                     f"(doubled, G halved) at tau_m = 30 tau_c, "
+                                     f"chi == {chi0:g}, seed {seed}"), v)
+            n += 1
+
+    print(f"G1/G3/G4/G5: {n} runcards under {out}")
+
+
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("stage", choices=["ladder", "a4", "g2"])
+    ap.add_argument("stage", choices=["ladder", "a4", "g2", "rest"])
     ap.add_argument("outdir")
     ap.add_argument("--zeta", type=float, default=0.15)
     ap.add_argument("--tau-c-pred", type=float, default=540.0)
     ap.add_argument("--calib", default=None)
+    ap.add_argument("--mc-star", type=float, default=None,
+                    help="the coexistence threshold located by G2 (stage 'rest')")
     a = ap.parse_args()
     cal = json.load(open(a.calib)) if a.calib else None
     if a.stage == "ladder":
         gen_ladder(a.outdir, a.zeta, a.tau_c_pred)
     elif a.stage == "a4":
         gen_a4(a.outdir, cal)
-    else:
+    elif a.stage == "g2":
         gen_g2(a.outdir, cal)
+    else:
+        if a.mc_star is None:
+            raise SystemExit("stage 'rest' needs --mc-star from the G2 scan")
+        gen_rest(a.outdir, cal, a.mc_star)
