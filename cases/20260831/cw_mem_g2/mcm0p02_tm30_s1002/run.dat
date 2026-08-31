@@ -1,0 +1,71 @@
+# 20260831 cw_mem_g2 -- group G2: LOCATING THE COEXISTENCE POINT mc*.
+# 
+# The memory threshold mc is scanned across mc_0 = 0.1158, the midpoint of the reachable
+# memory range (f at the floor 0.010 .. f at full activity 0.222). Every run starts
+# from the RANDOM MIXED state -- 20-cell blocks, exactly half at (chi_hi, m_hi) and half at
+# (chi_lo, m_lo), the two mean-field roots each prepared with its own self-consistent memory --
+# so neither phase is favoured by the initial condition.
+# 
+# mc* is read off the curve: the value of mc at which the record-window <chi> crosses
+# (chi_hi + chi_lo)/2 = 0.5013. Away from mc* one phase invades and the box ends up in it;
+# at mc* the two phases have equal free energy in the loose sense that neither front moves,
+# and the run stays two-phase. That run IS the coexistence state, and mc* is what G3, G4 and
+# G5 are all run at.
+# 
+# EXACTLY HALF, NOT HALF ON AVERAGE. The block assignment is a shuffle, not an independent
+# coin per block: with 1600 blocks a coin leaves the initial area fraction scattered by
+# +/- 1.25%, and the quantity being measured is precisely an area fraction.
+# 
+# THREE SEEDS per point, because the answer here is a fraction and the run-to-run spread of a
+# fraction is the error bar on mc*.
+# 
+# THIS CASE: mc = mc_0 -0.0201 = 0.0957, tau_m = 30 tau_c = 16343 steps,
+# seed 1002.
+model            = confluent-wet
+nsteps           = 100000
+nstart           = 0
+ninfo            = 2724
+LX               = 800
+LY               = 800
+bc               = 0
+seed             = 1002
+
+Gamma            = 0.05
+xi               = 0.4
+CC               = 0.00625
+LL               = 0.05
+tau              = 2.0
+rho              = 40
+friction         = 0.0
+zeta             = 0.15
+zeta0-frac       = 0.3
+
+angle            = 0
+noise            = 0.05
+initial-order    = 1
+director-config  = uniform
+defect-sep       = 0
+
+Dbio             = 0.016521
+chi-config       = blocks
+chi0             = 0.5
+chi-lo           = 0.033176
+chi-hi           = 0.969374
+m-lo             = 0.217004
+m-hi             = 0.012194
+chi-block        = 20
+tau-chi          = 163.4
+chi-width        = 0.06
+switch-sign      = -1
+mc               = 0.095738
+m0               = 0.5
+
+tau-m            = 16343.3
+pmem             = 0.06766789764881968
+pmem-width       = 0.01691697441220492
+
+nvideo           = 109
+video-stride     = 2
+video-p-scale    = 0.5075092323661476
+video-u-scale    = 0.1104737933590729
+frame-light      = 1

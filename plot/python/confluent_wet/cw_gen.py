@@ -277,14 +277,19 @@ coin per block: with 1600 blocks a coin leaves the initial area fraction scatter
 THREE SEEDS per point, because the answer here is a fraction and the run-to-run spread of a
 fraction is the error bar on mc*.
 
-THIS CASE: mc = mc_0 {dmc:+.2f} = {mc:.4f}, tau_m = {tmr:g} tau_c = {tm:.0f} steps,
+THIS CASE: mc = mc_0 {dmc:+.4f} = {mc:.4f}, tau_m = {tmr:g} tau_c = {tm:.0f} steps,
 seed {seed}."""
 
 
 def gen_g2(out, cal):
     mid = 0.5 * (cal["chi_hi"] + cal["chi_lo"])
     n = 0
-    for dmc in (-0.06, -0.03, 0.0, 0.03, 0.06):
+    # The offsets come from calib.json, scaled to the BISTABLE mc WINDOW rather than being
+    # the campaign's assumed +/- 0.06. mc* exists only inside that window -- outside it there
+    # is one stable state and the front always runs to completion -- and the window measured
+    # on this ladder is 0.060 wide, so the assumed grid would have put four of its five
+    # points where there is nothing to measure.
+    for dmc in cal.get("mc_scan_offsets", (-0.06, -0.03, 0.0, 0.03, 0.06)):
         for tmr in (3.0, 10.0, 30.0):
             for seed in SEEDS_MIXED:
                 mc = cal["mc_0"] + dmc
@@ -295,7 +300,7 @@ def gen_g2(out, cal):
                             "m-lo": round(cal["f_lo"], 6), "m-hi": round(cal["f_hi"], 6),
                             "chi0": 0.5, "m0": 0.5,
                             "mc": round(mc, 6), "tau-m": round(tmr * cal["tau_c"], 1)})
-                name = f"mc{tag(dmc)}_tm{tag(tmr,1)}_s{seed}"
+                name = f"mc{tag(dmc,3)}_tm{tag(tmr,1)}_s{seed}"
                 write_case(os.path.join(out, name),
                            HDR_G2.format(mc0=cal["mc_0"], f_flr=cal["f_at_floor"],
                                          f_top=cal["f_at_full_zeta"], mid=mid, dmc=dmc,
@@ -358,7 +363,7 @@ drive it does not yet exist, and the first 5 tau_c of every <chi>(t) slope would
 artifact of the spin-up. Only the switching SOURCE is frozen; advection and diffusion keep
 running, so the interface relaxes to a profile the dynamics can actually produce.
 
-THIS CASE: mc = mc* {dmc:+.2f} = {mc:.4f}, tau_m = {tmr:g} tau_c = {tm:.0f} steps,
+THIS CASE: mc = mc* {dmc:+.4f} = {mc:.4f}, tau_m = {tmr:g} tau_c = {tm:.0f} steps,
 seed {seed}."""
 
 HDR_G5 = """20260831 cw_mem_g5{arm} -- group G5: CONTROLS.
@@ -419,7 +424,9 @@ def gen_rest(out, cal, mc_star):
 
     # ---- G4: the stripe group
     frz = int(round(5 * tc))
-    for dmc in (-0.04, -0.02, 0.0, 0.02, 0.04):
+    # G4 reads the front speed, so it wants a finer grid than G2's, on the same window
+    g4_off = [0.5 * o for o in cal.get("mc_scan_offsets", (-0.04, -0.02, 0.0, 0.02, 0.04))]
+    for dmc in g4_off:
         for tmr in (10.0, 30.0):
             for seed in SEEDS_STRIPE:
                 mc = mc_star + dmc
@@ -431,7 +438,7 @@ def gen_rest(out, cal, mc_star):
                             "chi0": 0.5, "m0": 0.5, "mc": round(mc, 6),
                             "tau-m": round(tmr * tc, 1), "chi-freeze-steps": frz})
                 write_case(os.path.join(out, "cw_mem_g4",
-                                        f"mc{tag(dmc)}_tm{tag(tmr,1)}_s{seed}"),
+                                        f"mc{tag(dmc,3)}_tm{tag(tmr,1)}_s{seed}"),
                            HDR_G4.format(chi_hi=cal["chi_hi"], chi_lo=cal["chi_lo"],
                                          m_hi=cal["f_hi"], m_lo=cal["f_lo"], frz=frz,
                                          dmc=dmc, mc=mc, tmr=tmr, tm=tmr * tc, seed=seed), v)

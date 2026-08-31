@@ -122,6 +122,23 @@ def solve_loop(zeta, z0, f_interp, mc, w_chi, sign=-1, n=2001):
     return ded, chi, f, F
 
 
+def mc_window(zeta, z0, f_interp, wchi, sign, lo=0.0, hi=0.6, step=0.0025):
+    """Range of mc over which the map has three roots -- the window mc* has to live in.
+
+    THIS IS WHAT SETS THE G2 SCAN, and it is not a detail. mc* -- the threshold at which
+    neither phase invades -- exists ONLY inside this window: outside it there is a single
+    stable state and a front always runs to completion, so a scan point outside measures
+    nothing. Measured on the 20260831 ladder the window is 0.060 wide at chi-width = 0.06,
+    0.025 at 0.09 and 0.0025 at 0.12, against the campaign's assumed scan half-width of
+    0.06 -- i.e. the original grid would have put four of its five points outside.
+    """
+    win = [mc for mc in np.arange(lo, hi, step)
+           if len(solve_loop(zeta, z0, f_interp, mc, wchi, sign)[0]) >= 3]
+    if not win:
+        return None
+    return float(min(win)), float(max(win))
+
+
 def max_df_dchi(zeta, z0, f_interp, n=2001):
     """max |df/dchi| over the reachable activity range, and where it occurs."""
     chi = np.linspace(0.0, 1.0, n)
@@ -146,6 +163,12 @@ def main():
     ap.add_argument("--std-m", type=float, default=0.012,
                     help="measured spatial std of m in a closed-loop run; sets the scale a "
                          "phase basin has to beat. Default is the 20260831 A4 value")
+    ap.add_argument("--chi-width", type=float, default=None,
+                    help="override the ranked pick; the campaign uses this to trade some "
+                         "robustness for a wider bistable mc window, which is what the G2 "
+                         "scan needs")
+    ap.add_argument("--mc-scan-frac", type=float, default=0.67,
+                    help="G2 scans this fraction of the bistable mc half-window")
     ap.add_argument("--min-separation", type=float, default=0.4,
                     help="checkpoint 2's threshold; candidates below it are not considered")
     ap.add_argument("--switch-sign", type=int, default=-1)
@@ -299,15 +322,40 @@ def main():
         g_scan.append({"G": slope / (2 * wchi), "chi_width": wchi, "n_roots": len(rt),
                        "roots": rt, "separation": (rt[-1]-rt[0]) if len(rt) >= 3 else 0.0,
                        "basin": b, "robustness": b / (a.std_m / (2 * wchi))})
+    for e in g_scan:
+        win = mc_window(zeta, z0, f_interp, e["chi_width"], a.switch_sign)
+        e["mc_window"] = list(win) if win else None
+        e["mc_window_width"] = (win[1] - win[0]) if win else 0.0
     print("\n    chi-width scan at the picked threshold:")
     print(f"    {'w_chi':>7} {'G':>5} {'roots':>6} {'chi_lo':>8} {'chi_mid':>8} {'chi_hi':>8} "
-          f"{'sep':>6} {'basin':>6} {'R':>5}")
+          f"{'sep':>6} {'basin':>6} {'R':>5} {'mc window':>10}")
     for e in g_scan:
         r = e["roots"]
         cols = (f"{r[0]:8.4f} {r[len(r)//2]:8.4f} {r[-1]:8.4f} {e['separation']:6.3f} "
                 f"{e['basin']:6.3f} {e['robustness']:5.1f}") if e["n_roots"] >= 3 else \
                (f"{r[0]:8.4f} {'--':>8} {'--':>8} {'--':>6} {'--':>6} {'--':>5}" if r else "")
-        print(f"    {e['chi_width']:7.3f} {e['G']:5.2f} {e['n_roots']:6d} {cols}")
+        print(f"    {e['chi_width']:7.3f} {e['G']:5.2f} {e['n_roots']:6d} {cols} "
+              f"{e['mc_window_width']:10.4f}")
+
+    # ---- the chi-width the campaign actually runs at, and the G2 scan grid it implies
+    if a.chi_width is not None:
+        w_chi = a.chi_width
+        roots, _, _, _ = solve_loop(zeta, z0, f_interp, mc0, w_chi, a.switch_sign)
+        G = slope / (2 * w_chi)
+        note += (f"; chi-width OVERRIDDEN to {w_chi:g} on the command line")
+    win = mc_window(zeta, z0, f_interp, w_chi, a.switch_sign)
+    if win is None:
+        raise RuntimeError(f"chi-width = {w_chi} has no bistable mc window at all")
+    half = 0.5 * (win[1] - win[0])
+    # Scan the middle two thirds of the window: mean-field edges are where bistability
+    # DISAPPEARS, and var(m) shrinks the real window inward from them, so a scan point
+    # placed on a mean-field edge is a point that measures a single-phase run.
+    span = a.mc_scan_frac * half
+    mc_offsets = [-span, -span / 2, 0.0, span / 2, span]
+    print(f"\n    chi-width in use = {w_chi:g}; bistable mc window "
+          f"[{win[0]:.4f}, {win[1]:.4f}] (width {2*half:.4f}, mc_0 sits "
+          f"{(mc0-win[0])/(2*half):.0%} of the way across)")
+    print(f"    G2 mc scan = mc_0 + " + ", ".join(f"{o:+.4f}" for o in mc_offsets))
 
     if len(roots) >= 3:
         chi_lo, chi_mid, chi_hi = roots[0], roots[len(roots) // 2], roots[-1]
@@ -350,6 +398,7 @@ def main():
         "robustness": pick["robustness"], "basin": pick["basin"],
         "separation": pick["separation"], "std_m_assumed": a.std_m,
         "mc_0": mc0, "chi_width": w_chi, "chi_width_note": note,
+        "mc_window": list(win), "mc_scan_offsets": mc_offsets,
         "candidates": shown,
         "max_df_dchi": slope, "G": G,
         "g_scan": g_scan,
