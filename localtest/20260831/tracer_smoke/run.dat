@@ -1,0 +1,53 @@
+# tracer smoke test: does the Lagrangian tracer advect, sample and write?
+# Tiny box, short run, open loop so the flow is a clean fixed-activity turbulence.
+model            = confluent-wet
+nsteps           = 6000
+nstart           = 0
+ninfo            = 3000
+LX               = 200
+LY               = 200
+bc               = 0
+seed             = 1001
+
+Gamma            = 0.05
+xi               = 0.4
+CC               = 0.00625
+LL               = 0.05
+tau              = 2.0
+rho              = 40
+friction         = 0.0
+zeta             = 0.2
+zeta0-frac       = 0.0
+
+angle            = 0
+noise            = 0.05
+initial-order    = 1
+director-config  = uniform
+defect-sep       = 0
+
+open-loop        = 1
+zeta-open        = 0.1
+
+Dbio             = 0.005
+chi-config       = uniform
+chi0             = 0.5
+chi-noise        = 0
+chi-length       = 0
+tau-chi          = 800
+chi-width        = 0.20
+switch-sign      = -1
+mc               = 0.507
+m0               = 0.507
+
+tau-m            = 800
+pmem             = 0
+pmem-width       = 0.029
+
+ntracer          = 2
+tracer-count     = 400
+
+nvideo           = 200
+video-stride     = 2
+video-p-scale    = 0.4
+video-u-scale    = 0.1
+frame-light      = 1

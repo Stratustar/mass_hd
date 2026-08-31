@@ -126,6 +126,12 @@ void ConfluentWet::Initialize()
     throw error_msg("confluent-wet: switch-sign must be +1 or -1.");
   if(pmem_width < 0.)
     throw error_msg("confluent-wet: pmem-width must be non-negative.");
+
+  if(ntracer > 0 && tracer_count == 0)
+    throw error_msg("confluent-wet: ntracer > 0 needs tracer-count > 0.");
+  if(tracer_count > 0 && ntracer == 0)
+    throw error_msg("confluent-wet: tracer-count > 0 needs ntracer > 0, the tracer "
+                    "sampling interval in steps.");
   if(Dbio < 0.)
     throw error_msg("confluent-wet: Dbio must be non-negative.");
   // Explicit five-point Laplacian with dt = dx = 1 is stable only for D <= 1/4 in 2D.
@@ -210,6 +216,7 @@ void ConfluentWet::Configure()
 {
   Nematic::Configure();
   ConfigurePhenotype();
+  ConfigureTracers();
 }
 
 void ConfluentWet::ConfigurePhenotype()
@@ -561,6 +568,9 @@ void ConfluentWet::UpdateFields(bool first)
   // updated in place.
   swap(chi.get_data(), chi_tmp.get_data());
   swap(m.get_data(),   m_tmp.get_data());
+
+  // Same stage, same velocity field, same integrator as the two lines above.
+  AdvanceTracers(first);
 }
 
 void ConfluentWet::BoundaryConditionsFields()
@@ -732,8 +742,145 @@ void ConfluentWet::VideoPack(vector<unsigned char>& out, const ScalarField& fld,
     }
 }
 
+void ConfluentWet::ConfigureTracers()
+{
+  tr_x.clear(); tr_y.clear(); tr_xN.clear(); tr_yN.clear();
+  tracer_nx = tracer_ny = 0;
+  if(ntracer == 0 || tracer_count == 0) return;
+
+  // STRATIFIED, not random. The box holds ~(L/L_P)^2 independent pressure patches -- of
+  // order 4e4 at L = 1000 -- so a uniform grid samples them all exactly once while a
+  // random draw adds placement variance for nothing. Deterministic, hence no seed: two
+  // runs differing only in `seed` still carry identical tracer grids, which is what makes
+  // the seed-to-seed comparison of a Lagrangian statistic meaningful.
+  const double aspect = double(LX)/double(LY);
+  tracer_nx = max(1u, unsigned(lround(sqrt(double(tracer_count)*aspect))));
+  tracer_ny = max(1u, tracer_count/tracer_nx);
+  const double dx = double(LX)/tracer_nx, dy = double(LY)/tracer_ny;
+  for(unsigned i=0; i<tracer_nx; ++i)
+    for(unsigned j=0; j<tracer_ny; ++j)
+    {
+      tr_x.push_back((i + .5)*dx);
+      tr_y.push_back((j + .5)*dy);
+    }
+  tr_xN.assign(tr_x.size(), 0.);
+  tr_yN.assign(tr_y.size(), 0.);
+}
+
+double ConfluentWet::InterpolateField(const ScalarField& f, double x, double y) const
+{
+  // BILINEAR, and deliberately not better. It is the second-order interpolant whose
+  // gradient reduces exactly to the centred difference the field solver uses, so the
+  // tracer and the fields carry the same truncation order. A cubic or spline interpolant
+  // would make the tracer MORE accurate than the field it is meant to represent, which is
+  // the wrong kind of mismatch: the trajectory would then be a path of a flow the fields
+  // are not being advected by.
+  const double xf = floor(x), yf = floor(y);
+  const double fx = x - xf,  fy = y - yf;
+  const int iL = int(LX), iM = int(LY);
+  const unsigned i0 = unsigned((int(xf) % iL + iL) % iL);
+  const unsigned j0 = unsigned((int(yf) % iM + iM) % iM);
+  const unsigned i1 = (i0 + 1) % LX;
+  const unsigned j1 = (j0 + 1) % LY;
+  return (1.-fx)*(1.-fy)*f[GetDomainIndex(i0, j0)]
+       +      fx *(1.-fy)*f[GetDomainIndex(i1, j0)]
+       + (1.-fx)*     fy *f[GetDomainIndex(i0, j1)]
+       +      fx *     fy *f[GetDomainIndex(i1, j1)];
+}
+
+void ConfluentWet::AdvanceTracers(bool first)
+{
+  if(tr_x.empty()) return;
+
+  // Mirrors UpdateNodeFields term for term. There, chi is carried as
+  //     predictor : chiN = chi + .5 rhs(state_0) ,  chi = chi + rhs(state_0)
+  //     corrector : chi  = chiN + .5 rhs(state_1)
+  // which is Heun at npc = 1 and its fixed-point iteration beyond. The tracer runs the
+  // same two lines with rhs = u_mat interpolated at the tracer, and it is called from
+  // inside UpdateFields, so the velocity it reads is the SAME ux_mat, at the same stage,
+  // that the fields are being advected by -- not a re-derived or time-averaged copy.
+  const double Lx = double(LX), Ly = double(LY);
+  for(unsigned p=0; p<tr_x.size(); ++p)
+  {
+    const double vx = InterpolateField(ux_mat, tr_x[p], tr_y[p]);
+    const double vy = InterpolateField(uy_mat, tr_x[p], tr_y[p]);
+    double nx, ny;
+    if(first)
+    {
+      tr_xN[p] = tr_x[p] + .5*vx;
+      tr_yN[p] = tr_y[p] + .5*vy;
+      nx = tr_x[p] + vx;
+      ny = tr_y[p] + vy;
+    }
+    else
+    {
+      nx = tr_xN[p] + .5*vx;
+      ny = tr_yN[p] + .5*vy;
+    }
+    // The anchors tr_xN/tr_yN are left UNWRAPPED on purpose: wrapping only the final
+    // position keeps predictor and corrector on the same branch across a periodic edge.
+    // |u| << 1 (CFL ~ 4e-3), so they never stray more than a lattice unit outside.
+    tr_x[p] = nx - Lx*floor(nx/Lx);
+    tr_y[p] = ny - Ly*floor(ny/Ly);
+  }
+}
+
+void ConfluentWet::TracerOpen(const string& dir)
+{
+  const auto mode = ios::out | ios::binary | ios::trunc;
+  trc_dat.open((dir + "tracer.f32").c_str(), mode);
+  trc_meta.open((dir + "tracer_meta.csv").c_str(), ios::out | ios::trunc);
+  if(!trc_dat || !trc_meta)
+    throw error_msg("confluent-wet: cannot open the tracer streams in '", dir, "'.");
+
+  trc_meta << "# confluent-wet Lagrangian tracer stream\n"
+           << "# tracer.f32: float32, " << tr_x.size() << " tracers x 4 values per sample,\n"
+           << "#   laid out [P, m, x, y] per tracer, tracer-major; reshape (nsample, "
+           << tr_x.size() << ", 4)\n"
+           << "# grid " << tracer_nx << "x" << tracer_ny << " (requested " << tracer_count
+           << "), sampled every " << ntracer << " steps\n"
+           << "# P and m are bilinear interpolations at the tracer, the same interpolant\n"
+           << "#   used to advect it; x,y are wrapped into [0,LX) x [0,LY)\n"
+           << "t,n_tracer,P_mean,P_std\n";
+  tracer_open = true;
+}
+
+void ConfluentWet::WriteTracers(const string& dir, unsigned t)
+{
+  if(ntracer == 0 || tr_x.empty() || t % ntracer) return;
+  if(!tracer_open) TracerOpen(dir);
+
+  const unsigned np = tr_x.size();
+  vector<float> buf(4*np);
+  double pm = 0., p2 = 0.;
+  for(unsigned p=0; p<np; ++p)
+  {
+    const double P = InterpolateField(pressure, tr_x[p], tr_y[p]);
+    const double M = InterpolateField(m,        tr_x[p], tr_y[p]);
+    buf[4*p+0] = float(P);
+    buf[4*p+1] = float(M);
+    buf[4*p+2] = float(tr_x[p]);
+    buf[4*p+3] = float(tr_y[p]);
+    pm += P; p2 += P*P;
+  }
+  pm /= np;
+  const double psd = sqrt(max(0., p2/np - pm*pm));
+
+  trc_dat.write((char*)buf.data(), buf.size()*sizeof(float));
+  trc_meta << t << ',' << np << ',' << pm << ',' << psd << '\n';
+
+  // Flushed every sample, for the reason spelled out in WriteAuxiliary: nothing ever
+  // destructs this model, so an unflushed tail is simply lost -- and for a correlation
+  // function the lost tail is the longest lag, i.e. the part being measured.
+  trc_dat.flush();
+  trc_meta.flush();
+}
+
 void ConfluentWet::WriteAuxiliary(const string& dir, unsigned t)
 {
+  // The tracers run on their own, finer clock, so this is before the video gate.
+  WriteTracers(dir, t);
+
   if(nvideo == 0 || t % nvideo) return;
   if(!video_open) VideoOpen(dir);
 
@@ -854,7 +1001,11 @@ option_list ConfluentWet::GetOptions()
     ("m-hi", opt::value<double>(&m_hi),
      "memory of the HIGH phase (chi-config = stripe or blocks)")
     ("chi-block", opt::value<unsigned>(&chi_block),
-     "block edge in lattice units for chi-config = blocks; must divide LX and LY");
+     "block edge in lattice units for chi-config = blocks; must divide LX and LY")
+    ("ntracer", opt::value<unsigned>(&ntracer),
+     "Lagrangian tracer sampling interval in steps (0 = tracers off)")
+    ("tracer-count", opt::value<unsigned>(&tracer_count),
+     "requested number of tracers; rounded to a near-square stratified grid");
 
   return options;
 }

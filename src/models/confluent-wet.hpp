@@ -296,6 +296,29 @@ protected:
   std::ofstream vid_u, vid_p, vid_m, vid_chi, vid_meta;
   bool video_open = false;
 
+  /** LAGRANGIAN TRACERS.
+   *
+   * The memory obeys D_t m = (g(P) - m)/tau_m along a MATERIAL path, so the clock tau_m
+   * has to be compared against is the decorrelation time of P following a cell -- not the
+   * Eulerian one at a fixed node, and not the instantaneous 1/lambda that cw_calib calls
+   * t_eddy (a strain rate is not a correlation time). Tracers measure it directly.
+   *
+   * WHY IN THE MODEL AND NOT IN POST-PROCESSING. Integrating a trajectory needs the
+   * velocity at every step. The full frames are 5 t_eddy apart, and the video stream is
+   * block-averaged and quantised to uint8 -- the quantisation noise integrates into a
+   * random walk and the block average removes exactly the small scales that decorrelate a
+   * path. Storing u densely enough to do it afterwards costs more than the simulation
+   * itself, writing already being ~92% of the runtime. Here it is one interpolation per
+   * tracer per sub-stage against 10^6 nodes, i.e. free.
+   *
+   * ntracer is the sampling interval in steps; tracer-count is rounded to a near-square
+   * grid. Tracers are NOT serialized: a restart re-seeds them. */
+  unsigned ntracer = 0, tracer_count = 0;
+  std::vector<double> tr_x, tr_y, tr_xN, tr_yN;
+  unsigned tracer_nx = 0, tracer_ny = 0;
+  std::ofstream trc_dat, trc_meta;
+  bool tracer_open = false;
+
   /** Steps completed, i.e. calls to Step(). Drives chi_freeze_steps.
    *
    * Equals the runcard time only at nsubsteps = 1, which every runcard in this project
@@ -330,6 +353,16 @@ protected:
                  double lo, double hi) const;
   /** Open the video streams (truncating) on the first write */
   void VideoOpen(const std::string& dir);
+  /** Seed the tracers on a stratified near-square grid (deterministic, no seed) */
+  void ConfigureTracers();
+  /** Advance the tracers with the SAME stage structure as chi and m */
+  void AdvanceTracers(bool first);
+  /** Bilinear interpolation of a field at an off-lattice point (periodic wrap) */
+  double InterpolateField(const ScalarField&, double x, double y) const;
+  /** Open the tracer streams (truncating) on the first write */
+  void TracerOpen(const std::string& dir);
+  /** Sample P and m along the tracers, on the ntracer clock */
+  void WriteTracers(const std::string& dir, unsigned t);
 
   virtual void UpdateQuantities();
   virtual void UpdateFields(bool);

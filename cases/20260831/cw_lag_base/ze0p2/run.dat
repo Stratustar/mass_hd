@@ -1,0 +1,74 @@
+# 20260831 cw_lag_base -- WAVE 1 of the Lagrangian-memory campaign.
+#
+# OPEN LOOP: m and chi evolve but the activity is pinned at zeta-open, so the flow is a
+# clean fixed-activity turbulence and every statistic below is a property of that state
+# rather than of a moving fixed point. It supplies the four numbers the closed-loop
+# runcards cannot guess:
+#
+#   sigma_P            -> pmem-width = 0.5 sigma_P
+#   <g(P)>, std(g(P))  -> mc = <g>  and  chi-width = 0.5 std(g)
+#   tau_L, the 1/e decorrelation time of P ALONG A TRACER  -> the unit of the whole ladder
+#
+# tau_L is what tau_m must be compared against: the memory integrates g(P) along a
+# material path, so the Eulerian clock and the instantaneous 1/lambda that cw_calib calls
+# t_eddy are both the wrong comparison. This is the first run in the project to measure it.
+# The ratio tau_L / (1/lambda) is itself an output -- every historical rung is quoted in
+# 1/lambda units and will need it. Local smoke test at L=200 suggested ~0.66; assumed here
+# only to size ntracer, never used as a result.
+#
+# THIS CASE: zeta_eff = 0.2 (= 1.00 zeta), 1/lambda = 400 steps,
+# predicted tau_L = 264 steps, 303 tau_L of record.
+model            = confluent-wet
+nsteps           = 80000
+nstart           = 0
+ninfo            = 4000
+LX               = 1000
+LY               = 1000
+bc               = 0
+seed             = 1001
+
+Gamma            = 0.05
+xi               = 0.4
+CC               = 0.00625
+LL               = 0.05
+tau              = 2.0
+rho              = 40
+friction         = 0.0
+zeta             = 0.2
+zeta0-frac       = 0.0
+
+open-loop        = 1
+zeta-open        = 0.2
+
+angle            = 0
+noise            = 0.05
+initial-order    = 1
+director-config  = uniform
+defect-sep       = 0
+
+Dbio             = 0.005
+chi-config       = uniform
+chi0             = 0.5
+chi-noise        = 0
+chi-length       = 0
+tau-chi          = 400.0
+chi-width        = 0.20
+switch-sign      = -1
+mc               = 0.507
+m0               = 0.507
+
+tau-m            = 400.0
+pmem             = 0.0
+pmem-width       = 0.056000
+
+# Sampling interval ~ tau_L/26, so the 1/e crossing is resolved by ~26 points.
+# 2000 tracers against ~(L/L_P)^2 ~ 4e4 independent patches: every tracer is independent,
+# and the placement is a stratified grid rather than a random draw.
+ntracer          = 10
+tracer-count     = 2000
+
+nvideo           = 80
+video-stride     = 2
+video-p-scale    = 0.672000
+video-u-scale    = 0.132327
+frame-light      = 1
