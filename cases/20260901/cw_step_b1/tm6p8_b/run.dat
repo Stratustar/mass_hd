@@ -1,0 +1,71 @@
+# 20260901 cw_step_b1 -- the tau_m scan, tau_chi = 0.3 tau_c.
+# 
+# THE QUESTION. Three initial conditions, one tau_m axis: where does each of them end up?
+# Below tau_x the memory is too noisy for two basins to exist and all three must converge on
+# one state; above it the two ends should hold apart and the mixed start has to pick a side.
+# tau_x is MEASURED, not assumed -- stage A2b put it at 4.63 tau_c.
+# 
+# THE THREE STARTS. All at the same `seed`, so the initial director field is bit-identical
+# across the whole group and the only thing that changes is (chi, m):
+#   a   chi == 0, m == f(zeta)      = 0.3272   the ACTIVE phase at its own fixed point
+#   b   chi == 1, m == f(0.3 zeta)  = 0.0570   the PASSIVE phase at its own
+#   c   binary-noise, two chi-seeds, half and half by construction at correlation length
+#       7.3 = 2 L_P, each half carrying the m of the phase it belongs to
+# Both uniform starts are EXACT fixed points of the hard step, which is what makes "did it
+# move" a clean question rather than a matter of degree.
+# 
+# TWO tau_chi RULES, run as two groups. B1 holds tau_chi at 0.3 tau_c so the phenotype
+# follows the memory almost instantly and tau_m is the only slow clock. B2 sets tau_chi =
+# tau_m, which is the case where the phenotype lags as much as the memory does. The campaign's
+# prediction is that the FATE does not depend on which -- tau_x is set by sigma_m alone, and
+# sigma_m does not know about tau_chi. A boundary that moves between B1 and B2 would refute
+# that, and the drift flag is what separates a real shift from slow relaxation.
+# 
+# THIS CASE: tau_m = 6.8 tau_c = 1534 steps, tau_chi = 68 steps, start chi == 1 (passive).
+# SATURATION: record window 80000 steps against 15(tau_c + tau_m + tau_chi) = 27406 -- satisfied.
+model            = confluent-wet
+nsteps           = 100000
+nstart           = 0
+ninfo            = 4000
+LX               = 800
+LY               = 800
+bc               = 0
+seed             = 1001
+
+Gamma            = 0.05
+xi               = 0.4
+CC               = 0.00625
+LL               = 0.05
+tau              = 2.0
+rho              = 40
+friction         = 0.0
+zeta             = 0.2
+zeta0-frac       = 0.3
+
+angle            = 0
+noise            = 0.05
+initial-order    = 1
+director-config  = uniform
+defect-sep       = 0
+
+Dbio             = 0.005
+chi-config       = uniform
+chi0             = 1.0
+tau-chi          = 67.7
+chi-width        = 0.0
+switch-sign      = -1
+mc               = 0.261
+m0               = 0.057
+
+tau-m            = 1533.8
+pmem             = 0.052177
+pmem-width       = 0.0
+
+ntracer          = 10
+tracer-count     = 2000
+
+nvideo           = 45
+video-stride     = 2
+video-p-scale    = 0.6261
+video-u-scale    = 0.1172
+frame-light      = 1
