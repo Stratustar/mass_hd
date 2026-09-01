@@ -163,8 +163,9 @@ def main():
     for axx in ax.ravel():
         axx.set_xscale("log")
         axx.grid(alpha=0.25)
-    fig.suptitle(r"step switch, symmetric point $m_c$ = 0.21 -- fine $\tau_m$ scan, "
-                 r"0.3 to 10 $\tau_c$", fontsize=10)
+    # mc from the data, not written in: this same script is useful on any scan
+    fig.suptitle(f"step switch, $m_c$ = {mc:g} -- fine "
+                 r"$\tau_m$ scan, " + f"{gs[0]:g} to {gs[-1]:g} " + r"$\tau_c$", fontsize=10)
     fig.savefig(os.path.join(a.out, "fine.png"), dpi=200)
     plt.close(fig)
 
