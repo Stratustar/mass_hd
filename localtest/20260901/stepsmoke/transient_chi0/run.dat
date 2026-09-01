@@ -1,0 +1,44 @@
+# 20260901 transient_chi0 -- DOES THE INITIAL FLOW TRANSIENT KILL THE chi == 0 ARM?
+# From rest, P = 0 so g = 0, and m decays on tau_m before the turbulence exists to feed it.
+# m0 = f(zeta) = 0.3085 crosses mc = 0.236 after 0.268 tau_m = 596 steps at tau_m = 10 tau_c.
+# L = 200, 400 steps: this checks initialisation and that nothing throws, NOT physics.
+# Campaign parameters otherwise (zeta = 0.2, floor 0.3 zeta, pmem = 0.5 sigma_P(zeta),
+# mc = 0.236 from the A3 pre-calibration on the wave-1 sigma_P scaling).
+model            = confluent-wet
+nsteps           = 6000
+nstart           = 0
+ninfo            = 100
+LX               = 200
+LY               = 200
+bc               = 0
+seed             = 1001
+
+Gamma            = 0.05
+xi               = 0.4
+CC               = 0.00625
+LL               = 0.05
+tau              = 2.0
+rho              = 40
+friction         = 0.0
+zeta             = 0.2
+zeta0-frac       = 0.3
+
+angle            = 0
+noise            = 0.05
+initial-order    = 1
+director-config  = uniform
+defect-sep       = 0
+
+Dbio             = 0.005
+tau-chi          = 67.0
+chi-width        = 0.0
+switch-sign      = -1
+mc               = 0.236
+
+tau-m            = 2223.0
+pmem             = 0.051715
+pmem-width       = 0.0
+
+chi-config       = uniform
+chi0             = 0.0
+m0               = 0.3085

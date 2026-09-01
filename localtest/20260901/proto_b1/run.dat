@@ -1,0 +1,60 @@
+# 20260901 proto_b1 -- PROTOTYPE of a B1 production runcard, at L = 200 and 6000 steps.
+#
+# Everything the campaign will set is set here: both switches hard (chi-width = 0,
+# pmem-width = 0), the activity floor at 0.3 zeta, the binary-noise mixed start with its
+# own chi-seed, the video stream on the 0.2 tau_c clock, and the tracers that carry the
+# material clock. Only L and nsteps are scaled down. This exists to exercise the runcard
+# and the cw_part analysis end to end, NOT to measure anything.
+model            = confluent-wet
+nsteps           = 6000
+nstart           = 0
+ninfo            = 500
+LX               = 200
+LY               = 200
+bc               = 0
+seed             = 1001
+
+Gamma            = 0.05
+xi               = 0.4
+CC               = 0.00625
+LL               = 0.05
+tau              = 2.0
+rho              = 40
+friction         = 0.0
+zeta             = 0.2
+zeta0-frac       = 0.3
+
+angle            = 0
+noise            = 0.05
+initial-order    = 1
+director-config  = uniform
+defect-sep       = 0
+
+Dbio             = 0.005
+tau-chi          = 67.0
+chi-width        = 0.0
+switch-sign      = -1
+mc               = 0.236
+
+tau-m            = 2223.0
+pmem             = 0.051715
+pmem-width       = 0.0
+
+chi-config       = binary-noise
+chi-length       = 7.4
+chi-seed         = 1
+chi-lo           = 0.0
+m-lo             = 0.3085
+chi-hi           = 1.0
+m-hi             = 0.0754
+chi0             = 0.5
+m0               = 0.5
+
+ntracer          = 10
+tracer-count     = 500
+
+nvideo           = 45
+video-stride     = 2
+video-p-scale    = 0.620
+video-u-scale    = 0.112
+frame-light      = 1

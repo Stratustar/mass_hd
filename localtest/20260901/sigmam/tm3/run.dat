@@ -1,0 +1,45 @@
+# 20260901 sigmam/tm3 -- OPEN-LOOP calibration of std(m) against tau_m.
+#
+# The A3 pick assumed sigma_m(tau) = sqrt(f(1-f)) sqrt(tau_c/(tau_c+tau)), the variance of
+# a one-pole filter driven by exponentially correlated noise of correlation time tau_c.
+# The closed-loop test at tau_m = 10 tau_c measured 0.57x that. Open loop pins f, so the
+# tau_m dependence and the role of Dbio can be read off cleanly.
+model            = confluent-wet
+nsteps           = 6000
+nstart           = 0
+ninfo            = 500
+LX               = 200
+LY               = 200
+bc               = 0
+seed             = 1001
+
+Gamma            = 0.05
+xi               = 0.4
+CC               = 0.00625
+LL               = 0.05
+tau              = 2.0
+rho              = 40
+friction         = 0.0
+zeta             = 0.2
+zeta0-frac       = 0.3
+open-loop        = 1
+zeta-open        = 0.2
+
+angle            = 0
+noise            = 0.05
+initial-order    = 1
+director-config  = uniform
+defect-sep       = 0
+
+Dbio             = 0.005
+chi-config       = uniform
+chi0             = 0.5
+tau-chi          = 67.0
+chi-width        = 0.0
+switch-sign      = -1
+mc               = 0.236
+
+tau-m            = 666.9
+pmem             = 0.051715
+pmem-width       = 0.0
+m0               = 0.3085
