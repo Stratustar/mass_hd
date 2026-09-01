@@ -49,11 +49,24 @@ import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import cw_common as cw
+import cw_lag
 import cw_stream
 
 CS = 1.0 / np.sqrt(3.0)                 # lattice speed of sound
 STD_R_MULTIPLES = (1, 2, 4, 8)          # block sizes, in units of L_P
-SATURATION_CRITERION = 30.0             # record window >= 30 (tau_c + tau_m + tau_chi)
+SATURATION_CRITERION = 15.0             # record window >= 15 (tau_c + tau_m + tau_chi)
+# 15, not the 30 the earlier campaigns asked for. 30 was never met at the long-memory end
+# -- it scales with tau_m, so at tau_m = 30 tau_c it demands a record window ~2.6x the
+# whole run -- and a criterion that every interesting run fails is a criterion that gets
+# ignored. 15 is what the 2026-09 step campaign sizes its runs to actually satisfy, so a
+# warning here again means something. What it buys is unchanged in kind: the record window
+# still holds many independent realisations of the slowest mode in the problem.
+
+# The fate labels. chi is the PASSIVE fraction, so a LOW <chi> is the HIGH-activity phase.
+FATE_ACTIVE, FATE_PASSIVE = 0.2, 0.8
+FATE_DEPARTURE = 0.1                    # "left its initial condition" = |d<chi>| > 0.1
+FATE_DRIFT_FRAC = 0.2                   # the closing fraction of the record window
+FATE_DRIFT_TOL = 0.05                   # net change across it above which the run is undecided
 
 
 # ----------------------------------------------------------------- parameters
@@ -98,8 +111,15 @@ def campaign_units(par, args):
         "chi_lo": float(par.get("chi_lo", np.nan)),
         "chi_hi": float(par.get("chi_hi", np.nan)),
         "chi_block": int(par.get("chi_block", 0)),
+        "chi_length": float(par.get("chi_length", 0.0)),
+        "m_lo": float(par.get("m_lo", np.nan)),
+        "m_hi": float(par.get("m_hi", np.nan)),
         "chi_freeze_steps": int(par.get("chi_freeze_steps", 0)),
         "seed": int(par.get("seed", -1)) if "seed" in par else None,
+        "chi_seed": int(par.get("chi_seed", 0)),
+        # chi-width = 0 and pmem-width = 0 are the HARD STEPS, not missing values
+        "step_chi": bool(float(par.get("chi_width", 1.0)) == 0.0),
+        "step_g": bool(float(par.get("pmem_width", 1.0)) == 0.0),
     }
 
 
@@ -362,6 +382,128 @@ def f_table(stream, t_start, sigma_P, coeffs=(0.0, 0.2, 0.3, 0.4, 0.5, 0.6)):
 
 # ------------------------------------------------------------------- figures
 
+# ------------------------------------------------------- the Lagrangian clock
+
+def lagrangian_pass(root, t_start, pmem, pmem_width):
+    """tau_c and f measured ALONG THE TRACERS, i.e. on this run's own material clock.
+
+    WHY THIS RUN'S OWN AND NOT THE CAMPAIGN'S. The campaign quotes every tau_m in units of
+    tau_c(zeta), one number fixed at full activity, because a ladder needs a common ruler.
+    But a closed-loop run does not sit at full activity: chi settles somewhere, the activity
+    settles with it, and the material clock slows down accordingly -- by a factor approaching
+    (1/z0)^1.15 in the passive phase. Reporting both is what lets the analysis say whether a
+    fate was decided at tau_m/tau_c(zeta) = 10 or at tau_m/tau_c(this run) = 3.
+
+    f is measured the same way the model computes it -- a hard step when pmem-width is 0,
+    the tanh otherwise -- and along the tracers rather than over the field, because the
+    memory integrates g(P) following a cell. The two agree in a statistically homogeneous
+    state and disagree exactly when the phases have separated, which is the interesting case.
+    """
+    dt, arr = cw_lag.read_tracers(root)
+    if arr is None:
+        return None
+    t = np.arange(arr.shape[0]) * dt
+    keep = t >= t_start
+    if keep.sum() < 8:
+        return None
+    P = arr[keep, :, 0].astype(np.float64)
+    m = arr[keep, :, 1].astype(np.float64)
+    lag, C = cw_lag.lagrangian_corr(P, dt)
+    g = (P > pmem).astype(np.float64) if pmem_width <= 0 else \
+        0.5 * (1.0 + np.tanh((P - pmem) / pmem_width))
+    return {
+        "n_tracer": int(arr.shape[1]),
+        "n_sample": int(keep.sum()),
+        "dt": int(dt),
+        "tau_c_lag": cw_lag.cross_1e(lag, C),
+        "tau_c_lag_integral": cw_lag.integral_time(lag, C),
+        "f_lag": float(g.mean()),
+        "std_g_lag": float(g.std()),
+        "sigma_P_lag": float(P.std()),
+        "m_mean_lag": float(m.mean()),
+        "std_m_lag": float(m.std()),
+    }
+
+
+# ------------------------------------------------------------------- the fate
+
+def fate_of(stream, t_start, u):
+    """Where the run ended up, when it left its start, and whether it is still moving.
+
+    THE LABEL IS ON THE TAIL, NOT THE RECORD-WINDOW MEAN, for the reason the `settled`
+    block already documents: a run sliding from one phase to the other has a record-window
+    mean somewhere in the middle, and calling that "mixed" would invent a third state out
+    of a transient. `drifting` is the guard -- a run whose <chi> still moves by more than
+    FATE_DRIFT_TOL across the closing fifth of its record window is labelled UNDECIDED
+    whatever its tail mean says.
+
+    Two drifts are reported and they answer different questions. `settled.chi_drift_record`
+    compares the last quarter of the record window against the rest -- "did this run move
+    while we were watching". `fate.drift_tail` is the net change WITHIN the closing fifth --
+    "is it still moving now". A run that slid early and then stopped shows the first and not
+    the second, and only the second should veto a fate label.
+
+    `departure` is measured over the WHOLE run, warm-up included: the question it answers
+    is when the initial condition stopped holding, and for a start that is thrown across
+    the switch by the initial flow transient that happens before the record window opens.
+    """
+    if stream is None:
+        return None
+    cm = np.asarray(stream.meta["chi_mean"], float)[:stream.n]
+    t = np.asarray(stream.steps, float)[:stream.n]
+    if not len(cm):
+        return None
+
+    w = stream.window(t_start)
+    if not len(w):
+        return None
+    i0, i1 = int(w[0]), int(w[-1]) + 1
+    tail_lo = i1 - max(2, int(round(FATE_DRIFT_FRAC * (i1 - i0))))
+    chi_tail = float(np.mean(cm[tail_lo:i1]))
+
+    # NET CHANGE across the closing fraction, as the fitted slope times its span. The
+    # obvious alternatives are both worse: last-minus-first is one noisy frame against
+    # another, and the difference of the two half-means throws away the lever arm -- on the
+    # L=200 prototype it read +0.021 for a window whose <chi> actually moved +0.06, because
+    # a monotone ramp's half-means are only half the span apart. A least-squares slope uses
+    # every frame and the full span, which is what "still moving" means here.
+    tt, cc = t[tail_lo:i1], cm[tail_lo:i1]
+    if len(tt) >= 3 and tt[-1] > tt[0]:
+        slope = float(np.polyfit(tt - tt[0], cc, 1)[0])
+        drift_tail = slope * float(tt[-1] - tt[0])
+    else:
+        drift_tail = float(cc[-1] - cc[0]) if len(cc) >= 2 else 0.0
+    drifting = bool(abs(drift_tail) > FATE_DRIFT_TOL)
+
+    if drifting:
+        label = "undecided"
+    elif chi_tail < FATE_ACTIVE:
+        label = "active"
+    elif chi_tail > FATE_PASSIVE:
+        label = "passive"
+    else:
+        label = "mixed"
+
+    # when did <chi> first leave its own initial value by more than FATE_DEPARTURE
+    chi0 = float(cm[0])
+    left = np.nonzero(np.abs(cm - chi0) > FATE_DEPARTURE)[0]
+    departure = float(t[left[0]]) if len(left) else float("nan")
+
+    return {
+        "label": label,
+        "chi_tail": chi_tail,
+        "chi_init_stream": chi0,
+        "tail_frac": FATE_DRIFT_FRAC,
+        "drift_tail": drift_tail,
+        "drifting": drifting,
+        "departure_steps": departure,
+        "departure_over_tau_m": departure / u["tau_m"] if u["tau_m"] > 0 else float("nan"),
+        "never_departed": bool(not len(left)),
+        "thresholds": {"active": FATE_ACTIVE, "passive": FATE_PASSIVE,
+                       "departure": FATE_DEPARTURE, "drift_tol": FATE_DRIFT_TOL},
+    }
+
+
 def figures(outdir, stream, res, u, t_start, tau_c):
     fig_dir = os.path.join(outdir, "figs")
     os.makedirs(fig_dir, exist_ok=True)
@@ -498,6 +640,25 @@ def main():
                   f"{tail['chi_mean_tail']:.4f}  drift {tail['chi_drift_record']:+.4f}",
                   flush=True)
 
+    # ---- the Lagrangian clock and the fate, both new in the 2026-09 step campaign
+    lagr = None
+    try:
+        lagr = lagrangian_pass(root, t_start, u["pmem"], u["pmem_width"])
+        if lagr:
+            print(f"  tracers {lagr['n_tracer']}  tau_c(lag) {lagr['tau_c_lag']:.0f} steps"
+                  f"  f(lag) {lagr['f_lag']:.4f}  std(m) {lagr['std_m_lag']:.4f}", flush=True)
+    except Exception as exc:
+        warnings.append(f"tracer analysis failed: {type(exc).__name__}: {exc}")
+    if lagr is None:
+        warnings.append("no tracer stream: tau_c and f are Eulerian for this run, and the "
+                        "memory's clock is a material one")
+
+    fate = fate_of(stream, t_start, u)
+    if fate:
+        print(f"  FATE {fate['label']}  <chi>_tail {fate['chi_tail']:.4f}  "
+              f"drift {fate['drift_tail']:+.4f}  left its start at "
+              f"{fate['departure_steps']:.0f} steps", flush=True)
+
     # ---- the campaign's own sanity criterion
     tau_sum = tau_c + max(u["tau_m"], 0.0) + max(u["tau_chi"], 0.0)
     record_steps = u["nsteps"] - t_start
@@ -528,6 +689,13 @@ def main():
             "tau_m_over_tau_c": u["tau_m"] / tau_c,
             "tau_chi_over_tau_c": u["tau_chi"] / tau_c,
             "tau_c_run_over_tau_c_ref": res["tau_c"] / tau_c,
+            # the same ratio on the MATERIAL clock, which is the one tau_m is compared to
+            "tau_m_over_tau_c_lag": (u["tau_m"] / lagr["tau_c_lag"]
+                                     if lagr and np.isfinite(lagr["tau_c_lag"])
+                                     else float("nan")),
+            "tau_c_lag_over_tau_c_ref": (lagr["tau_c_lag"] / tau_c
+                                         if lagr and np.isfinite(lagr["tau_c_lag"])
+                                         else float("nan")),
             "pmem_over_sigma_P": u["pmem"] / sigma_P if sigma_P else float("nan"),
             "pmem_percentile_this_run": pmem_pctl,
             "box_over_L_P": u["L"] / res["L_P"] if res["L_P"] else float("nan"),
@@ -538,6 +706,8 @@ def main():
             "l_B_over_xi_N": float(np.sqrt(u["Dbio"] * tau_c)) / u["xi_N"] if u["Dbio"] else 0.0,
         },
         "flow": {k: v for k, v in res.items() if not k.startswith("_")},
+        "lagrangian": lagr,
+        "fate": fate,
         "settled": tail,
         "f": ftab,
         "time": temporal,
