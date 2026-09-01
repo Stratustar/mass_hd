@@ -124,7 +124,11 @@ class Calib:
             self.mc = float(d["mc"])
             self.f_top = float(d["f_top"])
             self.f_floor = float(d["f_floor"])
+            self.tau_x = float(d.get("tau_x", float("nan")))
             self._rung = d.get("rungs")            # measured per-activity table, if present
+            # L_P at full activity: sets the mixed start's correlation length
+            top = (self._rung or {}).get("1", (self._rung or {}).get("1.0", {}))
+            self.L_P = float(top.get("L_P", float("nan")))
         else:
             self.tau_c = PRE["tau_c"]
             self.sigma_P = PRE["sigma_P"]
@@ -133,6 +137,8 @@ class Calib:
             self.mc = PRE["mc"]
             self.f_top = PRE["f_top"]
             self.f_floor = PRE["f_floor"]
+            self.tau_x = float("nan")
+            self.L_P = float("nan")
             self._rung = None
 
     def at(self, a):
@@ -356,9 +362,86 @@ def gen_a4(out, cal):
     return made
 
 
+# ------------------------------------------------------------------- B1 / B2
+
+TAU_M_GRID = [0.3, 0.45, 0.68, 1, 1.5, 2.2, 3.3, 4.7, 6.8, 10, 15, 22, 30]
+CHI_LENGTH_OVER_L_P = 2.0        # correlation length of the mixed start
+
+HDR_B = """20260901 cw_step_{grp} -- the tau_m scan, {tchi_rule}.
+
+THE QUESTION. Three initial conditions, one tau_m axis: where does each of them end up?
+Below tau_x the memory is too noisy for two basins to exist and all three must converge on
+one state; above it the two ends should hold apart and the mixed start has to pick a side.
+tau_x is MEASURED, not assumed -- {taux_note}
+
+THE THREE STARTS. All at the same `seed`, so the initial director field is bit-identical
+across the whole group and the only thing that changes is (chi, m):
+  a   chi == 0, m == f(zeta)      = {f_top:.4f}   the ACTIVE phase at its own fixed point
+  b   chi == 1, m == f(0.3 zeta)  = {f_floor:.4f}   the PASSIVE phase at its own
+  c   binary-noise, two chi-seeds, half and half by construction at correlation length
+      {chilen:.1f} = 2 L_P, each half carrying the m of the phase it belongs to
+Both uniform starts are EXACT fixed points of the hard step, which is what makes "did it
+move" a clean question rather than a matter of degree.
+
+TWO tau_chi RULES, run as two groups. B1 holds tau_chi at 0.3 tau_c so the phenotype
+follows the memory almost instantly and tau_m is the only slow clock. B2 sets tau_chi =
+tau_m, which is the case where the phenotype lags as much as the memory does. The campaign's
+prediction is that the FATE does not depend on which -- tau_x is set by sigma_m alone, and
+sigma_m does not know about tau_chi. A boundary that moves between B1 and B2 would refute
+that, and the drift flag is what separates a real shift from slow relaxation.
+
+THIS CASE: tau_m = {g:g} tau_c = {tm:.0f} steps, tau_chi = {tchi:.0f} steps, start {start}.
+{sat}"""
+
+
+def gen_b(out, cal, group):
+    """group = 'b1' (tau_chi = 0.3 tau_c) or 'b2' (tau_chi = tau_m)."""
+    if not cal.measured:
+        raise RuntimeError("the B stages must be generated from a MEASURED calib.json "
+                           "(cw_step_pick.py), not from the wave-1 extrapolation: mc and "
+                           "the two starts' m are all read off the measured f table.")
+    grid = TAU_M_GRID if group == "b1" else TAU_M_GRID[1:]
+    L_P = cal.L_P
+    chilen = CHI_LENGTH_OVER_L_P * L_P
+    taux_note = (f"stage A2b put it at {cal.tau_x:.2f} tau_c."
+                 if math.isfinite(cal.tau_x) else
+                 "stage A2b could not bracket it inside the scanned range.")
+    starts = [
+        ("a", {"chi-config": "uniform", "chi0": 0.0, "m0": round(cal.f_top, 4)},
+         "chi == 0 (active)"),
+        ("b", {"chi-config": "uniform", "chi0": 1.0, "m0": round(cal.f_floor, 4)},
+         "chi == 1 (passive)"),
+    ]
+    for k in (1, 2):
+        starts.append((f"c{k}",
+                       {"chi-config": "binary-noise", "chi-length": round(chilen, 2),
+                        "chi-seed": k, "chi-lo": 0.0, "m-lo": round(cal.f_top, 4),
+                        "chi-hi": 1.0, "m-hi": round(cal.f_floor, 4),
+                        "chi0": 0.5, "m0": 0.5},
+                       f"binary noise, chi-seed {k}"))
+    made = []
+    for g in grid:
+        tm = g * cal.tau_c
+        tchi = tm if group == "b2" else 0.3 * cal.tau_c
+        nsteps = max(NSTEPS, int(math.ceil(
+            SATURATION_K * (cal.tau_c + tm + tchi) / RECORD_FRAC / 10000)) * 10000)
+        for name, over, what in starts:
+            v = base(cal, 1.0, nsteps=nsteps, seed=1001,
+                     **{"tau-m": round(tm, 1), "tau-chi": round(tchi, 1)}, **over)
+            hdr = HDR_B.format(
+                grp=group, tchi_rule=("tau_chi = 0.3 tau_c" if group == "b1"
+                                      else "tau_chi = tau_m"),
+                taux_note=taux_note, f_top=cal.f_top, f_floor=cal.f_floor,
+                chilen=chilen, g=g, tm=tm, tchi=tchi, start=what,
+                sat=saturation_note(nsteps, cal.tau_c, tm, tchi))
+            made.append(write_case(
+                os.path.join(out, f"cw_step_{group}", f"tm{tag(g)}_{name}"), hdr, v))
+    return made
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("stage", choices=["a1", "a2b", "a4"])
+    ap.add_argument("stage", choices=["a1", "a2b", "a4", "b1", "b2"])
     ap.add_argument("--out", default="cases/20260901")
     ap.add_argument("--calib", default=None,
                     help="measured calib.json from stage A3; without it the wave-1 "
@@ -372,7 +455,10 @@ def main():
     if a.stage in ("a4",) and not cal.measured:
         print("  NOTE: a closed-loop stage on the extrapolation. A4 is a yes/no test and "
               "tolerates it; the B stages must not be generated this way.")
-    made = {"a1": gen_a1, "a2b": gen_a2b, "a4": gen_a4}[a.stage](a.out, cal)
+    if a.stage in ("b1", "b2"):
+        made = gen_b(a.out, cal, a.stage)
+    else:
+        made = {"a1": gen_a1, "a2b": gen_a2b, "a4": gen_a4}[a.stage](a.out, cal)
     for p in made:
         print(f"  {p}")
     print(f"{len(made)} runcards")
