@@ -120,6 +120,13 @@ def coexists(g, f_of, sigma_m, mc, r, n=2001):
             root = float(x[i] + t * (x[i + 1] - x[i]))
             if d[i] > 0 and d[i + 1] < 0:          # F crosses from above: stable
                 stable.append(root)
+    # BOTH ENDS need the boundary treatment, not just chibar = 1. As sigma_m falls the
+    # active root collapses onto chibar = 0, and there d[0] = F(0) - 0 is zero or a
+    # rounding of it -- no sign change to find, so a pure crossing search silently loses
+    # the very root the campaign is about. (That is what made tau_x = 100 tau_c report
+    # "not coexisting" while 30 did.) A root inside the first cell is the same statement.
+    if F[0] <= 1.0 / (n - 1):
+        stable.append(float(F[0]))
     if d[-1] >= -1e-9 and F[-1] > 1 - 1e-6:        # chibar = 1 is a stable boundary root
         stable.append(1.0)
     return (any(v < ACTIVE_ROOT for v in stable) and
