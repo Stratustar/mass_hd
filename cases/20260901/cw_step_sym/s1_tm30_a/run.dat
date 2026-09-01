@@ -1,0 +1,84 @@
+# 20260901 cw_step_sym -- can the two phases be made EQUALLY stable?
+# 
+# THE PROBLEM. At the campaign's operating point the two coexisting phases are nowhere near
+# equally stable. Measured at tau_m = 30 tau_c:
+# 
+#     active   <m> = 0.3097, sigma_m = 0.0191  ->  (m - mc)/sigma =  2.55
+#     passive  <m> = 0.0554, sigma_m = 0.0295  ->  (mc - m)/sigma =  6.97
+# 
+# so 0.54% of nodes in the active phase sit below the threshold at any instant against 1.6e-12
+# in the passive one, and it is always the active phase that decays. Two causes stack. mc was
+# chosen by the CUSP, which maximises K_max -- "three roots exist easily" -- and not symmetry,
+# leaving it 0.066 below f_top and 0.204 above f_floor. And the two phases have genuinely
+# different sigma_m, 0.0191 against 0.0295, because the passive phase runs at the floor where
+# L_P is 8.5 rather than 3.7 and the same Dbio removes proportionally less.
+# 
+# THE FIX, and it is nearly free. Equalising (m_act - mc)/sigma_act = (mc - m_pass)/sigma_pass
+# on the MEASURED numbers gives mc = 0.21 at the campaign's pmem, which takes both margins to
+# ~5.2 sigma. The cost in reachability is essentially nil: the coexistence threshold moves
+# 11.9 -> 11.7 tau_c, because tau_x has a minimum near mc = 0.24 and rises on both sides, so
+# the symmetric point sits beside it rather than up a slope. Raising pmem as well improves
+# BOTH -- at 0.6 sigma_P the symmetric mc = 0.1585 gives 7.1 sigma and tau_x = 9.9 -- because
+# f_floor falls and sqrt(f(1-f)) collapses with it. Not pushed past 0.6: by 0.7 sigma_P the
+# floor's f is 0.007, m piles up against 0 and the normal closure every one of these numbers
+# rests on stops being true.
+# 
+# THIS GROUP. Four tau_m spanning the measured boundary, both pure starts, two candidate
+# operating points. BOTH ARMS ARE RUN, because symmetry cuts both ways: the passive margin
+# drops 6.97 -> 5.2 sigma, and a change that rescues the active phase by destabilising the
+# passive one has not made the two comparable, it has swapped which one decays.
+# 
+# WHAT WOULD SETTLE IT: the active arm holding at tau_m = 15 tau_c, where the campaign's
+# threshold gives it a lifetime of 2.0 tau_m, with the passive arm still never departing.
+# 
+# THIS CASE: s1 -- pmem = 0.5 sigma_P = 0.052177, mc = 0.2100
+#   (f_floor, f_top) = (0.0570, 0.3272), margins 2.88 / 1.20 sigma at 30 tau_c
+#   tau_m = 30 tau_c = 6767 steps, start chi == 0 (active)
+# SATURATION: record window 112000 steps against 15(tau_c + tau_m + tau_chi) = 105901 -- satisfied.
+model            = confluent-wet
+nsteps           = 140000
+nstart           = 0
+ninfo            = 4000
+LX               = 800
+LY               = 800
+bc               = 0
+seed             = 1001
+
+Gamma            = 0.05
+xi               = 0.4
+CC               = 0.00625
+LL               = 0.05
+tau              = 2.0
+rho              = 40
+friction         = 0.0
+zeta             = 0.2
+zeta0-frac       = 0.3
+
+angle            = 0
+noise            = 0.05
+initial-order    = 1
+director-config  = uniform
+defect-sep       = 0
+
+Dbio             = 0.005
+chi-config       = uniform
+chi0             = 0.0
+tau-chi          = 67.7
+chi-width        = 0.0
+switch-sign      = -1
+mc               = 0.21
+m0               = 0.3272
+mem-freeze-steps = 2260
+
+tau-m            = 6766.8
+pmem             = 0.052177
+pmem-width       = 0.0
+
+ntracer          = 10
+tracer-count     = 2000
+
+nvideo           = 45
+video-stride     = 2
+video-p-scale    = 0.6261
+video-u-scale    = 0.1172
+frame-light      = 1

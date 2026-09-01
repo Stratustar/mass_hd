@@ -127,7 +127,10 @@ class Calib:
             self.f_top = float(d["f_top"])
             self.f_floor = float(d["f_floor"])
             self.tau_x = float(d.get("tau_x", float("nan")))
+            self.tau_x_co = d.get("tau_x_coexistence")
             self.pmem_on_edge = bool(d.get("pmem_on_scan_edge", False))
+            self.f_table = d.get("f_table") or []
+            self.sigma_P_meas = float(d["sigma_P"])
             self._rung = d.get("rungs")            # measured per-activity table, if present
             # L_P at full activity: sets the mixed start's correlation length
             top = (self._rung or {}).get("1", (self._rung or {}).get("1.0", {}))
@@ -141,7 +144,10 @@ class Calib:
             self.f_top = PRE["f_top"]
             self.f_floor = PRE["f_floor"]
             self.tau_x = float("nan")
+            self.tau_x_co = None
             self.pmem_on_edge = False
+            self.f_table = []
+            self.sigma_P_meas = PRE["sigma_P"]
             self.L_P = float("nan")
             self._rung = None
 
@@ -483,9 +489,92 @@ def gen_b(out, cal, group):
     return made
 
 
+# ------------------------------------------------------------------- SYM
+
+# (tag, pmem in units of sigma_P, mc). Both mc values equalise the two phases' normalised
+# margins (m_phase - mc)/sigma_m_phase at tau_m = 30 tau_c; s1 keeps the campaign's
+# threshold and moves mc alone, s2 raises the threshold too.
+SYM_VARIANTS = [("s1", 0.5, 0.2100), ("s2", 0.6, 0.1585)]
+SYM_TAU_M = [10, 15, 22, 30]
+
+HDR_SYM = """20260901 cw_step_sym -- can the two phases be made EQUALLY stable?
+
+THE PROBLEM. At the campaign's operating point the two coexisting phases are nowhere near
+equally stable. Measured at tau_m = 30 tau_c:
+
+    active   <m> = 0.3097, sigma_m = 0.0191  ->  (m - mc)/sigma =  2.55
+    passive  <m> = 0.0554, sigma_m = 0.0295  ->  (mc - m)/sigma =  6.97
+
+so 0.54% of nodes in the active phase sit below the threshold at any instant against 1.6e-12
+in the passive one, and it is always the active phase that decays. Two causes stack. mc was
+chosen by the CUSP, which maximises K_max -- "three roots exist easily" -- and not symmetry,
+leaving it 0.066 below f_top and 0.204 above f_floor. And the two phases have genuinely
+different sigma_m, 0.0191 against 0.0295, because the passive phase runs at the floor where
+L_P is 8.5 rather than 3.7 and the same Dbio removes proportionally less.
+
+THE FIX, and it is nearly free. Equalising (m_act - mc)/sigma_act = (mc - m_pass)/sigma_pass
+on the MEASURED numbers gives mc = 0.21 at the campaign's pmem, which takes both margins to
+~5.2 sigma. The cost in reachability is essentially nil: the coexistence threshold moves
+11.9 -> 11.7 tau_c, because tau_x has a minimum near mc = 0.24 and rises on both sides, so
+the symmetric point sits beside it rather than up a slope. Raising pmem as well improves
+BOTH -- at 0.6 sigma_P the symmetric mc = 0.1585 gives 7.1 sigma and tau_x = 9.9 -- because
+f_floor falls and sqrt(f(1-f)) collapses with it. Not pushed past 0.6: by 0.7 sigma_P the
+floor's f is 0.007, m piles up against 0 and the normal closure every one of these numbers
+rests on stops being true.
+
+THIS GROUP. Four tau_m spanning the measured boundary, both pure starts, two candidate
+operating points. BOTH ARMS ARE RUN, because symmetry cuts both ways: the passive margin
+drops 6.97 -> 5.2 sigma, and a change that rescues the active phase by destabilising the
+passive one has not made the two comparable, it has swapped which one decays.
+
+WHAT WOULD SETTLE IT: the active arm holding at tau_m = 15 tau_c, where the campaign's
+threshold gives it a lifetime of 2.0 tau_m, with the passive arm still never departing.
+
+THIS CASE: {tag} -- pmem = {pc:g} sigma_P = {pmem:.6f}, mc = {mc:.4f}
+  (f_floor, f_top) = ({ff:.4f}, {ft:.4f}), margins {za:.2f} / {zp:.2f} sigma at 30 tau_c
+  tau_m = {g:g} tau_c = {tm:.0f} steps, start {start}
+{sat}"""
+
+
+def gen_sym(out, cal):
+    if not cal.measured:
+        raise RuntimeError("cw_step_sym must be generated from a MEASURED calib.json")
+    made = []
+    for vtag, pc, mc in SYM_VARIANTS:
+        row = [t for t in cal.f_table if abs(t["coeff"] - pc) < 1e-9]
+        if not row:
+            raise RuntimeError(f"calib.json has no f-table row at pmem = {pc} sigma_P")
+        row = row[0]
+        ff, ft, pmem = row["f_floor"], row["f_top"], row["pmem"]
+        # margins reported in the header, on the same model the choice was made with
+        sa = math.sqrt(ft * (1 - ft)) * 0.0407 / math.sqrt(0.3272 * (1 - 0.3272))
+        sp = math.sqrt(ff * (1 - ff)) * 0.1279 / math.sqrt(0.0570 * (1 - 0.0570))
+        za, zp = (ft - mc) / sa, (mc - ff) / sp
+        for g in SYM_TAU_M:
+            tm = g * cal.tau_c
+            tchi = 0.3 * cal.tau_c
+            nsteps = max(NSTEPS, int(math.ceil(
+                SATURATION_K * (cal.tau_c + tm + tchi) / RECORD_FRAC / 10000)) * 10000)
+            for name, over, what in (
+                    ("a", {"chi0": 0.0, "m0": round(ft, 4)}, "chi == 0 (active)"),
+                    ("b", {"chi0": 1.0, "m0": round(ff, 4)}, "chi == 1 (passive)")):
+                v = base(cal, 1.0, nsteps=nsteps, seed=1001,
+                         **{"tau-m": round(tm, 1), "tau-chi": round(tchi, 1),
+                            "mem-freeze-steps": mem_freeze(cal),
+                            "chi-config": "uniform",
+                            "pmem": round(pmem, 6), "mc": round(mc, 4)}, **over)
+                hdr = HDR_SYM.format(tag=vtag, pc=pc, pmem=pmem, mc=mc, ff=ff, ft=ft,
+                                     za=za, zp=zp, g=g, tm=tm, start=what,
+                                     sat=saturation_note(nsteps, cal.tau_c, tm, tchi))
+                made.append(write_case(
+                    os.path.join(out, "cw_step_sym", f"{vtag}_tm{tag(g)}_{name}"),
+                    hdr, v))
+    return made
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("stage", choices=["a1", "a2b", "a4", "b1", "b2"])
+    ap.add_argument("stage", choices=["a1", "a2b", "a4", "b1", "b2", "sym"])
     ap.add_argument("--out", default="cases/20260901")
     ap.add_argument("--calib", default=None,
                     help="measured calib.json from stage A3; without it the wave-1 "
@@ -499,7 +588,9 @@ def main():
     if a.stage in ("a4",) and not cal.measured:
         print("  NOTE: a closed-loop stage on the extrapolation. A4 is a yes/no test and "
               "tolerates it; the B stages must not be generated this way.")
-    if a.stage in ("b1", "b2"):
+    if a.stage == "sym":
+        made = gen_sym(a.out, cal)
+    elif a.stage in ("b1", "b2"):
         made = gen_b(a.out, cal, a.stage)
     else:
         made = {"a1": gen_a1, "a2b": gen_a2b, "a4": gen_a4}[a.stage](a.out, cal)
