@@ -65,7 +65,7 @@ def card(grp, case, start_key, d, vdir, field="chi"):
     return f"""<figure class="card {FATE_CLASS.get(label,'f-mix')}">
   <video data-src="{src}" muted playsinline loop preload="none"></video>
   <figcaption>
-    <div class="ct">{html.escape(start_key)}<span class="badge">{FATE_LABEL.get(label,label)}</span></div>
+    <div class="ct"><span>{html.escape(start_key)}</span><span class="badge">{FATE_LABEL.get(label,label)}</span></div>
     <div class="stats"><span class="st"><b>⟨χ⟩</b> {chi:.3f}</span>
       <span class="st"><b>寿命</b> {life}</span>
       <span class="st"><b>N_def</b> {fl['N_def']:.0f}</span>

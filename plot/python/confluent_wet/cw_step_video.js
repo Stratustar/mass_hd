@@ -43,7 +43,11 @@ document.querySelectorAll(".card video").forEach(v => {
   v.addEventListener("click", () => {
     const fig = v.closest("figure");
     dv.src = v.src || v.dataset.src;
-    dt.textContent = fig.querySelector("figcaption").textContent.replace(/\s+/g, " ").trim();
+    // pull the caption's parts out separately: concatenating textContent would run the
+    // start label straight into the fate badge ("chi = 0" + "mixed" -> "chi = 0mixed")
+    const bits = [...fig.querySelectorAll(".ct > *, .cs, .st")]
+      .map(e => e.textContent.replace(/\s+/g, " ").trim()).filter(Boolean);
+    dt.textContent = bits.join("  ·  ");
     dlg.showModal();
     dv.play().catch(() => {});
   });
