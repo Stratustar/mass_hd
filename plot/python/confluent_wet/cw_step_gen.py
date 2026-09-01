@@ -572,9 +572,83 @@ def gen_sym(out, cal):
     return made
 
 
+# ------------------------------------------------------------------- FINE
+
+# 20 points, log-uniform from 0.3 to 10 tau_c: the region where the campaign's B1 grid has
+# only 10 points and where, at the SYMMETRIC operating point, the whole transition happens.
+FINE_TAU_M = [0.30, 0.36, 0.44, 0.53, 0.63, 0.76, 0.92, 1.11, 1.33, 1.60,
+              1.93, 2.32, 2.79, 3.35, 4.03, 4.85, 5.83, 7.01, 8.32, 10.0]
+FINE_MC = 0.2100          # s1: the symmetric threshold
+FINE_PMEM_COEFF = 0.5     # unchanged from the campaign
+
+HDR_FINE = """20260901 cw_step_fine -- HOW the transition happens, at the symmetric point.
+
+WHERE THIS SITS. The campaign scanned 0.3-30 tau_c at mc = 0.2610, where the two phases are
+2.7x apart in stability and everything below 22 tau_c collapses to passive. The 16-run
+symmetry test then moved mc to 0.2100, equalising the phases (5.27 against 5.26 sigma at
+30 tau_c) and dropping the coexistence threshold to 10-15 tau_c -- but it only sampled four
+tau_m. Between 0.3 and 10 the symmetric point runs from a mixed state to a nearly pure
+ACTIVE one, the opposite direction to the campaign's, and nothing has looked at the shape of
+that crossover.
+
+THE GRID is 20 points log-uniform over 0.3-10 tau_c, a factor 1.2 apart, against the
+campaign's 10 points over the same range at a factor 1.7. Three starts: both pure ones,
+which bracket whatever is reachable, and one binary-noise start, because at the campaign's
+mc the mixed starts NEVER chose the active phase and whether symmetry changes that is a
+question about the size of the active basin rather than its existence.
+
+WHAT THE SHAPE SHOULD SETTLE. Below the coexistence threshold there is one state and all
+three starts must agree on it; the interesting content is then whether <chi> moves
+CONTINUOUSLY as tau_m grows -- a single fixed point sliding -- or jumps. Above it the pure
+starts separate. The campaign's own data says the single state slides (0.65 -> 0.99 over
+0.3-15 tau_c at mc = 0.2610), so a jump here would mean the symmetric point is qualitatively
+different and not merely shifted.
+
+THIS CASE: tau_m = {g:g} tau_c = {tm:.0f} steps, tau_chi = {tchi:.0f} steps, start {start}.
+mc = {mc:.4f}, pmem = {pmem:.6f} ({pc:g} sigma_P), memory frozen for the first {freeze:.0f}
+steps while the flow spins up.
+{sat}"""
+
+
+def gen_fine(out, cal):
+    if not cal.measured:
+        raise RuntimeError("cw_step_fine must be generated from a MEASURED calib.json")
+    row = [t for t in cal.f_table if abs(t["coeff"] - FINE_PMEM_COEFF) < 1e-9]
+    if not row:
+        raise RuntimeError(f"no f-table row at pmem = {FINE_PMEM_COEFF} sigma_P")
+    row = row[0]
+    ff, ft, pmem = row["f_floor"], row["f_top"], row["pmem"]
+    chilen = CHI_LENGTH_OVER_L_P * cal.L_P
+    starts = [
+        ("a", {"chi-config": "uniform", "chi0": 0.0, "m0": round(ft, 4)}, "chi == 0 (active)"),
+        ("b", {"chi-config": "uniform", "chi0": 1.0, "m0": round(ff, 4)}, "chi == 1 (passive)"),
+        ("c1", {"chi-config": "binary-noise", "chi-length": round(chilen, 2),
+                "chi-seed": 1, "chi-lo": 0.0, "m-lo": round(ft, 4),
+                "chi-hi": 1.0, "m-hi": round(ff, 4), "chi0": 0.5, "m0": 0.5},
+         "binary noise, chi-seed 1"),
+    ]
+    made = []
+    for g in FINE_TAU_M:
+        tm = g * cal.tau_c
+        tchi = 0.3 * cal.tau_c
+        nsteps = max(NSTEPS, int(math.ceil(
+            SATURATION_K * (cal.tau_c + tm + tchi) / RECORD_FRAC / 10000)) * 10000)
+        for name, over, what in starts:
+            v = base(cal, 1.0, nsteps=nsteps, seed=1001,
+                     **{"tau-m": round(tm, 1), "tau-chi": round(tchi, 1),
+                        "mem-freeze-steps": mem_freeze(cal),
+                        "pmem": round(pmem, 6), "mc": FINE_MC}, **over)
+            hdr = HDR_FINE.format(g=g, tm=tm, tchi=tchi, start=what, mc=FINE_MC,
+                                  pmem=pmem, pc=FINE_PMEM_COEFF, freeze=mem_freeze(cal),
+                                  sat=saturation_note(nsteps, cal.tau_c, tm, tchi))
+            made.append(write_case(
+                os.path.join(out, "cw_step_fine", f"tm{tag(g)}_{name}"), hdr, v))
+    return made
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("stage", choices=["a1", "a2b", "a4", "b1", "b2", "sym"])
+    ap.add_argument("stage", choices=["a1", "a2b", "a4", "b1", "b2", "sym", "fine"])
     ap.add_argument("--out", default="cases/20260901")
     ap.add_argument("--calib", default=None,
                     help="measured calib.json from stage A3; without it the wave-1 "
@@ -588,7 +662,9 @@ def main():
     if a.stage in ("a4",) and not cal.measured:
         print("  NOTE: a closed-loop stage on the extrapolation. A4 is a yes/no test and "
               "tolerates it; the B stages must not be generated this way.")
-    if a.stage == "sym":
+    if a.stage == "fine":
+        made = gen_fine(a.out, cal)
+    elif a.stage == "sym":
         made = gen_sym(a.out, cal)
     elif a.stage in ("b1", "b2"):
         made = gen_b(a.out, cal, a.stage)

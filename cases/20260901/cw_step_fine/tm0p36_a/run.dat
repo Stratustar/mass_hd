@@ -1,0 +1,74 @@
+# 20260901 cw_step_fine -- HOW the transition happens, at the symmetric point.
+# 
+# WHERE THIS SITS. The campaign scanned 0.3-30 tau_c at mc = 0.2610, where the two phases are
+# 2.7x apart in stability and everything below 22 tau_c collapses to passive. The 16-run
+# symmetry test then moved mc to 0.2100, equalising the phases (5.27 against 5.26 sigma at
+# 30 tau_c) and dropping the coexistence threshold to 10-15 tau_c -- but it only sampled four
+# tau_m. Between 0.3 and 10 the symmetric point runs from a mixed state to a nearly pure
+# ACTIVE one, the opposite direction to the campaign's, and nothing has looked at the shape of
+# that crossover.
+# 
+# THE GRID is 20 points log-uniform over 0.3-10 tau_c, a factor 1.2 apart, against the
+# campaign's 10 points over the same range at a factor 1.7. Three starts: both pure ones,
+# which bracket whatever is reachable, and one binary-noise start, because at the campaign's
+# mc the mixed starts NEVER chose the active phase and whether symmetry changes that is a
+# question about the size of the active basin rather than its existence.
+# 
+# WHAT THE SHAPE SHOULD SETTLE. Below the coexistence threshold there is one state and all
+# three starts must agree on it; the interesting content is then whether <chi> moves
+# CONTINUOUSLY as tau_m grows -- a single fixed point sliding -- or jumps. Above it the pure
+# starts separate. The campaign's own data says the single state slides (0.65 -> 0.99 over
+# 0.3-15 tau_c at mc = 0.2610), so a jump here would mean the symmetric point is qualitatively
+# different and not merely shifted.
+# 
+# THIS CASE: tau_m = 0.36 tau_c = 81 steps, tau_chi = 68 steps, start chi == 0 (active).
+# mc = 0.2100, pmem = 0.052177 (0.5 sigma_P), memory frozen for the first 2260
+# steps while the flow spins up.
+# SATURATION: record window 80000 steps against 15(tau_c + tau_m + tau_chi) = 5616 -- satisfied.
+model            = confluent-wet
+nsteps           = 100000
+nstart           = 0
+ninfo            = 4000
+LX               = 800
+LY               = 800
+bc               = 0
+seed             = 1001
+
+Gamma            = 0.05
+xi               = 0.4
+CC               = 0.00625
+LL               = 0.05
+tau              = 2.0
+rho              = 40
+friction         = 0.0
+zeta             = 0.2
+zeta0-frac       = 0.3
+
+angle            = 0
+noise            = 0.05
+initial-order    = 1
+director-config  = uniform
+defect-sep       = 0
+
+Dbio             = 0.005
+chi-config       = uniform
+chi0             = 0.0
+tau-chi          = 67.7
+chi-width        = 0.0
+switch-sign      = -1
+mc               = 0.21
+m0               = 0.3272
+mem-freeze-steps = 2260
+
+tau-m            = 81.2
+pmem             = 0.052177
+pmem-width       = 0.0
+
+ntracer          = 10
+tracer-count     = 2000
+
+nvideo           = 45
+video-stride     = 2
+video-p-scale    = 0.6261
+video-u-scale    = 0.1172
+frame-light      = 1
