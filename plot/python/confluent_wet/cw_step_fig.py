@@ -66,8 +66,12 @@ def panel(ax, data, gs, title, tau_x):
                 grid[i, k], drift[i, k] = cell(data[(g, key)])
 
     x = np.arange(len(gs))
+    # coolwarm, and the direction matters: it is the SAME map cw_stream renders the chi
+    # videos with, so blue is chi = 0 (active) and red is chi = 1 (passive) in the figures
+    # and in every clip alike. RdYlBu, the obvious default here, runs the other way and
+    # would have the map and the videos disagree about which colour is which phase.
     im = ax.pcolormesh(np.arange(len(gs) + 1) - 0.5, np.arange(len(STARTS) + 1) - 0.5,
-                       grid, cmap="RdYlBu", vmin=0.0, vmax=1.0, shading="flat")
+                       grid, cmap="coolwarm", vmin=0.0, vmax=1.0, shading="flat")
     for i in range(len(STARTS)):
         for k in range(len(gs)):
             if drift[i, k]:
@@ -75,7 +79,7 @@ def panel(ax, data, gs, title, tau_x):
                                            hatch="///", edgecolor="0.15", linewidth=0.0))
             if np.isfinite(grid[i, k]):
                 ax.text(k, i, f"{grid[i, k]:.2f}", ha="center", va="center", fontsize=6,
-                        color="0.1" if 0.25 < grid[i, k] < 0.75 else "w")
+                        color="0.1" if 0.2 < grid[i, k] < 0.8 else "w")
     if np.isfinite(tau_x) and gs[0] < tau_x < gs[-1]:
         xi = float(np.interp(np.log(tau_x), np.log(gs), x))
         ax.axvline(xi, color="k", lw=1.6, ls=":")
@@ -129,7 +133,8 @@ def main():
             ax.set_title(ttl + "  (no runs)", fontsize=9); ax.axis("off")
     if im is not None:
         cb = fig.colorbar(im, ax=axes, fraction=0.03, pad=0.01)
-        cb.set_label(r"record-window tail $\langle\chi\rangle$   (0 = active, 1 = passive)",
+        cb.set_label(r"record-window tail $\langle\chi\rangle$   "
+                     r"(blue = 0 = active, red = 1 = passive; same map as the videos)",
                      fontsize=8)
         cb.ax.tick_params(labelsize=7)
     fig.suptitle(f"step switch, floor 0.3 zeta -- fate against memory time.  "
@@ -140,7 +145,9 @@ def main():
 
     # ------------------------------------------------------------- the curves
     fig, ax = plt.subplots(figsize=(6.4, 4.0), constrained_layout=True)
-    colours = {"a": "#c0392b", "b": "#2471a3", "c1": "#7d3c98", "c2": "#b7950b"}
+    # a = the start that can hold the ACTIVE phase, so it takes the videos' active blue;
+    # b starts passive and takes their passive red. c1/c2 stay off that axis.
+    colours = {"a": "#2166ac", "b": "#b2182b", "c1": "#7d3c98", "c2": "#b7950b"}
     for data, gs, ls, tag in ((d1, g1, "-", "B1"), (d2, g2, "--", "B2")):
         for key, lab in STARTS:
             xs = [g for g in gs if (g, key) in data]

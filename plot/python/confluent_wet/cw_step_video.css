@@ -1,7 +1,8 @@
 :root{
   --bg:#0E1014; --panel:#171A21; --panel-2:#1E222B; --rule:#2A2F3A;
   --ink:#EDEFF3; --ink-2:#B9C0CC; --ink-3:#7C8494;
-  --act:#E2606B; --pas:#5C9BD6; --und:#D9A03C; --mix:#7C8494;
+  /* active = blue, passive = red: the direction coolwarm renders chi in every clip */
+  --act:#6FA8DC; --pas:#E2606B; --und:#D9A03C; --mix:#7C8494;
 }
 *{box-sizing:border-box}
 body{

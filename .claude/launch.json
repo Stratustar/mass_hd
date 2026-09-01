@@ -1,0 +1,53 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "cw-test",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8740",
+        "--directory",
+        "/Users/helu/Research/ActiveAdaptiveMatter/Code/results/20260828/cw_test"
+      ],
+      "port": 8740
+    },
+    {
+      "name": "cw-clean",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8732",
+        "--directory",
+        "/Users/helu/Research/ActiveAdaptiveMatter/Code/results/20260828/cw_clean"
+      ],
+      "port": 8732
+    },
+    {
+      "name": "cw-dashboard",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8731",
+        "--directory",
+        "/Users/helu/Research/ActiveAdaptiveMatter/Code/results/20260828/cw_loop_dashboard"
+      ],
+      "port": 8731
+    },
+    {
+      "name": "cw-step-video",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8750",
+        "--directory",
+        "/Users/helu/Research/ActiveAdaptiveMatter/Code/results/20260901_cw_step_video"
+      ],
+      "port": 8750
+    }
+  ]
+}

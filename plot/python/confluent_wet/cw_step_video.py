@@ -155,16 +155,24 @@ def main():
   <div class="eyebrow">confluent-wet · 2026-09-01 · 阶跃版力学记忆 · 帧距 0.4 τ_c</div>
   <h1>τ_m 扫描 · 视频对照台</h1>
   <p class="lede">每一行是一个 τ_m 下的四种初值，<b>可以整行同步播放</b>——这些视频的用处就是横向对照。
-  点画面可放大。色标全场统一：χ 与 m 在 [0,1]，P 在 ±3σ_P，|u| 在 [0, 3u_rms]。</p>
+  点画面可放大。色标全场统一：χ 与 m 在 [0,1]，P 在 ±3σ_P，|u| 在 [0, 3u_rms]。
+  <b>χ 是 coolwarm：蓝 = 0 = 活性，红 = 1 = 被动</b>，命运图用的是同一套方向。</p>
   <div class="scales">
     <div class="scale"><div class="k">τ_c(ζ)</div><div class="v">{cal['tau_c']:.0f} 步</div></div>
     <div class="scale"><div class="k">mc</div><div class="v">{cal['mc']:.4f}</div></div>
     <div class="scale"><div class="k">窗口 (f_floor, f_top)</div>
       <div class="v">({cal['f_floor']:.4f}, {cal['f_top']:.4f})</div></div>
     <div class="scale"><div class="k">平均场阈值</div><div class="v">{tau_x:.1f} τ_c</div></div>
-    <div class="scale"><div class="k">P 色标</div><div class="v">±{3*cal['sigma_P']:.4f}</div>
+  </div>
+  <div class="scales">
+    <div class="scale"><div class="k">χ · coolwarm</div>
+      <div class="v">0 活性 → 1 被动</div>
+      <div class="ramp" style="background:linear-gradient(90deg,#3b4cc0,#dddddd,#b40426)"></div></div>
+    <div class="scale"><div class="k">m · viridis</div><div class="v">0 → 1</div>
+      <div class="ramp" style="background:linear-gradient(90deg,#440154,#21918c,#fde725)"></div></div>
+    <div class="scale"><div class="k">P · RdBu_r</div><div class="v">±{3*cal['sigma_P']:.4f}</div>
       <div class="ramp" style="background:linear-gradient(90deg,#053061,#f7f7f7,#67001f)"></div></div>
-    <div class="scale"><div class="k">|u| 色标</div><div class="v">0 → {3*cal['u_rms']:.4f}</div>
+    <div class="scale"><div class="k">|u| · magma</div><div class="v">0 → {3*cal['u_rms']:.4f}</div>
       <div class="ramp" style="background:linear-gradient(90deg,#000004,#b5367a,#fcfdbf)"></div></div>
   </div>
   <div class="legend">
