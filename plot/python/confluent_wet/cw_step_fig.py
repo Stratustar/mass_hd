@@ -79,7 +79,10 @@ def panel(ax, data, gs, title, tau_x):
     if np.isfinite(tau_x) and gs[0] < tau_x < gs[-1]:
         xi = float(np.interp(np.log(tau_x), np.log(gs), x))
         ax.axvline(xi, color="k", lw=1.6, ls=":")
-        ax.text(xi, len(STARTS) - 0.35, r" $\tau_x$", fontsize=8, va="top")
+        # axis-fraction y so the label sits ABOVE the panel: the data axis is inverted and
+        # the bottom of it is where the x tick labels are, which is what it collided with.
+        ax.text(xi, 1.02, r"$\tau_x$", transform=ax.get_xaxis_transform(),
+                ha="center", va="bottom", fontsize=9)
     ax.set_xticks(x)
     ax.set_xticklabels([f"{g:g}" for g in gs], fontsize=7, rotation=90)
     ax.set_yticks(range(len(STARTS)))
@@ -145,13 +148,16 @@ def main():
                 ax.plot(xd, yd, "o", ms=7, mfc="none", mec="0.2", mew=1.0)
     if np.isfinite(tau_x):
         ax.axvline(tau_x, color="k", ls=":", lw=1.6)
-        ax.text(tau_x, 1.02, r"$\tau_x$", ha="center", fontsize=9)
+        ax.text(tau_x, 1.02, r"$\tau_x$", transform=ax.get_xaxis_transform(),
+                ha="center", va="bottom", fontsize=9)
     ax.set_xscale("log")
     ax.set_xlabel(r"$\tau_m/\tau_c$")
     ax.set_ylabel(r"tail $\langle\chi\rangle$")
     ax.set_ylim(-0.05, 1.05)
     ax.grid(alpha=0.25)
-    ax.legend(fontsize=6.5, ncol=2, loc="center left")
+    # centre, not an edge: once the runs separate the middle of the panel is the one band
+    # with no data in it, while every edge has either the active or the passive branch on it
+    ax.legend(fontsize=6.5, ncol=2, loc="center", framealpha=0.92)
     ax.set_title("open circles = still drifting (undecided)", fontsize=8)
     fig.savefig(os.path.join(a.out, "curves.png"), dpi=200)
     plt.close(fig)

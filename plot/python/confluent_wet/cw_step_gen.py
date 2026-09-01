@@ -125,6 +125,7 @@ class Calib:
             self.f_top = float(d["f_top"])
             self.f_floor = float(d["f_floor"])
             self.tau_x = float(d.get("tau_x", float("nan")))
+            self.pmem_on_edge = bool(d.get("pmem_on_scan_edge", False))
             self._rung = d.get("rungs")            # measured per-activity table, if present
             # L_P at full activity: sets the mixed start's correlation length
             top = (self._rung or {}).get("1", (self._rung or {}).get("1.0", {}))
@@ -138,6 +139,7 @@ class Calib:
             self.f_top = PRE["f_top"]
             self.f_floor = PRE["f_floor"]
             self.tau_x = float("nan")
+            self.pmem_on_edge = False
             self.L_P = float("nan")
             self._rung = None
 
@@ -400,6 +402,12 @@ def gen_b(out, cal, group):
         raise RuntimeError("the B stages must be generated from a MEASURED calib.json "
                            "(cw_step_pick.py), not from the wave-1 extrapolation: mc and "
                            "the two starts' m are all read off the measured f table.")
+    if cal.pmem_on_edge:
+        raise RuntimeError("calib.json reports the contrast maximum ON THE EDGE of the "
+                           "scanned pmem range: the threshold was chosen by the scan "
+                           "bounds, not by the f table, and mc, the window and tau_x are "
+                           "all truncated with it. Widen PMEM_COEFFS in cw_step_pick.py "
+                           "and re-run A3 before spending 100 runs on this.")
     grid = TAU_M_GRID if group == "b1" else TAU_M_GRID[1:]
     L_P = cal.L_P
     chilen = CHI_LENGTH_OVER_L_P * L_P

@@ -225,7 +225,18 @@ def main():
               f"{row['contrast']:9.4f} {Kmax:7.4f} {cst:6.3f} {mc:7.4f} {tau_x:7.2f}")
 
     pick = max(cands, key=lambda d: d["contrast"])
+    # A MAXIMUM ON THE EDGE IS NOT A MAXIMUM. The rule is "take the pmem with the largest
+    # f(zeta) - f(0.3 zeta)", and if that lands on the first or last coefficient scanned then
+    # the scan, not the physics, chose it -- the true optimum is outside and every downstream
+    # number (mc, the window, tau_x) inherits the truncation. Loud, because this runs
+    # unattended between two waves of a 100-run campaign.
+    edge = pick["coeff"] in (PMEM_COEFFS[0], PMEM_COEFFS[-1])
     print(f"\n    PICKED pmem = {pick['coeff']:g} sigma_P = {pick['pmem']:.5f}  (max contrast)")
+    if edge:
+        print(f"      *** WARNING: the contrast maximum sits ON THE EDGE of the scanned "
+              f"range {PMEM_COEFFS[0]:g}..{PMEM_COEFFS[-1]:g} sigma_P. The optimum is "
+              f"outside it and mc, the window and tau_x are all truncated by the scan. "
+              f"Widen PMEM_COEFFS and re-run before generating B. ***")
     print(f"      mc = {pick['mc']:.4f}   window (f_floor, f_top) = "
           f"({pick['f_floor']:.4f}, {pick['f_top']:.4f})")
     print(f"      K_max = {pick['K_max']:.4f} at chibar* = {pick['chi_star']:.3f}")
@@ -246,6 +257,7 @@ def main():
            "rungs": rungs, "checkpoint1": cp1,
            "f_table": table, "sigma_m": {"points": sm, "g": gs, "h": hs,
                                          "slope": slope},
+           "pmem_on_scan_edge": bool(edge),
            "note": "step campaign: chi-width = 0 and pmem-width = 0; the smoothing is "
                    "sigma_m, and tau_x is where it crosses K_max"}
     with open(a.out, "w") as fh:
