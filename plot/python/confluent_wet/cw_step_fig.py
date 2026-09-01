@@ -88,7 +88,7 @@ def panel(ax, data, gs, title, tau_x):
     ax.set_yticks(range(len(STARTS)))
     ax.set_yticklabels([lab for _, lab in STARTS], fontsize=7)
     ax.set_xlabel(r"$\tau_m/\tau_c$")
-    ax.set_title(title, fontsize=9)
+    ax.set_title(title, fontsize=9, pad=14)
     ax.invert_yaxis()
     return im
 
@@ -103,7 +103,14 @@ def main():
     os.makedirs(a.out, exist_ok=True)
     with open(a.calib) as fh:
         cal = json.load(fh)
-    tau_x = float(cal.get("tau_x", float("nan")))
+    # THE CUSP VALUE IS NOT THE PREDICTION. calib's `tau_x` comes from sigma_m < K_max with
+    # sigma_m held constant; `tau_x_coexistence` solves the same fixed point with sigma_m's
+    # measured activity dependence carried, which is the destabilising feedback the cusp
+    # cannot see. Use the latter when it exists and say which is drawn.
+    tau_x_cusp = float(cal.get("tau_x", float("nan")))
+    tau_x_co = cal.get("tau_x_coexistence")
+    tau_x = float(tau_x_co) if tau_x_co else tau_x_cusp
+    which = "coexistence" if tau_x_co else "cusp"
 
     d1, d2 = load(a.b1), load(a.b2)
     if not d1 and not d2:
@@ -125,8 +132,9 @@ def main():
         cb.set_label(r"record-window tail $\langle\chi\rangle$   (0 = active, 1 = passive)",
                      fontsize=8)
         cb.ax.tick_params(labelsize=7)
-    fig.suptitle(f"step switch, floor 0.3 zeta -- fate against memory time "
-                 f"(hatched = still drifting; tau_x = {tau_x:.2f} tau_c)", fontsize=9)
+    fig.suptitle(f"step switch, floor 0.3 zeta -- fate against memory time.  "
+                 f"hatched = still drifting;  dotted line = predicted threshold "
+                 f"{tau_x:.1f} tau_c ({which})", fontsize=9)
     fig.savefig(os.path.join(a.out, "fates.png"), dpi=200)
     plt.close(fig)
 
@@ -148,8 +156,8 @@ def main():
                 ax.plot(xd, yd, "o", ms=7, mfc="none", mec="0.2", mew=1.0)
     if np.isfinite(tau_x):
         ax.axvline(tau_x, color="k", ls=":", lw=1.6)
-        ax.text(tau_x, 1.02, r"$\tau_x$", transform=ax.get_xaxis_transform(),
-                ha="center", va="bottom", fontsize=9)
+        ax.text(tau_x, 1.01, r"$\tau_x$", transform=ax.get_xaxis_transform(),
+                ha="center", va="bottom", fontsize=8)
     ax.set_xscale("log")
     ax.set_xlabel(r"$\tau_m/\tau_c$")
     ax.set_ylabel(r"tail $\langle\chi\rangle$")
@@ -158,7 +166,8 @@ def main():
     # centre, not an edge: once the runs separate the middle of the panel is the one band
     # with no data in it, while every edge has either the active or the passive branch on it
     ax.legend(fontsize=6.5, ncol=2, loc="center", framealpha=0.92)
-    ax.set_title("open circles = still drifting (undecided)", fontsize=8)
+    ax.set_title(f"open circles = still drifting (undecided);  "
+                 f"dotted = predicted {tau_x:.1f} tau_c ({which})", fontsize=8)
     fig.savefig(os.path.join(a.out, "curves.png"), dpi=200)
     plt.close(fig)
     print(f"wrote {a.out}/fates.png and {a.out}/curves.png "
