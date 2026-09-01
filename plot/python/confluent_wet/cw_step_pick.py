@@ -87,6 +87,22 @@ def f_hard(part, pmem):
     return float(1.0 - np.interp(pmem, va, lv) / scale)
 
 
+def _tau_x_flat(sigma_m, Kmax, f_b):
+    """tau_x from the rung-AVERAGED h -- reported only so the correction is visible."""
+    gl, gr = 0.05, 200.0
+    if sigma_m(gl, f_b) < Kmax:
+        return float("nan")
+    if sigma_m(gr, f_b) > Kmax:
+        return float("inf")
+    for _ in range(80):
+        gm = math.sqrt(gl * gr)
+        if sigma_m(gm, f_b) > Kmax:
+            gl = gm
+        else:
+            gr = gm
+    return math.sqrt(gl * gr)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("a1")
@@ -177,22 +193,52 @@ def main():
     gs = sorted(set(round(d["g"], 3) for d in sm))
     hs = [float(np.mean([d["h"] for d in sm if abs(d["g"] - g) < 1e-3])) for g in gs]
     spread = [float(np.std([d["h"] for d in sm if abs(d["g"] - g) < 1e-3])) for g in gs]
-    print(f"    h(tau_m/tau_c): " +
+    print(f"    h(tau_m/tau_c), averaged over rungs: " +
           "  ".join(f"{g:g}->{h:.4f}+-{s:.4f}" for g, h, s in zip(gs, hs, spread)))
     lg, lh = np.log(gs), np.log(hs)
     slope = float(np.polyfit(lg, lh, 1)[0])
     print(f"    h ~ (tau_m/tau_c)^{slope:+.3f}   (a pure one-pole filter would give -0.5 "
           f"asymptotically; anything steeper is the Dbio smoothing)")
-    h_of = PchipInterpolator(lg, lh, extrapolate=True)
 
-    def sigma_m(g, f_b):
-        """sigma_m at tau_m = g tau_c and threshold-fraction f_b."""
-        return math.sqrt(max(f_b * (1 - f_b), 1e-12)) * math.exp(float(h_of(math.log(g))))
+    # h STILL DEPENDS ON ACTIVITY after sqrt(f(1-f)) is divided out, and the residual is not
+    # noise. What the diffusion removes is set by l_D/L_P, and L_P runs from 3.7 at full
+    # activity to 8.5 at the floor -- so the same tau_m smooths a low-activity field
+    # proportionally less. Measured: h(tau_m = tau_c) is 0.700 at a = 0.45 against 0.511 at
+    # a = 1.0, and the gap WIDENS with tau_m (0.096 vs 0.041 at 30 tau_c) exactly as
+    # l_D ~ sqrt(tau_m) says it should.
+    #
+    # This matters because the cusp does not sit at either rung: chibar* ~ 0.7 puts it at
+    # a* = r + (1-r)(1-chibar*) ~ 0.51. Averaging the rungs would evaluate sigma_m at the
+    # wrong activity and pull tau_x low. Interpolate in BOTH variables instead: log h is
+    # linear in log a to 1% over the five rungs measured at tau_m = 10 tau_c.
+    by_g = {}
+    for g in gs:
+        pts = sorted(((d["r"], d["h"]) for d in sm if abs(d["g"] - g) < 1e-3))
+        by_g[g] = (np.log([r for r, _ in pts]), np.log([h for _, h in pts]))
+    a_exp = {g: (float(np.polyfit(la, lh_, 1)[0]) if len(la) > 1 else 0.0)
+             for g, (la, lh_) in by_g.items()}
+    print(f"    residual activity dependence  h ~ a^p:  " +
+          "  ".join(f"{g:g}->{p:+.3f}" for g, p in a_exp.items()))
+
+    def h_at(g, a):
+        """log h interpolated in log a at each measured tau_m, then in log tau_m."""
+        per = []
+        for gg in gs:
+            la, lh_ = by_g[gg]
+            per.append(float(np.interp(math.log(a), la, lh_)) if len(la) > 1
+                       else float(lh_[0]))
+        return math.exp(float(PchipInterpolator(lg, per, extrapolate=True)(math.log(g))))
+
+    def sigma_m(g, f_b, a=None):
+        """sigma_m at tau_m = g tau_c, threshold-fraction f_b, activity ratio a."""
+        h = h_at(g, a) if a is not None else math.exp(float(
+            PchipInterpolator(lg, lh, extrapolate=True)(math.log(g))))
+        return math.sqrt(max(f_b * (1 - f_b), 1e-12)) * h
 
     # ---------------------------------------------------- A3: the cusp, mc and tau_x
     print(f"\nA3  the cusp for r = {R_FLOOR:g}")
     print(f"{'pmem':>6} {'f_top':>7} {'f_flr':>7} {'contrast':>9} {'K_max':>7} {'chi*':>6} "
-          f"{'mc':>7} {'tau_x':>7}")
+          f"{'a*':>6} {'mc':>7} {'tau_x':>7}")
     cands = []
     for row in table:
         order = np.argsort(ratios)
@@ -206,23 +252,30 @@ def main():
             if K > Kmax:
                 Kmax, cst, fst = K, cb, float(fi(aa))
         mc = fst + Kmax * zq(cst)
-        # tau_x: the tau_m at which the measured sigma_m falls through K_max
+        # tau_x: the tau_m at which sigma_m falls through K_max, evaluated AT THE CUSP --
+        # its own activity a_star as well as its own f. Both matter and they pull the same
+        # way: the cusp sits at lower activity than the top rung, where L_P is larger and
+        # the diffusion has removed less.
+        a_star = R_FLOOR + (1 - R_FLOOR) * (1 - cst)
         gl, gr = 0.05, 200.0
-        if sigma_m(gl, fst) < Kmax:
+        if sigma_m(gl, fst, a_star) < Kmax:
             tau_x = float("nan")               # already bistable at the shortest memory
-        elif sigma_m(gr, fst) > Kmax:
+        elif sigma_m(gr, fst, a_star) > Kmax:
             tau_x = float("inf")               # never realised in reach
         else:
             for _ in range(80):
                 gm = math.sqrt(gl * gr)
-                if sigma_m(gm, fst) > Kmax:
+                if sigma_m(gm, fst, a_star) > Kmax:
                     gl = gm
                 else:
                     gr = gm
             tau_x = math.sqrt(gl * gr)
-        cands.append(dict(row, K_max=Kmax, chi_star=cst, f_star=fst, mc=mc, tau_x=tau_x))
+        cands.append(dict(row, K_max=Kmax, chi_star=cst, f_star=fst, mc=mc, tau_x=tau_x,
+                          a_star=a_star,
+                          tau_x_rung_avg=_tau_x_flat(sigma_m, Kmax, fst)))
         print(f"{row['coeff']:6.2f} {row['f_top']:7.4f} {row['f_floor']:7.4f} "
-              f"{row['contrast']:9.4f} {Kmax:7.4f} {cst:6.3f} {mc:7.4f} {tau_x:7.2f}")
+              f"{row['contrast']:9.4f} {Kmax:7.4f} {cst:6.3f} {a_star:6.3f} {mc:7.4f} "
+              f"{tau_x:7.2f}")
 
     pick = max(cands, key=lambda d: d["contrast"])
     # A MAXIMUM ON THE EDGE IS NOT A MAXIMUM. The rule is "take the pmem with the largest
@@ -240,7 +293,9 @@ def main():
     print(f"      mc = {pick['mc']:.4f}   window (f_floor, f_top) = "
           f"({pick['f_floor']:.4f}, {pick['f_top']:.4f})")
     print(f"      K_max = {pick['K_max']:.4f} at chibar* = {pick['chi_star']:.3f}")
-    print(f"      tau_x = {pick['tau_x']:.2f} tau_c = {pick['tau_x']*tau_c:.0f} steps")
+    print(f"      tau_x = {pick['tau_x']:.2f} tau_c = {pick['tau_x']*tau_c:.0f} steps "
+          f"(at the cusp activity a* = {pick['a_star']:.3f}; averaging the rungs instead "
+          f"would have said {pick['tau_x_rung_avg']:.2f})")
 
     grid = [0.3, 0.45, 0.68, 1, 1.5, 2.2, 3.3, 4.7, 6.8, 10, 15, 22, 30]
     below = [g for g in grid if g < pick["tau_x"]]
@@ -254,6 +309,7 @@ def main():
            "pmem": pick["pmem"], "pmem_coeff": pick["coeff"], "mc": pick["mc"],
            "f_top": pick["f_top"], "f_floor": pick["f_floor"],
            "K_max": pick["K_max"], "chi_star": pick["chi_star"], "tau_x": pick["tau_x"],
+           "a_star": pick["a_star"], "tau_x_rung_avg": pick["tau_x_rung_avg"],
            "rungs": rungs, "checkpoint1": cp1,
            "f_table": table, "sigma_m": {"points": sm, "g": gs, "h": hs,
                                          "slope": slope},
