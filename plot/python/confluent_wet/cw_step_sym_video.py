@@ -61,14 +61,20 @@ def load_sym(d):
     return out
 
 
-def margin(d, arm):
-    """The phase's distance from the threshold, in its OWN sigma_m -- the whole point."""
+def margin(d):
+    """Distance from the threshold in the phase's OWN sigma_m -- the whole point.
+
+    Signed by where the run ENDED, not by where it started: a run that began at chi = 0 and
+    collapsed sits below mc, and reporting that as a negative "active margin" says the same
+    thing far less clearly than reporting how deep into the PASSIVE side it now is. The
+    quantity that matters is how many of its own sigma the settled phase keeps between
+    itself and the switch.
+    """
     s = d.get("settled") or {}
-    u = d["params"]
-    m, sd, mc = s.get("m_mean_tail", float("nan")), d["flow"]["std_m"], u["mc"]
+    m, sd, mc = s.get("m_mean_tail", float("nan")), d["flow"]["std_m"], d["params"]["mc"]
     if sd <= 0 or m != m:
         return float("nan")
-    return (m - mc) / sd if arm == "a" else (mc - m) / sd
+    return abs(m - mc) / sd
 
 
 def card(clip, d, arm, vdir, title, field="chi"):
@@ -79,7 +85,7 @@ def card(clip, d, arm, vdir, title, field="chi"):
     chi = f.get("chi_tail", s.get("chi_mean_tail", float("nan")))
     dep = f.get("departure_steps", float("nan"))
     life = f"{dep/u['tau_m']:.1f} τ_m" if dep == dep else "从未离开"
-    z = margin(d, arm)
+    z = margin(d)
     name = f"{clip}_{field}.mp4"
     if not os.path.exists(os.path.join(vdir, name)):
         return ('<figure class="card missing"><div class="ph">缺片段</div>'
