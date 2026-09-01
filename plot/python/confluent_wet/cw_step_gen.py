@@ -68,6 +68,7 @@ RECORD_FRAC = 0.8             # the record window is the closing 80%
 SATURATION_K = 15.0           # record window >= 15 (tau_c + tau_m + tau_chi)
 VIDEO_TAU_C = 0.2             # video frame spacing, in tau_c(zeta)
 INFO_TAU_C = 18.0             # full-frame spacing, in tau_c(zeta) -- ~25 frames per run
+MEM_FREEZE_TAU_C = 10.0       # hold the memory source off this long while the flow spins up
 TRACER_COUNT = 2000
 STORE_SIGMA = 6.0             # video stores +/- 6 sigma_P, the renderer displays +/- 3
 
@@ -77,7 +78,8 @@ ORDER = ["model", "nsteps", "nstart", "ninfo", "LX", "LY", "bc", "seed", "",
          "angle", "noise", "initial-order", "director-config", "defect-sep", "",
          "Dbio", "chi-config", "chi0", "chi-noise", "chi-length", "chi-seed",
          "chi-lo", "chi-hi", "m-lo", "m-hi", "chi-block",
-         "tau-chi", "chi-width", "switch-sign", "mc", "m0", "chi-freeze-steps", "",
+         "tau-chi", "chi-width", "switch-sign", "mc", "m0", "chi-freeze-steps",
+         "mem-freeze-steps", "",
          "tau-m", "pmem", "pmem-width", "",
          "ntracer", "tracer-count", "",
          "nvideo", "video-stride", "video-p-scale", "video-u-scale", "frame-light"]
@@ -369,6 +371,28 @@ def gen_a4(out, cal):
 TAU_M_GRID = [0.3, 0.45, 0.68, 1, 1.5, 2.2, 3.3, 4.7, 6.8, 10, 15, 22, 30]
 CHI_LENGTH_OVER_L_P = 2.0        # correlation length of the mixed start
 
+
+def mem_freeze(cal):
+    """How long to hold the memory source off, in steps.
+
+    THE FIRST B WAVE WAS INVALIDATED BY NOT HAVING THIS. Every run starts from rest, so
+    P = 0, so g = 0, and m decays as exp(-t/tau_m) until there is turbulence to feed it. The
+    active start sits at m0 = f(zeta) and crosses mc after tau_m ln(f/mc) = 0.226 tau_m,
+    while the flow needs 2-4 tau_c to reach u_rms -- the same number once tau_m ~ 10 tau_c.
+    Measured in the cancelled wave: the chi == 0 arm left its start at 0.239 tau_m
+    (tau_m = 10 tau_c) and 0.253 tau_m (15 tau_c) against the 0.226 pure decay predicts, and
+    all four starts collapsed onto the passive phase at every tau_m >= 10.
+
+    10 tau_c(zeta) is the compromise. It is 2.5-5x the spin-up at full activity and still
+    2.5 tau_c at the FLOOR, where the passive arm lives and the clock runs 4x slower. Longer
+    would be safer for the flow and worse for the mixed start, whose binary pattern diffuses
+    while it waits: over this window Dbio takes its correlation length from 2 L_P = 7.3 to
+    sqrt(7.3^2 + 2 Dbio t) = 9.9, a 35% coarsening that is physical (it is cell motility)
+    but which there is no reason to inflate. It also sits far inside the 20% warm-up that
+    the record window discards.
+    """
+    return int(round(MEM_FREEZE_TAU_C * cal.tau_c / 10.0)) * 10
+
 HDR_B = """20260901 cw_step_{grp} -- the tau_m scan, {tchi_rule}.
 
 THE QUESTION. Three initial conditions, one tau_m axis: where does each of them end up?
@@ -391,6 +415,15 @@ tau_m, which is the case where the phenotype lags as much as the memory does. Th
 prediction is that the FATE does not depend on which -- tau_x is set by sigma_m alone, and
 sigma_m does not know about tau_chi. A boundary that moves between B1 and B2 would refute
 that, and the drift flag is what separates a real shift from slow relaxation.
+
+THE MEMORY SOURCE IS HELD OFF for the first {freeze:.0f} steps = 10 tau_c. Without it the
+run measures its own spin-up rather than its physics: from rest P = 0, so g = 0, and m
+decays as exp(-t/tau_m) until there is turbulence to feed it, crossing mc after
+tau_m ln(f_top/mc) = {crossfrac:.3f} tau_m. The first wave of this group was cancelled for
+exactly this -- the active arm left its start at 0.239 tau_m against the 0.226 pure decay
+predicts, and every start at tau_m >= 10 tau_c collapsed onto the passive phase. Transport
+and diffusion of m stay on throughout, and a frozen m holds chi* fixed, so chi does not
+need a freeze of its own.
 
 THIS CASE: tau_m = {g:g} tau_c = {tm:.0f} steps, tau_chi = {tchi:.0f} steps, start {start}.
 {sat}"""
@@ -435,12 +468,15 @@ def gen_b(out, cal, group):
             SATURATION_K * (cal.tau_c + tm + tchi) / RECORD_FRAC / 10000)) * 10000)
         for name, over, what in starts:
             v = base(cal, 1.0, nsteps=nsteps, seed=1001,
-                     **{"tau-m": round(tm, 1), "tau-chi": round(tchi, 1)}, **over)
+                     **{"tau-m": round(tm, 1), "tau-chi": round(tchi, 1),
+                        "mem-freeze-steps": mem_freeze(cal)}, **over)
             hdr = HDR_B.format(
                 grp=group, tchi_rule=("tau_chi = 0.3 tau_c" if group == "b1"
                                       else "tau_chi = tau_m"),
                 taux_note=taux_note, f_top=cal.f_top, f_floor=cal.f_floor,
                 chilen=chilen, g=g, tm=tm, tchi=tchi, start=what,
+                freeze=mem_freeze(cal),
+                crossfrac=math.log(cal.f_top / cal.mc),
                 sat=saturation_note(nsteps, cal.tau_c, tm, tchi))
             made.append(write_case(
                 os.path.join(out, f"cw_step_{group}", f"tm{tag(g)}_{name}"), hdr, v))

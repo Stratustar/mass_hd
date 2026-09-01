@@ -21,6 +21,15 @@
 # sigma_m does not know about tau_chi. A boundary that moves between B1 and B2 would refute
 # that, and the drift flag is what separates a real shift from slow relaxation.
 # 
+# THE MEMORY SOURCE IS HELD OFF for the first 2260 steps = 10 tau_c. Without it the
+# run measures its own spin-up rather than its physics: from rest P = 0, so g = 0, and m
+# decays as exp(-t/tau_m) until there is turbulence to feed it, crossing mc after
+# tau_m ln(f_top/mc) = 0.226 tau_m. The first wave of this group was cancelled for
+# exactly this -- the active arm left its start at 0.239 tau_m against the 0.226 pure decay
+# predicts, and every start at tau_m >= 10 tau_c collapsed onto the passive phase. Transport
+# and diffusion of m stay on throughout, and a frozen m holds chi* fixed, so chi does not
+# need a freeze of its own.
+# 
 # THIS CASE: tau_m = 6.8 tau_c = 1534 steps, tau_chi = 68 steps, start binary noise, chi-seed 2.
 # SATURATION: record window 80000 steps against 15(tau_c + tau_m + tau_chi) = 27406 -- satisfied.
 model            = confluent-wet
@@ -62,6 +71,7 @@ chi-width        = 0.0
 switch-sign      = -1
 mc               = 0.261
 m0               = 0.5
+mem-freeze-steps = 2260
 
 tau-m            = 1533.8
 pmem             = 0.052177

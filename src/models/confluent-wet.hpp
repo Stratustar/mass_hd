@@ -272,6 +272,36 @@ protected:
    *  the prescribed chi pattern before the pattern is allowed to answer back. */
   unsigned chi_freeze_steps = 0;
 
+  /** Steps during which the MEMORY SOURCE is held off: transport and diffusion of m keep
+   *  running, but (g(P) - m)/tau_m is switched out, so m holds its initial value while the
+   *  flow spins up.
+   *
+   *  WHY THIS EXISTS. Every run starts from rest, so P = 0, so g = 0 -- and m therefore
+   *  DECAYS as exp(-t/tau_m) until there is turbulence to feed it. A start prepared at the
+   *  active phase's own fixed point m0 = f(zeta) crosses the threshold after
+   *
+   *      t = tau_m ln(f(zeta)/mc)
+   *
+   *  which at the 2026-09 operating point is 0.226 tau_m, against a flow that needs ~2-4
+   *  tau_c to reach u_rms. Below tau_m ~ 10 tau_c those two are the same number, and the
+   *  active start is thrown across the switch before the physics being studied has begun.
+   *  MEASURED, in the first B wave: the chi == 0 arm left its initial condition at 0.239
+   *  tau_m (tau_m = 10 tau_c) and 0.253 tau_m (15 tau_c), against the 0.226 that pure decay
+   *  predicts -- i.e. the transient, not the dynamics, decided the fate, and all four starts
+   *  collapsed onto the passive phase at every tau_m >= 10 tau_c.
+   *
+   *  FREEZING m ALONE IS ENOUGH. chi* = Theta(mc - m) is a function of m, so a frozen m
+   *  holds chi* fixed, and every start in the campaign is prepared with chi already equal
+   *  to chi*(m) -- so chi does not move either, without needing its own freeze. Its
+   *  transport and diffusion stay on, which is deliberate: those are physical, and a start
+   *  held rigid against a developing flow would be an initial condition the dynamics can
+   *  never produce.
+   *
+   *  This is the cheap equivalent of starting from a relaxed frame: it says the memory's
+   *  initial condition is set in a layer that is ALREADY flowing, which is the only
+   *  physically meaningful way to prescribe it. Default 0 reproduces every earlier run. */
+  unsigned mem_freeze_steps = 0;
+
   /** Memory relaxation time. Should sit well above the LOCAL acoustic time sqrt(3)*L_P set
    *  by the pressure correlation length -- NOT by the box size, which overestimates it by
    *  roughly an order of magnitude. L_P is measurable only from a run, so this is checked by
@@ -457,7 +487,8 @@ public:
        & auto_name(video_u_scale)
        & auto_name(frame_light)
        // appended 2026-09-01 (step-switch campaign); never reorder the entries above
-       & auto_name(chi_seed);
+       & auto_name(chi_seed)
+       & auto_name(mem_freeze_steps);
   }
 
   /** Serialization of the current frame (time snapshot)

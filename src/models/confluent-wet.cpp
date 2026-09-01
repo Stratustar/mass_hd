@@ -114,6 +114,9 @@ void ConfluentWet::Initialize()
   if(chi_freeze_steps && nsubsteps != 1)
     throw error_msg("confluent-wet: chi-freeze-steps counts Step() calls and is only equal "
                     "to runcard time at nsubsteps=1, got nsubsteps=", nsubsteps, ".");
+  if(mem_freeze_steps && nsubsteps != 1)
+    throw error_msg("confluent-wet: mem-freeze-steps counts Step() calls and is only equal "
+                    "to runcard time at nsubsteps=1, got nsubsteps=", nsubsteps, ".");
   // The video stream.
   if(nvideo)
   {
@@ -573,10 +576,14 @@ void ConfluentWet::UpdateNodeFields(unsigned k, bool first)
     + (use_switching && nstep_done >= chi_freeze_steps
        ? (ChiStar(m_k) - chi_k)/tau_chi : 0.);
 
+  // The memory source is held off for mem_freeze_steps while the flow spins up. Without
+  // it m decays from rest -- g(P) = 0 until there is turbulence -- and an active start
+  // prepared at m0 = f(zeta) crosses mc after tau_m ln(f/mc), which is the same number as
+  // the spin-up time at the campaign's tau_m. Transport and diffusion stay on.
   const double m_rhs =
     - ax*derivX(m, d, sB) - ay*derivY(m, d, sB)
     + Dbio*laplacian(m, d, sD)
-    + (MemoryTarget(k) - m_k)/tau_m;
+    + (nstep_done >= mem_freeze_steps ? (MemoryTarget(k) - m_k)/tau_m : 0.);
 
   // ---- lattice Boltzmann ---------------------------------------------------
   const double Fx = dxSxx + dySxy - friction*vx;
@@ -1039,6 +1046,10 @@ option_list ConfluentWet::GetOptions()
      "the prescribed activity in open-loop mode")
     ("chi-freeze-steps", opt::value<unsigned>(&chi_freeze_steps),
      "hold the phenotype switching source off for this many steps (transport stays on)")
+    ("mem-freeze-steps", opt::value<unsigned>(&mem_freeze_steps),
+     "hold the MEMORY source (g(P)-m)/tau_m off for this many steps while the flow spins "
+     "up, so m does not decay from rest before there is turbulence to feed it (transport "
+     "stays on; a frozen m holds chi* fixed too)")
     ("nvideo", opt::value<unsigned>(&nvideo),
      "steps between video-stream frames; 0 disables the stream")
     ("video-stride", opt::value<unsigned>(&video_stride),

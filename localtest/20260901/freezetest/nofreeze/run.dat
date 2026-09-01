@@ -1,0 +1,44 @@
+# 20260901 freezetest/nofreeze -- does mem-freeze-steps save the ACTIVE arm from the spin-up?
+#
+# From rest P = 0 so g = 0, and m decays as exp(-t/tau_m) until turbulence exists to feed
+# it. At the measured operating point the active start m0 = f(zeta) = 0.3272 crosses
+# mc = 0.2610 after tau_m ln(f/mc) = 0.226 tau_m, which at tau_m = 10 tau_c is 510 steps --
+# the same order as the spin-up. The first B wave measured the crossing at 0.239 tau_m.
+model            = confluent-wet
+nsteps           = 8000
+nstart           = 0
+ninfo            = 250
+LX               = 200
+LY               = 200
+bc               = 0
+seed             = 1001
+
+Gamma            = 0.05
+xi               = 0.4
+CC               = 0.00625
+LL               = 0.05
+tau              = 2.0
+rho              = 40
+friction         = 0.0
+zeta             = 0.2
+zeta0-frac       = 0.3
+
+angle            = 0
+noise            = 0.05
+initial-order    = 1
+director-config  = uniform
+defect-sep       = 0
+
+Dbio             = 0.005
+chi-config       = uniform
+chi0             = 0.0
+tau-chi          = 67.7
+chi-width        = 0.0
+switch-sign      = -1
+mc               = 0.261
+m0               = 0.3272
+mem-freeze-steps = 0
+
+tau-m            = 2255.6
+pmem             = 0.052177
+pmem-width       = 0.0
