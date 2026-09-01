@@ -201,9 +201,11 @@ def main():
   padding:13px 0; border-bottom:1px solid var(--rule)}
 .row6:last-child{border-bottom:none}
 .grid6{display:grid; grid-template-columns:repeat(6,1fr); gap:10px}
-@media (max-width:1400px){.grid6{grid-template-columns:repeat(3,1fr)}}
-@media (max-width:1080px){.grid6{grid-template-columns:repeat(2,1fr)}
-  .row6{grid-template-columns:1fr}}
+/* 2 columns, not 3, below the six-wide breakpoint: the pairing that matters is
+   (chi=0, chi=1) within ONE operating point, and a 3-wide fallback splits every pair
+   across two visual rows. */
+@media (max-width:1400px){.grid6{grid-template-columns:repeat(2,1fr)}}
+@media (max-width:1080px){.row6{grid-template-columns:1fr}}
 @media (max-width:560px){.grid6{grid-template-columns:1fr}}
 """
     page = ('<!doctype html>\n<html lang="zh"><head><meta charset="utf-8">'
