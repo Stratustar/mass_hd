@@ -159,8 +159,19 @@ def main():
     ap.add_argument("--pmem-coeffs", type=float, nargs="*",
                     default=[0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9])
     ap.add_argument("--pmem-width-coeffs", type=float, nargs="*",
-                    default=[0.05, 0.10, 0.15, 0.20],
-                    help="g(P) smoothing widths to scan, in units of sigma_P(zeta)")
+                    default=[0.05, 0.10, 0.15],
+                    help="g(P) smoothing widths to scan, in units of sigma_P(zeta). The "
+                         "0.20 that the 20260831 campaign ran at is dropped from the "
+                         "default scan: contrast f(zeta) - f(0.3 zeta) is FLAT below "
+                         "0.15 sigma_P (100%% of maximum at 0.10, 99%% at 0.15, 98%% at "
+                         "0.20, 93%% at 0.30, 42%% at 1.0), so there is no reason to run "
+                         "wider, and nothing to gain below 0.05. The obvious worry -- that "
+                         "a sharper g inflates std(m) and so makes the bistability harder "
+                         "to realise -- is measured to be small: sigma_g rises only 9%% "
+                         "from 0.20 to 0.02 sigma_P, because pmem = 0.8 sigma_P already "
+                         "sits in the tail where g is nearly binary (hard-step ceiling "
+                         "sqrt(f(1-f)) = 0.416 against 0.374 at 0.20). pmem-width is "
+                         "therefore free to be small; w_chi is NOT -- see cw_gen.")
     ap.add_argument("--std-m", type=float, default=0.012,
                     help="measured spatial std of m in a closed-loop run; sets the scale a "
                          "phase basin has to beat. Default is the 20260831 A4 value")
