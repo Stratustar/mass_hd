@@ -1,3 +1,5 @@
+#include <algorithm>
+
 #include "header.hpp"
 #include "models/confluent-wet.hpp"
 #include "error_msg.hpp"
@@ -59,9 +61,21 @@ void ConfluentWet::Initialize()
   if(init_order < 0.)
     throw error_msg("confluent-wet: initial-order must be non-negative.");
   if(chi_config != "uniform" && chi_config != "noise" &&
-     chi_config != "stripe"  && chi_config != "blocks")
-    throw error_msg("confluent-wet: chi-config must be 'uniform', 'noise', 'stripe' or "
-                    "'blocks', got '", chi_config, "'.");
+     chi_config != "stripe"  && chi_config != "blocks" &&
+     chi_config != "binary-noise")
+    throw error_msg("confluent-wet: chi-config must be 'uniform', 'noise', 'stripe', "
+                    "'blocks' or 'binary-noise', got '", chi_config, "'.");
+  if(chi_config == "binary-noise")
+  {
+    if(chi_length <= 0.)
+      throw error_msg("confluent-wet: chi-config=binary-noise needs chi-length > 0, the "
+                      "correlation length of the pattern; at 0 the median split would be "
+                      "applied to white noise and every node would be its own domain.");
+    if(DomainSize % 2)
+      throw error_msg("confluent-wet: chi-config=binary-noise splits the nodes exactly "
+                      "half and half at the median and needs an even node count, got ",
+                      DomainSize, ".");
+  }
   if(chi0 < 0. || chi0 > 1.)
     throw error_msg("confluent-wet: chi0 must lie in [0,1].");
   if(chi_lo < 0. || chi_lo > 1. || chi_hi < 0. || chi_hi > 1.)
@@ -119,9 +133,10 @@ void ConfluentWet::Initialize()
     throw error_msg("confluent-wet: m0 must lie in [0,1].");
   if(tau_m <= 0.)
     throw error_msg("confluent-wet: tau-m must be positive.");
-  if(chi_width <= 0.)
-    throw error_msg("confluent-wet: chi-width must be positive (a hard switch is "
-                    "chi-width -> 0, not 0).");
+  if(chi_width < 0.)
+    throw error_msg("confluent-wet: chi-width must be non-negative; 0 is the HARD STEP "
+                    "chi* = Theta(switch-sign*(m - mc)), matching pmem-width = 0 for "
+                    "g(P), and anything above it is the tanh.");
   if(switch_sign != 1 && switch_sign != -1)
     throw error_msg("confluent-wet: switch-sign must be +1 or -1.");
   if(pmem_width < 0.)
@@ -219,13 +234,52 @@ void ConfluentWet::Configure()
   ConfigureTracers();
 }
 
+void ConfluentWet::SmoothToLength(ScalarField& fld, double length)
+{
+  // Diffusion is the cheapest way to give white noise a prescribed correlation length:
+  // after time t the Gaussian kernel has width sqrt(2 D t), so smooth_rate*steps =
+  // length^2/2 lands on `length`. chi_tmp is borrowed as scratch -- it holds no state
+  // before the first update.
+  //
+  // ONLY VALID FOR chi. The boundary handler between sweeps is the model's own, which
+  // fills chi and m and nothing else; passing any other field would diffuse it against a
+  // stale halo. Both call sites pass chi.
+  constexpr double smooth_rate = 0.2;
+  const unsigned steps =
+    length > 0 ? static_cast<unsigned>(ceil(length*length/(2*smooth_rate))) : 0u;
+
+  for(unsigned s=0; s<steps; ++s)
+  {
+    for(unsigned k=0; k<DomainSize; ++k)
+      chi_tmp[k] = fld[k] + smooth_rate*laplacian(fld, get_neighbours(k), sD);
+    swap(fld.get_data(), chi_tmp.get_data());
+    // Go through the virtual boundary handler, never Apply*() directly: bc=0 has no
+    // boundary layer at all, so ApplyPBC() would index past the field.
+    BoundaryConditionsFields();
+  }
+}
+
 void ConfluentWet::ConfigurePhenotype()
 {
   for(unsigned k=0; k<DomainSize; ++k)
     m[k] = m0;
 
+  // A SEPARATE RNG STREAM FOR THE PHENOTYPE PATTERN, when asked for.
+  //
+  // Configure() lays the director down FIRST and spends one draw per node doing it, so two
+  // runs differing only in `seed` differ in Q as well as in chi. A campaign that puts
+  // several (chi, m) starts on ONE shared flow needs the opposite: hold `seed` fixed, vary
+  // `chi-seed`, and the initial Q is bit-identical across the set while the phenotype
+  // pattern changes. chi-seed = 0 keeps the historical behaviour -- the global stream,
+  // shared with the director -- so every earlier runcard reproduces exactly.
+  std::mt19937 chi_gen(chi_seed);
+  std::normal_distribution<double> chi_gauss(0., 1.);
+  const bool own_stream = chi_seed > 0;
+  auto rnd_normal = [&]() { return own_stream ? chi_gauss(chi_gen) : random_normal(); };
+  auto rnd_below  = [&](unsigned b) { return own_stream ? chi_gen()%b : randu()%b; };
+
   // ---- two-phase initial conditions ---------------------------------------
-  // Both set chi AND m, because a phase is a (chi, m) pair: preparing a half-box at
+  // All three set chi AND m, because a phase is a (chi, m) pair: preparing a half-box at
   // chi = chi_hi while leaving m at the global m0 starts that half OFF its own fixed
   // point, and it would then relax on tau_m towards the other phase whether or not the
   // physics is bistable -- which is exactly the question being asked.
@@ -253,14 +307,46 @@ void ConfluentWet::ConfigurePhenotype()
     // seed-dependent bias in the very quantity being measured.
     std::vector<unsigned char> hi(nb, 0);
     for(unsigned b=0; b<nb/2; ++b) hi[b] = 1;
-    for(unsigned b=nb; b>1; --b)         // Fisher-Yates, using the run's own seeded RNG
-      swap(hi[b-1], hi[randu()%b]);
+    for(unsigned b=nb; b>1; --b)         // Fisher-Yates
+      swap(hi[b-1], hi[rnd_below(b)]);
 
     for(unsigned k=0; k<DomainSize; ++k)
     {
       const unsigned b = (GetXPosition(k)/chi_block)*nby + GetYPosition(k)/chi_block;
       chi[k] = hi[b] ? chi_hi : chi_lo;
       m[k]   = hi[b] ? m_hi   : m_lo;
+    }
+    return;
+  }
+
+  if(chi_config == "binary-noise")
+  {
+    // The mixed start with a TUNABLE DOMAIN SIZE: a correlated Gaussian field of length
+    // chi_length, split at its own median into exactly half (chi_hi, m_hi) and half
+    // (chi_lo, m_lo). `blocks` puts the domains on a lattice and `stripe` puts one at the
+    // box scale; this is the same initial condition with neither artifact.
+    //
+    // THE SPLIT IS AT THE MEDIAN, NOT AT A FIXED VALUE, and that is the whole design. A
+    // fixed threshold would let the sample mean of the smoothed field -- a genuinely
+    // random number, since smoothing to length l leaves only ~(L/l)^2 independent patches
+    // -- scatter the initial area fraction from run to run. The loop is positive
+    // feedback, so that scatter would be amplified into exactly the quantity being
+    // measured. Sorting and cutting in the middle makes the area fraction 0.5 by
+    // construction, the same guarantee `blocks` gets from its shuffle.
+    for(unsigned k=0; k<DomainSize; ++k)
+      chi[k] = rnd_normal();
+    BoundaryConditionsFields();
+    SmoothToLength(chi, chi_length);
+
+    std::vector<unsigned> idx(DomainSize);
+    for(unsigned k=0; k<DomainSize; ++k) idx[k] = k;
+    std::sort(idx.begin(), idx.end(),
+              [&](unsigned p, unsigned q) { return chi[p] < chi[q]; });
+    for(unsigned i=0; i<DomainSize; ++i)
+    {
+      const bool hi = i >= DomainSize/2;
+      chi[idx[i]] = hi ? chi_hi : chi_lo;
+      m[idx[i]]   = hi ? m_hi   : m_lo;
     }
     return;
   }
@@ -272,26 +358,12 @@ void ConfluentWet::ConfigurePhenotype()
     return;
   }
 
-  // White noise smoothed by diffusion into a correlated field of the requested length,
-  // then rescaled to the requested standard deviation. chi_tmp is borrowed as scratch; it
-  // holds no state before the first update.
+  // White noise smoothed into a correlated field of the requested length, then rescaled to
+  // the requested standard deviation.
   for(unsigned k=0; k<DomainSize; ++k)
-    chi[k] = random_normal();
-  // Go through the virtual boundary handler, never Apply*() directly: bc=0 has no boundary
-  // layer at all, so ApplyPBC() would index past the field.
+    chi[k] = rnd_normal();
   BoundaryConditionsFields();
-
-  constexpr double smooth_rate = 0.2;
-  const unsigned smooth_steps =
-    chi_length > 0 ? static_cast<unsigned>(ceil(chi_length*chi_length/(2*smooth_rate))) : 0u;
-
-  for(unsigned s=0; s<smooth_steps; ++s)
-  {
-    for(unsigned k=0; k<DomainSize; ++k)
-      chi_tmp[k] = chi[k] + smooth_rate*laplacian(chi, get_neighbours(k), sD);
-    swap(chi.get_data(), chi_tmp.get_data());
-    BoundaryConditionsFields();
-  }
+  SmoothToLength(chi, chi_length);
 
   double mean = 0., var = 0.;
   for(unsigned k=0; k<DomainSize; ++k) mean += chi[k];
@@ -325,7 +397,13 @@ double ConfluentWet::Activity(unsigned k) const
 
 double ConfluentWet::ChiStar(double mm) const
 {
-  return .5*(1. + switch_sign*tanh((mm - mc)/chi_width));
+  // chi_width = 0 is the HARD STEP, chi* = Theta(s*(m - mc)); on the s = -1 branch the
+  // campaign runs, that reads chi* = Theta(mc - m). Written as a separate branch for the
+  // same reason MemoryTarget has one: tanh((m-mc)/w) has no w -> 0 limit a floating-point
+  // division can represent. The tie m == mc resolves to 0, matching g's P == pmem.
+  return chi_width > 0
+    ? .5*(1. + switch_sign*tanh((mm - mc)/chi_width))
+    : (switch_sign*(mm - mc) > 0. ? 1. : 0.);
 }
 
 double ConfluentWet::MemoryTarget(unsigned k) const
@@ -941,7 +1019,7 @@ option_list ConfluentWet::GetOptions()
     ("tau-chi", opt::value<double>(&tau_chi),
      "phenotype relaxation time (<= 0 freezes chi)")
     ("chi-width", opt::value<double>(&chi_width),
-     "width of the tanh in chi*(m)")
+     "width of the tanh in chi*(m); 0 is the hard step chi* = Theta(switch-sign*(m-mc))")
     ("mc", opt::value<double>(&mc),
      "memory threshold in chi*(m)")
     ("switch-sign", opt::value<int>(&switch_sign),
@@ -983,23 +1061,27 @@ option_list ConfluentWet::GetOptions()
     ("initial-order", opt::value<double>(&init_order),
      "initial nematic order amplitude")
     ("chi-config", opt::value<string>(&chi_config),
-     "phenotype init: uniform or noise")
+     "phenotype init: uniform, noise, binary-noise, stripe or blocks")
     ("chi0", opt::value<double>(&chi0),
      "initial mean phenotype")
     ("chi-noise", opt::value<double>(&chi_noise),
      "standard deviation of the initial phenotype noise")
     ("chi-length", opt::value<double>(&chi_length),
-     "correlation length of the initial phenotype noise")
+     "correlation length of the initial phenotype noise (noise and binary-noise)")
+    ("chi-seed", opt::value<unsigned>(&chi_seed),
+     "seed of the phenotype pattern alone; 0 (default) shares the run's global generator. "
+     "Non-zero decouples the pattern from the director, so a set of runs at one `seed` and "
+     "several `chi-seed` share their initial Q exactly")
     ("m0", opt::value<double>(&m0),
      "initial memory")
     ("chi-lo", opt::value<double>(&chi_lo),
-     "phenotype of the LOW phase (chi-config = stripe or blocks)")
+     "phenotype of the LOW phase (chi-config = stripe, blocks or binary-noise)")
     ("chi-hi", opt::value<double>(&chi_hi),
-     "phenotype of the HIGH phase (chi-config = stripe or blocks)")
+     "phenotype of the HIGH phase (chi-config = stripe, blocks or binary-noise)")
     ("m-lo", opt::value<double>(&m_lo),
-     "memory of the LOW phase (chi-config = stripe or blocks)")
+     "memory of the LOW phase (chi-config = stripe, blocks or binary-noise)")
     ("m-hi", opt::value<double>(&m_hi),
-     "memory of the HIGH phase (chi-config = stripe or blocks)")
+     "memory of the HIGH phase (chi-config = stripe, blocks or binary-noise)")
     ("chi-block", opt::value<unsigned>(&chi_block),
      "block edge in lattice units for chi-config = blocks; must divide LX and LY")
     ("ntracer", opt::value<unsigned>(&ntracer),

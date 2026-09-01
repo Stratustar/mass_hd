@@ -24,6 +24,10 @@
  *   D_t chi = (chi*(m) - chi)/tau_chi + Dbio lap chi , chi*(m)= .5(1+s tanh((m-mc)/chi_width))
  *   D_t m   = (g(P)    - m)/tau_m     + Dbio lap m   , g(P)   = .5(1+  tanh((P-pmem)/pmem_width))
  *
+ * Either width may be set to ZERO, which replaces its tanh by the hard step it is the
+ * smoothing of -- chi* = Theta(s(m - mc)) and g = Theta(P - pmem). The two are independent
+ * switches; the 2026-09 step campaign sets both.
+ *
  * LANDAU-DE GENNES CONVENTION. H = 2 CC term Q, matching go-or-grow / confluent-memory,
  * NOT the H = CC term Q of nematic.cpp. That file pairs H = CC term Q with a bulk stress
  * 1/2 CC term^2, but H = -dF/dQ forces f = 1/4 CC term^2 for that H: its isotropic stress
@@ -201,7 +205,19 @@ protected:
   double Dbio = 0.;
   /** Phenotype relaxation time. tau_chi <= 0 disables switching (frozen-chi control). */
   double tau_chi = 0.;
-  /** Width and centre of the tanh in chi*(m) */
+  /** Width and centre of the switch in chi*(m).
+   *
+   *  chi-width = 0 is the HARD STEP chi* = Theta(switch_sign*(m - mc)), which on the
+   *  s = -1 branch reads chi* = Theta(mc - m). It is a separate branch rather than a very
+   *  small width, exactly as pmem-width = 0 already is for g(P), because tanh((m-mc)/w)
+   *  has no w -> 0 limit a floating-point division can represent.
+   *
+   *  THE STEP IS NOT AN INFINITELY SHARP SWITCH. What smooths chi* once w_chi is gone is
+   *  the spatial spread of m itself: the space-averaged chi* is the CDF of m, whose
+   *  central slope corresponds to an effective width sqrt(2 pi)/2 * sigma_m. The model
+   *  therefore loses a parameter AND its sharpness follows tau_m automatically, since
+   *  sigma_m falls with tau_m -- which is what makes tau_m, and not a width, the single
+   *  knob that decides whether the bistability is realised. */
   double chi_width = 0.15, mc = 0.5;
   /** +1: sustained compression drives chi UP, towards passive/grow (contact inhibition,
    *  a self-limiting negative feedback since the activity is zeta*(1-chi)). -1 is the
@@ -212,6 +228,15 @@ protected:
    *  Modes:
    *    uniform   chi = chi0, m = m0 everywhere
    *    noise     correlated Gaussian noise of width chi_noise and length chi_length
+   *    binary-noise
+   *              the same correlated Gaussian field, but split at its OWN MEDIAN into
+   *              exactly half (chi_hi, m_hi) and half (chi_lo, m_lo). The mixed start
+   *              with a tunable domain size: `blocks` on a random lattice, `stripe` at
+   *              the box scale, this one at chi_length. Splitting at the median rather
+   *              than at a fixed value is what keeps the initial area fraction on the
+   *              50/50 line run after run -- a fixed threshold would let the sample mean
+   *              of the smoothed field scatter it, and that is the very quantity the
+   *              positive feedback amplifies.
    *    stripe    two half-boxes split along x: x < LX/2 carries (chi_hi, m_hi), the rest
    *              (chi_lo, m_lo).  The front-propagation geometry: one flat interface, two
    *              of them under periodic boundaries, and both phases prepared at their own
@@ -224,6 +249,16 @@ protected:
    *              of the mixed initial condition is that it starts on the 50/50 line). */
   std::string chi_config = "uniform";
   double chi0 = 0.5, chi_noise = 0., chi_length = 0.;
+  /** SEED OF THE PHENOTYPE PATTERN ALONE, 0 = share the run's global generator.
+   *
+   *  Configure() lays down the director FIRST and consumes one random draw per node doing
+   *  it, so two runs differing only in `seed` differ in Q as well as in chi. A campaign
+   *  that compares several (chi, m) starts against ONE shared flow needs the opposite:
+   *  fix `seed`, vary `chi-seed`, and the initial Q -- and hence the whole hydrodynamic
+   *  initial condition -- is bit-identical across the set while the phenotype pattern
+   *  changes. Non-zero draws the pattern from a local generator instead, which also
+   *  leaves the global stream untouched for everything downstream. */
+  unsigned chi_seed = 0;
   /** The two phases used by chi-config = stripe and blocks */
   double chi_lo = 0., chi_hi = 1., m_lo = 0., m_hi = 1.;
   /** Block edge in lattice units (blocks mode); must divide both LX and LY */
@@ -340,6 +375,8 @@ protected:
   void ComputeMaterialVelocity();
   /** Set up the initial phenotype and memory */
   void ConfigurePhenotype();
+  /** Diffuse a field until its correlation length is `length` (the noise initialisers) */
+  void SmoothToLength(ScalarField&, double length);
   /** chi*(m), the target of the phenotype relaxation */
   double ChiStar(double) const;
   /** g(P), the target of the memory relaxation */
@@ -418,7 +455,9 @@ public:
        & auto_name(video_stride)
        & auto_name(video_p_scale)
        & auto_name(video_u_scale)
-       & auto_name(frame_light);
+       & auto_name(frame_light)
+       // appended 2026-09-01 (step-switch campaign); never reorder the entries above
+       & auto_name(chi_seed);
   }
 
   /** Serialization of the current frame (time snapshot)
