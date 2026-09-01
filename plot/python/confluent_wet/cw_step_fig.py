@@ -155,9 +155,9 @@ def main():
             if xd:
                 ax.plot(xd, yd, "o", ms=7, mfc="none", mec="0.2", mew=1.0)
     if np.isfinite(tau_x):
+        # no glyph on the line here: the title already names the dotted line, and a tau_x
+        # label at the top of a log axis lands on top of it
         ax.axvline(tau_x, color="k", ls=":", lw=1.6)
-        ax.text(tau_x, 1.01, r"$\tau_x$", transform=ax.get_xaxis_transform(),
-                ha="center", va="bottom", fontsize=8)
     ax.set_xscale("log")
     ax.set_xlabel(r"$\tau_m/\tau_c$")
     ax.set_ylabel(r"tail $\langle\chi\rangle$")
