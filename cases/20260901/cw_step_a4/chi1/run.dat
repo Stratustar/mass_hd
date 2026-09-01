@@ -1,0 +1,72 @@
+# 20260901 cw_step_a4 -- stage A4: does the hard switch separate at all?
+# 
+# Two CLOSED-LOOP runs at tau_m = 30 tau_c, deep on the bistable side of the predicted
+# tau_x ~ 2.5 tau_c, started from the two ends:
+# 
+#   chi == 0, m == f(zeta)     the fully ACTIVE phase, at its own fixed point
+#   chi == 1, m == f(0.3 zeta) the PASSIVE phase, at its own
+# 
+# Both are EXACT fixed points of the hard step: f(zeta) = 0.3085 > mc = 0.2360 gives
+# chi* = Theta(mc - m) = 0, and f(0.3 zeta) = 0.0754 < mc gives chi* = 1. So the arms hold
+# unless the dynamics moves them, and the gate is whether sigma_m is small enough for the two
+# basins to exist.
+# 
+# REQUIRED: the two arms end more than 0.5 apart in <chi>. If they converge, tau_x is larger
+# than the closed form and the measured sigma_m say, and the B grid has to be re-centred
+# before 100 runs are spent on it.
+# 
+# WATCH THE APPROACH, NOT ONLY THE END. From rest P = 0, so g = 0 and m decays on tau_m
+# before there is any turbulence to feed it; crossing mc from f(zeta) takes
+# ln(f_top/mc) tau_m = 0.27 tau_m = 1787 steps against a flow that reaches
+# u_rms within ~2 tau_c. The margin is real but it is not large, and it is SMALLER than in the
+# tanh campaign, where mc sat further below f_top. A local L = 200 test never crossed. The
+# `departure_steps` field in part.json is what checks it per run.
+# 
+# THIS CASE: chi == 1, m == f(0.3 zeta): the PASSIVE arm.
+# SATURATION: record window 112000 steps against 15(tau_c + tau_m + tau_chi) = 104370 -- satisfied.
+model            = confluent-wet
+nsteps           = 140000
+nstart           = 0
+ninfo            = 4000
+LX               = 800
+LY               = 800
+bc               = 0
+seed             = 1001
+
+Gamma            = 0.05
+xi               = 0.4
+CC               = 0.00625
+LL               = 0.05
+tau              = 2.0
+rho              = 40
+friction         = 0.0
+zeta             = 0.2
+zeta0-frac       = 0.3
+
+angle            = 0
+noise            = 0.05
+initial-order    = 1
+director-config  = uniform
+defect-sep       = 0
+
+Dbio             = 0.005
+chi-config       = uniform
+chi0             = 1.0
+tau-chi          = 66.7
+chi-width        = 0.0
+switch-sign      = -1
+mc               = 0.236
+m0               = 0.0754
+
+tau-m            = 6669.0
+pmem             = 0.051715
+pmem-width       = 0.0
+
+ntracer          = 10
+tracer-count     = 2000
+
+nvideo           = 45
+video-stride     = 2
+video-p-scale    = 0.6206
+video-u-scale    = 0.1119
+frame-light      = 1

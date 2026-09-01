@@ -1,0 +1,72 @@
+# 20260901 cw_step_a2b -- stage A2b: sigma_m(tau_m), MEASURED.
+# 
+# The realisation threshold tau_x is defined by sigma_m(tau_x) = K_max, so the campaign's
+# central prediction is only as good as sigma_m(tau_m). The closed form
+# 
+#     sigma_m(tau) = sqrt(f(1-f)) sqrt(tau_c/(tau_c+tau))
+# 
+# is the variance of a one-pole filter driven by exponentially correlated noise, and it is
+# RIGHT -- at Dbio = 0 a local test measured 0.953 of it. At the campaign's Dbio = 0.005 it is
+# not: measured/closed came out 0.72 / 0.54 / 0.36 / 0.24 at tau_m/tau_c = 1 / 3 / 10 / 30,
+# because cell motility smooths m over l_D = sqrt(2 Dbio tau_m), which passes L_P at
+# tau_m ~ 6 tau_c and keeps growing. The measured exponent is -0.73 against the filter's -0.5.
+# 
+# Dbio is a PHYSICAL parameter here, not a numerical smoother, so the answer is to measure
+# sigma_m rather than to remove the diffusion. Open loop pins f, which is what makes the
+# tau_m dependence readable at all: in a closed-loop run f moves with chi and the two effects
+# are inseparable.
+# 
+# TWO RUNGS, because sigma_m depends on f through sqrt(f(1-f)) and the cusp sits near
+# a = 0.51, between them. a = 1.0 and 0.45 bracket it; A1 supplies the tau_m = 10 tau_c point
+# at both, so this stage runs only the other three.
+# 
+# THIS CASE: r = 1, zeta_eff = 0.2, tau_m = 30 tau_c = 6669 steps.
+# SATURATION: record window 80000 steps against 15(tau_c + tau_m + tau_chi) = 104370 -- SHORT by 1.3x.
+model            = confluent-wet
+nsteps           = 100000
+nstart           = 0
+ninfo            = 4000
+LX               = 800
+LY               = 800
+bc               = 0
+seed             = 1001
+
+Gamma            = 0.05
+xi               = 0.4
+CC               = 0.00625
+LL               = 0.05
+tau              = 2.0
+rho              = 40
+friction         = 0.0
+zeta             = 0.2
+zeta0-frac       = 0.3
+open-loop        = 1
+zeta-open        = 0.2
+
+angle            = 0
+noise            = 0.05
+initial-order    = 1
+director-config  = uniform
+defect-sep       = 0
+
+Dbio             = 0.005
+chi-config       = uniform
+chi0             = 0.5
+tau-chi          = 66.7
+chi-width        = 0.0
+switch-sign      = -1
+mc               = 0.236
+m0               = 0.3085
+
+tau-m            = 6669.0
+pmem             = 0.051715
+pmem-width       = 0.0
+
+ntracer          = 10
+tracer-count     = 2000
+
+nvideo           = 45
+video-stride     = 2
+video-p-scale    = 0.6206
+video-u-scale    = 0.1119
+frame-light      = 1

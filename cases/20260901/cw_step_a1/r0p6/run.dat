@@ -1,0 +1,82 @@
+# 20260901 cw_step_a1 -- stage A1: the ACTIVITY LADDER, open loop.
+# 
+# Five OPEN-LOOP runs. m and chi evolve as they will in production, but the activity is
+# pinned at zeta-open and chi is not fed back, so this measures the layer's RESPONSE to a
+# prescribed activity rather than a fixed point. It produces every number the closed loop
+# needs and cannot guess:
+# 
+#   tau_c(zeta)              the 1/e decorrelation time of P ALONG A TRACER at the top rung,
+#                            and from here on THE time unit of the campaign. A material clock,
+#                            not an Eulerian one: the memory integrates g(P) following a cell.
+#   sigma_P(zeta), u_rms(zeta)   the fixed colour scales of every production video
+#   f(pmem; zeta_eff)        with a HARD g, simply the fraction of time a lattice point spends
+#                            above pmem. Stage A3 solves chibar = Phi((mc - f(a(chibar)))/sigma_m)
+#                            on it -- the step version of the fixed-point equation, in which
+#                            the smoothing comes from sigma_m and not from a switch width.
+# 
+# CHECKPOINT 1 is the r = 0.30 rung, the activity FLOOR the passive phenotype will sit at. It
+# must still be turbulent -- a stable non-zero defect count -- and tau_c(0.3 zeta)/tau_c(zeta)
+# must stay under 5. The wave-1 extrapolation predicts 3.98. If either fails the floor rises
+# to 0.4 zeta and the ladder is re-run: a passive phase that has stopped stirring generates no
+# pressure, can never be re-excited, and is an absorbing state rather than a phase.
+# 
+# THE SECOND FLOOR WAS CANCELLED. This campaign was designed with two floors, 0.3 and 0.6
+# zeta, to test the 1/(1-r)^2 scaling of tau_x. The r = 0.6 half is dropped: its tau_x lands
+# near 100 tau_c, outside any tau_m the run length can reach, so the whole group would have
+# returned "mixed" at every point. The ladder still spans a = 1.0 down to 0.3 because A3 needs
+# df/da across the REACHABLE activity range, which is exactly [r, 1] = [0.3, 1].
+# 
+# THIS CASE: r = zeta_eff/zeta = 0.6, zeta_eff = 0.12, A = zeta_eff/CC = 19.2.
+# Predicted tau_c = 399 steps (200 tau_c of record), sigma_P = 0.0661.
+# 
+# VIDEO SCALES are PER RUNG here and predicted, because the ladder spans a factor 3 in
+# sigma_P and one scale would waste most of the byte at the bottom. From A4 on they are the
+# single measured pair, so that production runs stay comparable by eye.
+model            = confluent-wet
+nsteps           = 100000
+nstart           = 0
+ninfo            = 4000
+LX               = 800
+LY               = 800
+bc               = 0
+seed             = 1001
+
+Gamma            = 0.05
+xi               = 0.4
+CC               = 0.00625
+LL               = 0.05
+tau              = 2.0
+rho              = 40
+friction         = 0.0
+zeta             = 0.2
+zeta0-frac       = 0.3
+open-loop        = 1
+zeta-open        = 0.12
+
+angle            = 0
+noise            = 0.05
+initial-order    = 1
+director-config  = uniform
+defect-sep       = 0
+
+Dbio             = 0.005
+chi-config       = uniform
+chi0             = 0.5
+tau-chi          = 66.7
+chi-width        = 0.0
+switch-sign      = -1
+mc               = 0.236
+m0               = 0.3085
+
+tau-m            = 2223.0
+pmem             = 0.051715
+pmem-width       = 0.0
+
+ntracer          = 15
+tracer-count     = 2000
+
+nvideo           = 80
+video-stride     = 2
+video-p-scale    = 0.3965
+video-u-scale    = 0.101
+frame-light      = 1
