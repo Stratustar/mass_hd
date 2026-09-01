@@ -34,8 +34,10 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt          # noqa: E402
 import numpy as np                       # noqa: E402
 
-STARTS = [("a", "χ ≡ 0", "#2166ac"), ("b", "χ ≡ 1", "#b2182b"),
-          ("c1", "二值噪声", "#7d3c98")]
+# Labels are ASCII/Greek only: the cluster's matplotlib has DejaVu Sans and no CJK
+# glyphs, so any Chinese in a figure renders as boxes -- and this runs unattended.
+STARTS = [("a", "chi = 0", "#2166ac"), ("b", "chi = 1", "#b2182b"),
+          ("c1", "binary noise", "#7d3c98")]
 FATE_MARK = {"active": "o", "passive": "s", "mixed": "^", "undecided": "D"}
 
 
@@ -110,12 +112,12 @@ def main():
                           mfc="none" if r["drift"] else col, zorder=3)
     if thr:
         ax[0, 0].axvline(thr, color="k", ls=":", lw=1.4)
-        ax[0, 0].text(thr, 1.02, f"分离 {thr:g}", transform=ax[0, 0].get_xaxis_transform(),
+        ax[0, 0].text(thr, 1.02, f"split {thr:g}", transform=ax[0, 0].get_xaxis_transform(),
                       ha="center", va="bottom", fontsize=8)
     ax[0, 0].set_ylabel(r"tail $\langle\chi\rangle$")
     ax[0, 0].set_ylim(-0.05, 1.05)
     ax[0, 0].legend(fontsize=8, loc="center left")
-    ax[0, 0].set_title(f"命运（空心 = 仍在漂移）　mc = {mc:g}", fontsize=9)
+    ax[0, 0].set_title(f"fate  (open marker = still drifting)   mc = {mc:g}", fontsize=9)
 
     # 2. the margin -- the quantity the symmetric point equalises
     for k, lab, col in STARTS:
@@ -124,22 +126,24 @@ def main():
                       label=lab)
     ax[0, 1].axhline(1.0, color="0.5", ls="--", lw=1)
     ax[0, 1].set_ylabel(r"$|\langle m\rangle - m_c| / \mathrm{std}(m)$")
-    ax[0, 1].set_title("稳定性余量（该相自己的 σ_m）", fontsize=9)
+    ax[0, 1].set_title(r"stability margin, in each phase's own $\sigma_m$", fontsize=9)
     ax[0, 1].legend(fontsize=8)
 
     # 3. std(m) against the one-pole closed form
     for k, lab, col in STARTS:
         x = [g for g in gs if (g, k) in R]
         ax[1, 0].plot(x, [R[(g, k)]["sd"] for g in x], "-o", color=col, lw=1.4, ms=3.5,
-                      label=f"{lab} 实测")
+                      label=f"{lab}, measured")
     x0 = [g for g in gs if (g, "a") in R]
     cl = [R[(g, "a")]["closed"] for g in x0]
     if any(v == v for v in cl):
-        ax[1, 0].plot(x0, cl, "--", color="0.45", lw=1.2, label="单极点闭式 (χ≡0 的 f)")
+        ax[1, 0].plot(x0, cl, "--", color="0.45", lw=1.2,
+                      label=r"one-pole closed form, $f$ of the $\chi=0$ arm")
     ax[1, 0].set_yscale("log")
     ax[1, 0].set_ylabel(r"$\mathrm{std}(m)$")
     ax[1, 0].set_xlabel(r"$\tau_m/\tau_c$")
-    ax[1, 0].set_title("记忆涨落：实测 vs 闭式（差值即 Dbio 的平滑）", fontsize=9)
+    ax[1, 0].set_title("memory fluctuation: measured vs closed form "
+                       "(the gap is the Dbio smoothing)", fontsize=9)
     ax[1, 0].legend(fontsize=7)
 
     # 4. <m> against the threshold
@@ -153,13 +157,14 @@ def main():
     ax[1, 1].axhline(cal["f_floor"], color="0.6", ls="--", lw=1)
     ax[1, 1].set_ylabel(r"tail $\langle m\rangle$")
     ax[1, 1].set_xlabel(r"$\tau_m/\tau_c$")
-    ax[1, 1].set_title("记忆本身（虚线 = f_floor, f_top）", fontsize=9)
+    ax[1, 1].set_title("the memory itself  (dashed: f_floor, f_top)", fontsize=9)
     ax[1, 1].legend(fontsize=8)
 
     for axx in ax.ravel():
         axx.set_xscale("log")
         axx.grid(alpha=0.25)
-    fig.suptitle("阶跃开关 · 对称工作点 mc = 0.21 · τ_m 细扫描 0.3–10 τ_c", fontsize=10)
+    fig.suptitle(r"step switch, symmetric point $m_c$ = 0.21 -- fine $\tau_m$ scan, "
+                 r"0.3 to 10 $\tau_c$", fontsize=10)
     fig.savefig(os.path.join(a.out, "fine.png"), dpi=200)
     plt.close(fig)
 
