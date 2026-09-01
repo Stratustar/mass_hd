@@ -87,6 +87,49 @@ def f_hard(part, pmem):
     return float(1.0 - np.interp(pmem, va, lv) / scale)
 
 
+ACTIVE_ROOT, PASSIVE_ROOT = 0.2, 0.8      # what "the two phases coexist" has to mean
+
+
+def coexists(g, f_of, sigma_m, mc, r, n=2001):
+    """Does tau_m = g tau_c admit BOTH an active and a passive stable phase?
+
+    THE FIXED POINT WITH sigma_m CARRIED. chibar = Phi((mc - f(a))/sigma_m(g, a)) with
+    a = r + (1-r)(1-chibar). The cusp condition sigma_m < K_max that picks mc treats
+    sigma_m as a constant, and it is NOT one: sigma_m grows as chi rises, because the
+    activity falls, L_P grows, and the diffusion removes proportionally less. That is a
+    DESTABILISING feedback the cusp analysis cannot see, and it is why the cusp's tau_x
+    came out well below the measured one.
+
+    AND THREE ROOTS IS NOT ENOUGH. Carrying sigma_m(a) produces triplets that sit entirely
+    inside the passive branch (0.73/0.83/0.97 at 4.7 tau_c) -- real structure, perhaps, but
+    not the coexistence the campaign is about. The test is that a stable root exists below
+    ACTIVE_ROOT and another above PASSIVE_ROOT.
+
+    chibar = 1 is an exact fixed point whenever f(r) < mc, since Phi of a large positive
+    number is 1; it is counted as the passive root when it is stable, which a sign change
+    cannot detect at the boundary.
+    """
+    x = np.linspace(0.0, 1.0, n)
+    F = np.array([norm_cdf((mc - f_of(r + (1 - r) * (1 - v))) /
+                           sigma_m(g, r + (1 - r) * (1 - v))) for v in x])
+    d = F - x
+    stable = []
+    for i in range(n - 1):
+        if d[i] * d[i + 1] < 0:
+            t = d[i] / (d[i] - d[i + 1])
+            root = float(x[i] + t * (x[i + 1] - x[i]))
+            if d[i] > 0 and d[i + 1] < 0:          # F crosses from above: stable
+                stable.append(root)
+    if d[-1] >= -1e-9 and F[-1] > 1 - 1e-6:        # chibar = 1 is a stable boundary root
+        stable.append(1.0)
+    return (any(v < ACTIVE_ROOT for v in stable) and
+            any(v > PASSIVE_ROOT for v in stable)), stable
+
+
+def norm_cdf(z):
+    return Phi(float(z))
+
+
 def _tau_x_flat(sigma_m, Kmax, f_b):
     """tau_x from the rung-AVERAGED h -- reported only so the correction is visible."""
     gl, gr = 0.05, 200.0
@@ -297,12 +340,48 @@ def main():
           f"(at the cusp activity a* = {pick['a_star']:.3f}; averaging the rungs instead "
           f"would have said {pick['tau_x_rung_avg']:.2f})")
 
-    grid = [0.3, 0.45, 0.68, 1, 1.5, 2.2, 3.3, 4.7, 6.8, 10, 15, 22, 30]
-    below = [g for g in grid if g < pick["tau_x"]]
+    # ---- the same question with sigma_m(a) carried, which is the honest version
+    order = np.argsort(ratios)
+    fi_pick = PchipInterpolator(ratios[order], np.asarray(pick["f"])[order],
+                                extrapolate=True)
+
+    def f_of_a(a):
+        return float(fi_pick(a))
+
+    def sig(g, a):
+        return sigma_m(g, f_of_a(a), a)
+
+    grid = [0.3, 0.45, 0.68, 1, 1.5, 2.2, 3.3, 4.7, 6.8, 10, 15, 22, 30, 47, 68, 100]
+    print("\n    the fixed point with sigma_m(tau_m, a) CARRIED, not frozen at the cusp:")
+    print(f"    {'tau_m/tau_c':>11} {'sigma_m(a=1)':>13} {'coexists':>9}   stable roots")
+    tau_x_co = None
+    for g in grid:
+        ok, st = coexists(g, f_of_a, sig, pick["mc"], R_FLOOR)
+        if ok and tau_x_co is None:
+            tau_x_co = g
+        print(f"    {g:11g} {sig(g, 1.0):13.4f} {str(ok):>9}   "
+              + "  ".join(f"{v:.4f}" for v in st))
+    if tau_x_co:
+        lo, hi = 1.0, float(tau_x_co)
+        for _ in range(40):
+            mid = math.sqrt(lo * hi)
+            if coexists(mid, f_of_a, sig, pick["mc"], R_FLOOR)[0]:
+                hi = mid
+            else:
+                lo = mid
+        tau_x_co = math.sqrt(lo * hi)
+        print(f"\n    COEXISTENCE THRESHOLD = {tau_x_co:.1f} tau_c, against the cusp's "
+              f"{pick['tau_x']:.2f}. The cusp treats sigma_m as constant; carrying its "
+              f"activity dependence -- a destabilising feedback -- moves the threshold up.")
+    else:
+        print("\n    NO COEXISTENCE anywhere on the grid with sigma_m carried")
+
+    ref = tau_x_co if tau_x_co else pick["tau_x"]
+    below = [g for g in grid if g < ref]
     print(f"      the B grid straddles it: {len(below)} points below, "
-          f"{len(grid)-len(below)} above; nearest neighbours "
-          f"{below[-1] if below else '-'} and "
-          f"{[g for g in grid if g >= pick['tau_x']][0] if len(below) < len(grid) else '-'}")
+          f"{len([g for g in grid if g >= ref and g <= 30])} above (within the scanned "
+          f"0.3-30); nearest neighbours {below[-1] if below else '-'} and "
+          f"{[g for g in grid if g >= ref][0] if len(below) < len(grid) else '-'}")
 
     out = {"tau_c": tau_c, "sigma_P": sigma_P, "u_rms": u_rms,
            "zeta": zeta, "zeta0_frac": R_FLOOR,
@@ -310,6 +389,7 @@ def main():
            "f_top": pick["f_top"], "f_floor": pick["f_floor"],
            "K_max": pick["K_max"], "chi_star": pick["chi_star"], "tau_x": pick["tau_x"],
            "a_star": pick["a_star"], "tau_x_rung_avg": pick["tau_x_rung_avg"],
+           "tau_x_coexistence": tau_x_co,
            "rungs": rungs, "checkpoint1": cp1,
            "f_table": table, "sigma_m": {"points": sm, "g": gs, "h": hs,
                                          "slope": slope},
