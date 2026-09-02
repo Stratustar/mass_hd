@@ -133,7 +133,7 @@ figcaption{{color:var(--dim);text-align:center}}
 input[type=range]{{flex:1;min-width:220px;accent-color:var(--on)}}
 #an{{display:none;gap:16px;flex-wrap:wrap;justify-content:center}}
 #an[data-on]{{display:flex}}
-#an img{{max-width:640px;width:100%;height:auto;background:#fff;border-radius:3px}}
+#an img{{max-width:580px;width:100%;height:auto;background:#fff;border-radius:3px}}
 </style></head><body><div class="wrap">
 
 <div class="bar"><span class="lab">videos&nbsp; &tau;_m/&tau;_c:</span>{buttons}
