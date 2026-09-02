@@ -168,8 +168,12 @@ function vids(){{return [...document.querySelectorAll('.pane[data-on] video')]}}
 function attach(v,t){{
   if(!v.src&&v.dataset.src){{v.src=v.dataset.src;v.preload='auto';v.load();}}
   v.playbackRate=rate;
-  const go=()=>{{if(v.duration)v.currentTime=t; if(playing)v.play().catch(()=>{{}});}};
-  if(v.readyState>=2)go(); else v.addEventListener('canplay',go,{{once:true}});
+  // only the seek needs an event, and it needs metadata rather than data. STARTING is left
+  // to the watchdog below: `canplay` fires once, so a listener added after it has already
+  // gone by never runs -- which is exactly what happens when a pane is opened (fires) and
+  // play is pressed a moment later (too late).
+  const go=()=>{{if(v.duration)v.currentTime=t;}};
+  if(v.readyState>=1)go(); else v.addEventListener('loadedmetadata',go,{{once:true}});
 }}
 function toggle(g){{
   an.removeAttribute('data-on'); anb.removeAttribute('data-on');
@@ -194,14 +198,8 @@ anb.addEventListener('click',()=>{{
 }});
 pp.addEventListener('click',()=>{{
   const vs=vids(); if(!vs.length)return;
-  if(playing){{vs.forEach(v=>v.pause()); playing=false; pp.textContent='play';}}
-  else{{
-    playing=true; pp.textContent='pause';
-    // preload is "none" until a pane opens, so a clip asked to play right after its src
-    // was set has nothing buffered and play() rejects; wait for canplay instead
-    vs.forEach(v=>{{const go=()=>v.play().catch(()=>{{}});
-      if(v.readyState>=2)go(); else v.addEventListener('canplay',go,{{once:true}});}});
-  }}
+  playing=!playing; pp.textContent=playing?'pause':'play';
+  if(!playing)vs.forEach(v=>v.pause());   // starting is the watchdog's job
 }});
 sk.addEventListener('input',()=>{{
   const f=sk.value/1000;
@@ -213,7 +211,11 @@ document.querySelectorAll('.sp').forEach(b=>b.addEventListener('click',()=>{{
   vids().forEach(v=>v.playbackRate=rate);
 }}));
 setInterval(()=>{{
-  const vs=vids(), v=vs[0]; if(!v||!v.duration)return;
+  const vs=vids();
+  // start anything that should be running and is not: a clip still buffering when play was
+  // pressed, or one whose pane was opened afterwards. Self-healing, so no event can be missed.
+  if(playing)vs.forEach(v=>{{if(v.paused&&v.readyState>=2)v.play().catch(()=>{{}})}});
+  const v=vs[0]; if(!v||!v.duration)return;
   sk.value=Math.round(1000*v.currentTime/v.duration);
   tt.textContent=v.currentTime.toFixed(1)+'s';
   // independently decoded clips drift apart over an 89 s loop; pull them back
