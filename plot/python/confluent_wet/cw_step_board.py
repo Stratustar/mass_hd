@@ -100,7 +100,9 @@ def main():
             cells.append(f'<figure><video data-src="clips/{hit[0]}" muted playsinline loop '
                          f'preload="none"></video><figcaption>{lab}</figcaption></figure>')
         if cells:
-            panes.append(f'<div class="pane" data-g="{g:g}">{"".join(cells)}</div>')
+            panes.append(f'<div class="pane" data-g="{g:g}">'
+                         f'<div class="pg">&tau;_m/&tau;_c = {g:g}</div>'
+                         f'{"".join(cells)}</div>')
 
     buttons = "".join(f'<button class="tb" data-g="{g:g}">{g:g}</button>' for g in gs)
 
@@ -122,8 +124,10 @@ button{{background:var(--panel);color:var(--fg);border:1px solid var(--line);bor
 button:hover{{border-color:var(--on)}}
 button[data-on]{{border-color:var(--on);color:var(--on)}}
 .sep{{flex:1}}
-.pane{{display:none;grid-template-columns:repeat(3,1fr);gap:12px}}
+.pane{{display:none;grid-template-columns:repeat(3,1fr);gap:8px 12px}}
 .pane[data-on]{{display:grid}}
+.pg{{grid-column:1/-1;color:var(--dim);border-top:1px solid var(--line);padding-top:8px}}
+.panes{{display:flex;flex-direction:column;gap:14px}}
 @media(max-width:900px){{.pane[data-on]{{grid-template-columns:1fr}}}}
 figure{{margin:0;display:flex;flex-direction:column;gap:6px}}
 video{{width:100%;display:block;background:#000;aspect-ratio:400/422;object-fit:contain;
@@ -148,7 +152,7 @@ input[type=range]{{flex:1;min-width:220px;accent-color:var(--on)}}
   <button class="sp" data-r="2">2&times;</button>
   <button class="sp" data-r="4">4&times;</button></div>
 
-{"".join(panes)}
+<div class="panes">{"".join(panes)}</div>
 
 <div id="an"><img alt="mean chi against tau_m" src="data:image/png;base64,{imgs['chi']}">
 <img alt="std chi against tau_m" src="data:image/png;base64,{imgs['std']}"></div>
@@ -157,52 +161,66 @@ input[type=range]{{flex:1;min-width:220px;accent-color:var(--on)}}
 const panes=[...document.querySelectorAll('.pane')],tb=[...document.querySelectorAll('.tb')];
 const an=document.getElementById('an'),anb=document.getElementById('anb');
 const pp=document.getElementById('pp'),sk=document.getElementById('sk'),tt=document.getElementById('tt');
-let rate=1,cur=null;
+let rate=1,playing=false;
 
-function vids(){{return cur?[...cur.querySelectorAll('video')]:[]}}
-function show(g){{
-  an.removeAttribute('data-on'); anb.removeAttribute('data-on');
-  panes.forEach(p=>p.removeAttribute('data-on'));
-  tb.forEach(b=>b.toggleAttribute('data-on',b.dataset.g===g));
-  cur=panes.find(p=>p.dataset.g===g)||null;
-  if(cur)cur.setAttribute('data-on','');
-  vids().forEach(v=>{{if(!v.src&&v.dataset.src){{v.src=v.dataset.src;v.preload='auto';v.load();}}
-    v.playbackRate=rate;}});
-  seek(0); pp.textContent='play';
+// every open pane contributes; the first one is the clock everything else is held to
+function vids(){{return [...document.querySelectorAll('.pane[data-on] video')]}}
+function attach(v,t){{
+  if(!v.src&&v.dataset.src){{v.src=v.dataset.src;v.preload='auto';v.load();}}
+  v.playbackRate=rate;
+  const go=()=>{{if(v.duration)v.currentTime=t; if(playing)v.play().catch(()=>{{}});}};
+  if(v.readyState>=2)go(); else v.addEventListener('canplay',go,{{once:true}});
 }}
-function seek(f){{vids().forEach(v=>{{if(v.duration)v.currentTime=f*v.duration}})}}
-tb.forEach(b=>b.addEventListener('click',()=>show(b.dataset.g)));
+function toggle(g){{
+  an.removeAttribute('data-on'); anb.removeAttribute('data-on');
+  const p=panes.find(x=>x.dataset.g===g), b=tb.find(x=>x.dataset.g===g);
+  if(!p)return;
+  if(p.hasAttribute('data-on')){{
+    [...p.querySelectorAll('video')].forEach(v=>v.pause());
+    p.removeAttribute('data-on'); b.removeAttribute('data-on');
+    if(!vids().length){{playing=false; pp.textContent='play';}}
+  }} else {{
+    const lead=vids()[0];
+    const t=(lead&&lead.duration)?lead.currentTime:0;
+    p.setAttribute('data-on',''); b.setAttribute('data-on','');
+    [...p.querySelectorAll('video')].forEach(v=>attach(v,t));
+  }}
+}}
+tb.forEach(b=>b.addEventListener('click',()=>toggle(b.dataset.g)));
 anb.addEventListener('click',()=>{{
-  vids().forEach(v=>v.pause()); pp.textContent='play';
+  vids().forEach(v=>v.pause()); playing=false; pp.textContent='play';
   panes.forEach(p=>p.removeAttribute('data-on')); tb.forEach(b=>b.removeAttribute('data-on'));
-  cur=null; an.toggleAttribute('data-on'); anb.toggleAttribute('data-on');
+  an.toggleAttribute('data-on'); anb.toggleAttribute('data-on');
 }});
 pp.addEventListener('click',()=>{{
   const vs=vids(); if(!vs.length)return;
-  if(vs[0].paused){{
-    // preload is "none" until a pane is opened, so a clip asked to play a moment after its
-    // src was set has nothing buffered yet and play() rejects. Wait for canplay instead of
-    // swallowing that in a catch, which is what made the button look dead.
+  if(playing){{vs.forEach(v=>v.pause()); playing=false; pp.textContent='play';}}
+  else{{
+    playing=true; pp.textContent='pause';
+    // preload is "none" until a pane opens, so a clip asked to play right after its src
+    // was set has nothing buffered and play() rejects; wait for canplay instead
     vs.forEach(v=>{{const go=()=>v.play().catch(()=>{{}});
       if(v.readyState>=2)go(); else v.addEventListener('canplay',go,{{once:true}});}});
-    pp.textContent='pause';
   }}
-  else{{vs.forEach(v=>v.pause()); pp.textContent='play';}}
 }});
-sk.addEventListener('input',()=>seek(sk.value/1000));
+sk.addEventListener('input',()=>{{
+  const f=sk.value/1000;
+  vids().forEach(v=>{{if(v.duration)v.currentTime=f*v.duration}});
+}});
 document.querySelectorAll('.sp').forEach(b=>b.addEventListener('click',()=>{{
   rate=parseFloat(b.dataset.r);
   document.querySelectorAll('.sp').forEach(x=>x.toggleAttribute('data-on',x===b));
   vids().forEach(v=>v.playbackRate=rate);
 }}));
 setInterval(()=>{{
-  const v=vids()[0]; if(!v||!v.duration)return;
+  const vs=vids(), v=vs[0]; if(!v||!v.duration)return;
   sk.value=Math.round(1000*v.currentTime/v.duration);
   tt.textContent=v.currentTime.toFixed(1)+'s';
-  // keep the others on the leader's clock; they drift apart over a long loop otherwise
-  vids().slice(1).forEach(o=>{{if(Math.abs(o.currentTime-v.currentTime)>0.25)o.currentTime=v.currentTime}});
+  // independently decoded clips drift apart over an 89 s loop; pull them back
+  vs.slice(1).forEach(o=>{{if(o.duration&&Math.abs(o.currentTime-v.currentTime)>0.25)
+    o.currentTime=v.currentTime}});
 }},200);
-show(tb[0].dataset.g);
+toggle(tb[0].dataset.g);
 </script></body></html>
 """
     out = os.path.join(a.out, "index.html")
