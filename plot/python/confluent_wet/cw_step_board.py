@@ -166,7 +166,8 @@ function show(g){{
   tb.forEach(b=>b.toggleAttribute('data-on',b.dataset.g===g));
   cur=panes.find(p=>p.dataset.g===g)||null;
   if(cur)cur.setAttribute('data-on','');
-  vids().forEach(v=>{{if(!v.src&&v.dataset.src)v.src=v.dataset.src; v.playbackRate=rate;}});
+  vids().forEach(v=>{{if(!v.src&&v.dataset.src){{v.src=v.dataset.src;v.preload='auto';v.load();}}
+    v.playbackRate=rate;}});
   seek(0); pp.textContent='play';
 }}
 function seek(f){{vids().forEach(v=>{{if(v.duration)v.currentTime=f*v.duration}})}}
@@ -178,7 +179,14 @@ anb.addEventListener('click',()=>{{
 }});
 pp.addEventListener('click',()=>{{
   const vs=vids(); if(!vs.length)return;
-  if(vs[0].paused){{vs.forEach(v=>v.play().catch(()=>{{}})); pp.textContent='pause';}}
+  if(vs[0].paused){{
+    // preload is "none" until a pane is opened, so a clip asked to play a moment after its
+    // src was set has nothing buffered yet and play() rejects. Wait for canplay instead of
+    // swallowing that in a catch, which is what made the button look dead.
+    vs.forEach(v=>{{const go=()=>v.play().catch(()=>{{}});
+      if(v.readyState>=2)go(); else v.addEventListener('canplay',go,{{once:true}});}});
+    pp.textContent='pause';
+  }}
   else{{vs.forEach(v=>v.pause()); pp.textContent='play';}}
 }});
 sk.addEventListener('input',()=>seek(sk.value/1000));
