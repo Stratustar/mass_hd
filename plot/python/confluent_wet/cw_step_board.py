@@ -165,6 +165,7 @@ function show(g){{
   panes.forEach(p=>p.removeAttribute('data-on'));
   tb.forEach(b=>b.toggleAttribute('data-on',b.dataset.g===g));
   cur=panes.find(p=>p.dataset.g===g)||null;
+  if(cur)cur.setAttribute('data-on','');
   vids().forEach(v=>{{if(!v.src&&v.dataset.src)v.src=v.dataset.src; v.playbackRate=rate;}});
   seek(0); pp.textContent='play';
 }}
