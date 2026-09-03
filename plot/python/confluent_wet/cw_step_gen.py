@@ -646,9 +646,84 @@ def gen_fine(out, cal):
     return made
 
 
+# ------------------------------------------------------------------- TCHI
+
+TCHI_TAU_M = [0.3, 3, 10, 15, 30]
+# (tag, rule, label). "fixed" is in units of tau_c, "prop" a multiple of tau_m.
+TCHI_RULES = [("t1", "fixed", 1.0), ("th", "prop", 0.5), ("t0p3", "fixed", 0.3)]
+TCHI_ONLY = {"t0p3": [3]}     # 0.3 tau_c already exists everywhere except tau_m = 3
+
+HDR_TCHI = """20260902 cw_step_tchi -- does the phenotype clock move the bifurcation?
+
+WHAT IS ALREADY KNOWN. The campaign predicted the fate would not depend on tau_chi at all,
+since tau_x is set by sigma_m and sigma_m does not know about tau_chi. It does depend on it:
+at mc = 0.2610 the tau_chi = tau_m group (B2) held the active phase at 22 tau_c where the
+tau_chi = 0.3 tau_c group (B1) did not, and B2's active lifetime was longer at EVERY tau_m.
+The proposed mechanism is that a slow chi low-passes its response to m's fluctuations and so
+damps the positive feedback m -> chi -> activity -> f -> m.
+
+WHAT THIS GROUP ADDS. Two more phenotype clocks on the SYMMETRIC operating point
+(mc = 0.2100), where the whole 0.3-30 axis has so far been measured at one tau_chi only:
+
+    tau_chi = 1.0 tau_c    a fixed clock, 3.3x slower than the existing 0.3 tau_c
+    tau_chi = 0.5 tau_m    a proportional clock, half the memory time
+
+Together with the existing 0.3 tau_c data that is three rules spanning both kinds -- fixed
+and proportional -- at five tau_m. If the fate really is a function of sigma_m alone, all
+three collapse; if the low-pass picture is right, the slower the phenotype the more robust
+the active phase, and the proportional rule should separate earliest at large tau_m where it
+is slowest of all.
+
+The 0.3 tau_c rule is re-run at tau_m = 3 only: the fine scan has 2.79 and 3.35 but not 3,
+and an interpolated point is not worth having when the comparison is the whole purpose.
+
+THIS CASE: {rule} -- tau_chi = {tchi:.1f} steps = {gchi:.2f} tau_c = {frac:.2f} tau_m,
+tau_m = {g:g} tau_c = {tm:.0f} steps, start {start}.
+{sat}"""
+
+
+def gen_tchi(out, cal):
+    if not cal.measured:
+        raise RuntimeError("cw_step_tchi must be generated from a MEASURED calib.json")
+    row = [t for t in cal.f_table if abs(t["coeff"] - FINE_PMEM_COEFF) < 1e-9][0]
+    ff, ft, pmem = row["f_floor"], row["f_top"], row["pmem"]
+    chilen = CHI_LENGTH_OVER_L_P * cal.L_P
+    starts = [
+        ("a", {"chi-config": "uniform", "chi0": 0.0, "m0": round(ft, 4)}, "chi == 0"),
+        ("b", {"chi-config": "uniform", "chi0": 1.0, "m0": round(ff, 4)}, "chi == 1"),
+        ("c1", {"chi-config": "binary-noise", "chi-length": round(chilen, 2),
+                "chi-seed": 1, "chi-lo": 0.0, "m-lo": round(ft, 4),
+                "chi-hi": 1.0, "m-hi": round(ff, 4), "chi0": 0.5, "m0": 0.5},
+         "binary noise"),
+    ]
+    made = []
+    for rtag, kind, coef in TCHI_RULES:
+        for g in TCHI_ONLY.get(rtag, TCHI_TAU_M):
+            tm = g * cal.tau_c
+            tchi = coef * cal.tau_c if kind == "fixed" else coef * tm
+            # tau_chi must resolve on the integration step as well as on the physics
+            if tchi < 20.0:
+                raise RuntimeError(f"{rtag} at tau_m = {g}: tau_chi = {tchi:.1f} steps is "
+                                   f"under the 20-step floor")
+            nsteps = max(NSTEPS, int(math.ceil(
+                SATURATION_K * (cal.tau_c + tm + tchi) / RECORD_FRAC / 10000)) * 10000)
+            for name, over, what in starts:
+                v = base(cal, 1.0, nsteps=nsteps, seed=1001,
+                         **{"tau-m": round(tm, 1), "tau-chi": round(tchi, 1),
+                            "mem-freeze-steps": mem_freeze(cal),
+                            "pmem": round(pmem, 6), "mc": FINE_MC}, **over)
+                hdr = HDR_TCHI.format(rule=rtag, tchi=tchi, gchi=tchi / cal.tau_c,
+                                      frac=tchi / tm, g=g, tm=tm, start=what,
+                                      sat=saturation_note(nsteps, cal.tau_c, tm, tchi))
+                made.append(write_case(
+                    os.path.join(out, "cw_step_tchi", f"{rtag}_tm{tag(g)}_{name}"), hdr, v))
+    return made
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("stage", choices=["a1", "a2b", "a4", "b1", "b2", "sym", "fine"])
+    ap.add_argument("stage",
+                    choices=["a1", "a2b", "a4", "b1", "b2", "sym", "fine", "tchi"])
     ap.add_argument("--out", default="cases/20260901")
     ap.add_argument("--calib", default=None,
                     help="measured calib.json from stage A3; without it the wave-1 "
@@ -662,7 +737,9 @@ def main():
     if a.stage in ("a4",) and not cal.measured:
         print("  NOTE: a closed-loop stage on the extrapolation. A4 is a yes/no test and "
               "tolerates it; the B stages must not be generated this way.")
-    if a.stage == "fine":
+    if a.stage == "tchi":
+        made = gen_tchi(a.out, cal)
+    elif a.stage == "fine":
         made = gen_fine(a.out, cal)
     elif a.stage == "sym":
         made = gen_sym(a.out, cal)
