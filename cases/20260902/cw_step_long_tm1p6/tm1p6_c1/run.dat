@@ -1,0 +1,81 @@
+# 20260902 cw_step_long -- are these two states settled, or drifting slowly?
+# 
+# The fine scan gave every point 100000 steps, and at these two tau_m that leaves the answer
+# open in different ways.
+# 
+#   tau_m = 3.35 tau_c   the three starts landed at 0.505 / 0.397 / 0.466 -- a 0.108 spread in
+#                        what is supposed to be a single state, with points flagged drifting.
+#                        Either the mixed state has genuine seed-to-seed scatter, or 100000
+#                        steps is not long enough for it to converge.
+#   tau_m = 8.32 tau_c   the three agreed to 0.003 at 0.04, just inside the active phase and
+#                        one grid point below where the campaign's mc collapsed. If the active
+#                        phase here is metastable rather than stable, 5x the run length is
+#                        where that shows.
+# 
+# Everything is unchanged from the fine scan except the run length: same mc = 0.2100, same
+# pmem, same tau_chi = 0.3 tau_c, same three starts, same seed. 500000 steps puts the record
+# window at 529 tau_m for the shorter memory and 213 for the longer, against 106 and 43
+# before.
+# 
+# OUTPUT CADENCE IS RESCALED, and it has to be. At the fine scan's nvideo = 45 a 500000-step
+# run writes 11111 video frames, ~7 GB per run before transcoding; at ntracer = 10 the tracer
+# file reaches 1.6 GB. The video clock goes to 1 tau_c (2222 frames, the same count the
+# existing clips have, so they stay comparable to watch) and the tracer interval to 25 steps,
+# which is still ~9 samples per correlation time -- enough to resolve the Lagrangian 1/e.
+# ninfo = 20000 keeps 25 full frames, above cw_part's 20-frame floor.
+# 
+# THIS CASE: tau_m = 1.6 tau_c = 361 steps, start binary noise, 500000 steps.
+# SATURATION: record window 400000 steps against 15(tau_c + tau_m + tau_chi) = 9812 -- satisfied.
+model            = confluent-wet
+nsteps           = 500000
+nstart           = 0
+ninfo            = 20000
+LX               = 800
+LY               = 800
+bc               = 0
+seed             = 1001
+
+Gamma            = 0.05
+xi               = 0.4
+CC               = 0.00625
+LL               = 0.05
+tau              = 2.0
+rho              = 40
+friction         = 0.0
+zeta             = 0.2
+zeta0-frac       = 0.3
+
+angle            = 0
+noise            = 0.05
+initial-order    = 1
+director-config  = uniform
+defect-sep       = 0
+
+Dbio             = 0.005
+chi-config       = binary-noise
+chi0             = 0.5
+chi-length       = 7.35
+chi-seed         = 1
+chi-lo           = 0.0
+chi-hi           = 1.0
+m-lo             = 0.3272
+m-hi             = 0.057
+tau-chi          = 67.7
+chi-width        = 0.0
+switch-sign      = -1
+mc               = 0.21
+m0               = 0.5
+mem-freeze-steps = 2260
+
+tau-m            = 360.9
+pmem             = 0.052177
+pmem-width       = 0.0
+
+ntracer          = 25
+tracer-count     = 2000
+
+nvideo           = 225
+video-stride     = 2
+video-p-scale    = 0.6261
+video-u-scale    = 0.1172
+frame-light      = 1

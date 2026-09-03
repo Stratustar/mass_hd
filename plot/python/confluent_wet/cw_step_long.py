@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Settled or slowly drifting? The 500000-step runs, read as time series.
 
-    cw_step_long.py <long_results> --calib calib.json --out DIR [--fine <fine_results>]
+    cw_step_long.py <long_results>... --calib calib.json --out DIR
 
 Runs unattended behind the array, so the verdict goes into JSON as well as the figure.
 
@@ -68,7 +68,9 @@ def blocks(t, y, t0):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("long")
+    ap.add_argument("long", nargs="+",
+                    help="one or more results trees; they are pooled and each tau_m gets "
+                         "its own column")
     ap.add_argument("--calib", required=True)
     ap.add_argument("--out", required=True)
     ap.add_argument("--record-frac", type=float, default=0.2)
@@ -78,7 +80,7 @@ def main():
         cal = json.load(fh)
 
     runs = {}
-    for p in sorted(glob.glob(os.path.join(a.long, "*", "part.json"))):
+    for p in sorted(sum((glob.glob(os.path.join(d, "*", "part.json")) for d in a.long), [])):
         d = os.path.dirname(p)
         c = os.path.basename(d)
         m = re.match(r"tm(.+)_([abc]\d?)$", c)
@@ -96,7 +98,7 @@ def main():
         runs[(float(m.group(1).replace("p", ".")), m.group(2))] = (t, chi, mm, part)
 
     if not runs:
-        raise RuntimeError(f"no usable runs under {a.long}")
+        raise RuntimeError(f"no usable runs under {' '.join(a.long)}")
     gs = sorted(set(g for g, _ in runs))
     tau_c = cal["tau_c"]
 

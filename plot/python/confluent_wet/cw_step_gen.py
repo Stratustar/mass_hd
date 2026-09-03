@@ -755,7 +755,7 @@ THIS CASE: tau_m = {g:g} tau_c = {tm:.0f} steps, start {start}, {nst} steps.
 {sat}"""
 
 
-def gen_long(out, cal):
+def gen_long(out, cal, tau_m=None, study="cw_step_long"):
     if not cal.measured:
         raise RuntimeError("cw_step_long must be generated from a MEASURED calib.json")
     row = [t for t in cal.f_table if abs(t["coeff"] - FINE_PMEM_COEFF) < 1e-9][0]
@@ -770,7 +770,7 @@ def gen_long(out, cal):
          "binary noise"),
     ]
     made = []
-    for g in LONG_TAU_M:
+    for g in (tau_m or LONG_TAU_M):
         tm = g * cal.tau_c
         tchi = 0.3 * cal.tau_c
         for name, over, what in starts:
@@ -785,7 +785,7 @@ def gen_long(out, cal):
             hdr = HDR_LONG.format(g=g, tm=tm, start=what, nst=LONG_NSTEPS,
                                   sat=saturation_note(LONG_NSTEPS, cal.tau_c, tm, tchi))
             made.append(write_case(
-                os.path.join(out, "cw_step_long", f"tm{tag(g)}_{name}"), hdr, v))
+                os.path.join(out, study, f"tm{tag(g)}_{name}"), hdr, v))
     return made
 
 
@@ -794,6 +794,12 @@ def main():
     ap.add_argument("stage",
                     choices=["a1", "a2b", "a4", "b1", "b2", "sym", "fine", "tchi", "long"])
     ap.add_argument("--out", default="cases/20260901")
+    ap.add_argument("--tau-m", type=float, nargs="*", default=None,
+                    help="override the stage's tau_m grid (long only); the study name "
+                         "should normally be overridden with it so the new cases do not "
+                         "land in a directory whose array is already running")
+    ap.add_argument("--study", default=None,
+                    help="override the output study directory (long only)")
     ap.add_argument("--calib", default=None,
                     help="measured calib.json from stage A3; without it the wave-1 "
                          "extrapolation is used, which is only good enough for stage A")
@@ -807,7 +813,7 @@ def main():
         print("  NOTE: a closed-loop stage on the extrapolation. A4 is a yes/no test and "
               "tolerates it; the B stages must not be generated this way.")
     if a.stage == "long":
-        made = gen_long(a.out, cal)
+        made = gen_long(a.out, cal, a.tau_m, a.study or "cw_step_long")
     elif a.stage == "tchi":
         made = gen_tchi(a.out, cal)
     elif a.stage == "fine":
