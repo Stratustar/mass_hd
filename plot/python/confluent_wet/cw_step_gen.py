@@ -720,10 +720,79 @@ def gen_tchi(out, cal):
     return made
 
 
+# ------------------------------------------------------------------- LONG
+
+LONG_TAU_M = [3.35, 8.32]
+LONG_NSTEPS = 500000
+
+HDR_LONG = """20260902 cw_step_long -- are these two states settled, or drifting slowly?
+
+The fine scan gave every point 100000 steps, and at these two tau_m that leaves the answer
+open in different ways.
+
+  tau_m = 3.35 tau_c   the three starts landed at 0.505 / 0.397 / 0.466 -- a 0.108 spread in
+                       what is supposed to be a single state, with points flagged drifting.
+                       Either the mixed state has genuine seed-to-seed scatter, or 100000
+                       steps is not long enough for it to converge.
+  tau_m = 8.32 tau_c   the three agreed to 0.003 at 0.04, just inside the active phase and
+                       one grid point below where the campaign's mc collapsed. If the active
+                       phase here is metastable rather than stable, 5x the run length is
+                       where that shows.
+
+Everything is unchanged from the fine scan except the run length: same mc = 0.2100, same
+pmem, same tau_chi = 0.3 tau_c, same three starts, same seed. 500000 steps puts the record
+window at 529 tau_m for the shorter memory and 213 for the longer, against 106 and 43
+before.
+
+OUTPUT CADENCE IS RESCALED, and it has to be. At the fine scan's nvideo = 45 a 500000-step
+run writes 11111 video frames, ~7 GB per run before transcoding; at ntracer = 10 the tracer
+file reaches 1.6 GB. The video clock goes to 1 tau_c (2222 frames, the same count the
+existing clips have, so they stay comparable to watch) and the tracer interval to 25 steps,
+which is still ~9 samples per correlation time -- enough to resolve the Lagrangian 1/e.
+ninfo = 20000 keeps 25 full frames, above cw_part's 20-frame floor.
+
+THIS CASE: tau_m = {g:g} tau_c = {tm:.0f} steps, start {start}, {nst} steps.
+{sat}"""
+
+
+def gen_long(out, cal):
+    if not cal.measured:
+        raise RuntimeError("cw_step_long must be generated from a MEASURED calib.json")
+    row = [t for t in cal.f_table if abs(t["coeff"] - FINE_PMEM_COEFF) < 1e-9][0]
+    ff, ft, pmem = row["f_floor"], row["f_top"], row["pmem"]
+    chilen = CHI_LENGTH_OVER_L_P * cal.L_P
+    starts = [
+        ("a", {"chi-config": "uniform", "chi0": 0.0, "m0": round(ft, 4)}, "chi == 0"),
+        ("b", {"chi-config": "uniform", "chi0": 1.0, "m0": round(ff, 4)}, "chi == 1"),
+        ("c1", {"chi-config": "binary-noise", "chi-length": round(chilen, 2),
+                "chi-seed": 1, "chi-lo": 0.0, "m-lo": round(ft, 4),
+                "chi-hi": 1.0, "m-hi": round(ff, 4), "chi0": 0.5, "m0": 0.5},
+         "binary noise"),
+    ]
+    made = []
+    for g in LONG_TAU_M:
+        tm = g * cal.tau_c
+        tchi = 0.3 * cal.tau_c
+        for name, over, what in starts:
+            v = base(cal, 1.0, nsteps=LONG_NSTEPS, seed=1001,
+                     **{"tau-m": round(tm, 1), "tau-chi": round(tchi, 1),
+                        "mem-freeze-steps": mem_freeze(cal),
+                        "pmem": round(pmem, 6), "mc": FINE_MC,
+                        # rescaled for a 5x longer run -- see the header
+                        "ninfo": 20000,
+                        "nvideo": int(round(cal.tau_c / 5.0)) * 5,
+                        "ntracer": 25}, **over)
+            hdr = HDR_LONG.format(g=g, tm=tm, start=what, nst=LONG_NSTEPS,
+                                  sat=saturation_note(LONG_NSTEPS, cal.tau_c, tm, tchi))
+            made.append(write_case(
+                os.path.join(out, "cw_step_long", f"tm{tag(g)}_{name}"), hdr, v))
+    return made
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("stage",
-                    choices=["a1", "a2b", "a4", "b1", "b2", "sym", "fine", "tchi"])
+                    choices=["a1", "a2b", "a4", "b1", "b2", "sym", "fine", "tchi", "long"])
     ap.add_argument("--out", default="cases/20260901")
     ap.add_argument("--calib", default=None,
                     help="measured calib.json from stage A3; without it the wave-1 "
@@ -737,7 +806,9 @@ def main():
     if a.stage in ("a4",) and not cal.measured:
         print("  NOTE: a closed-loop stage on the extrapolation. A4 is a yes/no test and "
               "tolerates it; the B stages must not be generated this way.")
-    if a.stage == "tchi":
+    if a.stage == "long":
+        made = gen_long(a.out, cal)
+    elif a.stage == "tchi":
         made = gen_tchi(a.out, cal)
     elif a.stage == "fine":
         made = gen_fine(a.out, cal)
