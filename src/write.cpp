@@ -17,6 +17,7 @@ extern unsigned ninfo;
 extern unsigned nstart;
 extern unsigned nsteps;
 extern unsigned nsubsteps;
+extern unsigned seed;
 extern bool compress, compress_full;
 extern string runname, output_dir;
 extern bool force_delete;
@@ -79,6 +80,9 @@ void WriteParams()
          & auto_name(nsubsteps)
          & auto_name(ninfo)
          & auto_name(nstart)
+         // The seed the run ACTUALLY used -- drawn and applied by ParseProgramOptions even
+         // when the runcard omits it, so this always reproduces the run.
+         & auto_name(seed)
          & auto_name(model_name);
       // ...and model parameters
       model.ptr->serialize_params(ar);

@@ -5,6 +5,7 @@
 #include "error_msg.hpp"
 #include "random.hpp"
 #include "lb.hpp"
+#include "serialization.hpp"
 #include "tools.hpp"
 
 using namespace std;
@@ -234,7 +235,83 @@ void ConfluentWet::Configure()
 {
   Nematic::Configure();
   ConfigurePhenotype();
+  // AFTER the phenotype, and that order is required rather than tidy: rebuilding the LB
+  // populations from a snapshot needs div(sigma), the active part of which is -zeta_eff(chi) Q.
+  // It also means the loaded flow is never overwritten by the cold start it replaces.
+  if(!init_frame.empty()) ConfigureFromFrame();
   ConfigureTracers();
+}
+
+void ConfluentWet::ConfigureFromFrame()
+{
+  const std::string content = read_file_to_string(init_frame);
+
+  auto load_into = [&](const std::string& nm, ScalarField& fld)
+  {
+    const auto vals = read_frame_field(content, nm);
+    if(vals.size() != DomainSize)
+      throw error_msg("confluent-wet: init-frame field '", nm, "' has ", vals.size(),
+                      " values but this run has DomainSize=", DomainSize,
+                      " (grid-size mismatch between snapshot and run).");
+    auto& data = fld.get_data();
+    for(unsigned k=0; k<DomainSize; ++k) data[k] = vals[k];
+  };
+
+  // The hydrodynamic state, and ONLY that: chi and m stay as ConfigurePhenotype left them.
+  load_into("QQxx",     QQxx);
+  load_into("QQyx",     QQyx);
+  load_into("ux_mat",   ux_mat);
+  load_into("uy_mat",   uy_mat);
+  load_into("pressure", pressure);
+
+  // ---- pass 1: the density, and a first guess at the populations ----------
+  // n follows from P algebraically, since sigma_bulk depends on Q alone.
+  for(unsigned k=0; k<DomainSize; ++k)
+  {
+    const double term = 1. - QQxx[k]*QQxx[k] - QQyx[k]*QQyx[k];
+    n[k]  = rho + 3.*(pressure[k] + .5*CC*term*term);
+    if(n[k] <= 0.)
+      throw error_msg("confluent-wet: init-frame gives a non-positive density (n=", n[k],
+                      ") at node ", k, "; the snapshot and this runcard disagree about "
+                      "rho or CC.");
+    // u_code = u_mat is wrong by div(sigma)/(2n); pass 2 fixes it. It is needed first
+    // because UpdateQuantities() reads the populations to get n and u.
+    ux[k] = ux_mat[k];
+    uy[k] = uy_mat[k];
+    ff[k] = GetEquilibriumDistribution(ux[k], uy[k], n[k]);
+  }
+  BoundaryConditionsFields();
+  BoundaryConditionsFields2();
+
+  // ---- pass 2: invert the trapezoidal forcing -----------------------------
+  // u_mat = [u_code + div(sigma)/(2n)]/[1 + friction/(2n)], and the frame stores u_mat, so
+  // the populations must carry u_code. Near a defect core the two differ by ~40% of u_rms
+  // (the header's measurement), i.e. exactly where the pressure signal the memory reads
+  // lives. UpdateQuantities() builds the stress from the loaded Q and the phenotype's chi.
+  UpdateQuantities();
+  for(unsigned k=0; k<DomainSize; ++k)
+  {
+    const auto& d = get_neighbours(k);
+    const double nn = n[k];
+    const double divSx = derivX(sigmaXX, d, sB) + derivY(sigmaXY, d, sB);
+    const double divSy = derivX(sigmaYX, d, sB) + derivY(sigmaYY, d, sB);
+    ux[k] = ux_mat[k]*(1. + friction/(2*nn)) - divSx/(2*nn);
+    uy[k] = uy_mat[k]*(1. + friction/(2*nn)) - divSy/(2*nn);
+    ff[k] = GetEquilibriumDistribution(ux[k], uy[k], nn);
+  }
+
+  // Derived fields consistent with the populations that will actually be stepped, so a
+  // frame written at t = 0 is the state the run starts from rather than the state it was
+  // asked for.
+  UpdateQuantities();
+  ComputeMaterialVelocity();
+  BoundaryConditionsFields();
+  BoundaryConditionsFields2();
+
+  // The conservation reference was accumulated by the cold start we just overwrote.
+  ftot = 0.;
+  for(unsigned k=0; k<DomainSize; ++k)
+    ftot = accumulate(begin(ff[k]), end(ff[k]), ftot);
 }
 
 void ConfluentWet::SmoothToLength(ScalarField& fld, double length)
@@ -1046,6 +1123,9 @@ option_list ConfluentWet::GetOptions()
      "the prescribed activity in open-loop mode")
     ("chi-freeze-steps", opt::value<unsigned>(&chi_freeze_steps),
      "hold the phenotype switching source off for this many steps (transport stays on)")
+    ("init-frame", opt::value<std::string>(&init_frame),
+     "seed Q, the velocity and the pressure from this frame*.json; chi and m still come "
+     "from chi-config, and the LB populations are rebuilt as f_eq(u_code, n)")
     ("mem-freeze-steps", opt::value<unsigned>(&mem_freeze_steps),
      "hold the MEMORY source (g(P)-m)/tau_m off for this many steps while the flow spins "
      "up, so m does not decay from rest before there is turbulence to feed it (transport "

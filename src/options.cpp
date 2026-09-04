@@ -148,7 +148,13 @@ void ParseProgramOptions(int ac, char **av)
   }
 
   // init random numbers (again)
-  if(vm.count("seed")) set_seed(seed);
+  //
+  // A RUN ALWAYS HAS A SEED NOW, whether or not the runcard gave one: an unspecified seed
+  // is drawn from the generator's own random_device initialisation and then applied
+  // explicitly, so `seed` in parameters.json is the number that reproduces the run rather
+  // than uninitialised memory. Specifying one behaves exactly as before.
+  if(!vm.count("seed")) seed = randu();
+  set_seed(seed);
 
   // we need a model
   if(model_name=="")

@@ -93,13 +93,15 @@ def tag(x, nd=2):
     return s.replace("-", "m").replace(".", "p")
 
 
-def write_case(path, header, vals):
+def write_case(path, header, vals, order=None):
+    """`order` lets a later campaign add keys (cw_s3_gen: init-frame) without touching ORDER."""
+    order = ORDER if order is None else order
     os.makedirs(path, exist_ok=True)
-    unknown = set(vals) - set(ORDER)
+    unknown = set(vals) - set(order)
     if unknown:
         raise RuntimeError(f"keys not in ORDER (they would be silently dropped): {unknown}")
     lines = [f"# {h}" for h in header.strip("\n").split("\n")]
-    for key in ORDER:
+    for key in order:
         if key == "":
             lines.append("")
         elif key in vals:

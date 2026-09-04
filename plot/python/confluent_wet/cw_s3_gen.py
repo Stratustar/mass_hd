@@ -58,8 +58,9 @@ import sys
 import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from cw_step_gen import (tag, write_case, cadence, tracer_interval,       # noqa: E402
-                         RECORD_FRAC, STORE_SIGMA, TRACER_COUNT, VIDEO_TAU_C)
+from cw_step_gen import (tag, write_case, cadence, tracer_interval, ORDER,  # noqa: E402
+                         saturation_note, RECORD_FRAC, STORE_SIGMA, TRACER_COUNT,
+                         VIDEO_TAU_C)
 
 S = 1.0 / 3.0                 # the stress factor
 L_NEW = 500
@@ -237,9 +238,156 @@ def gen_a(out):
     return made
 
 
+# =========================================================================== B
+
+# The runcard key order, plus init-frame. ORDER itself is left alone so every earlier
+# campaign's runcards still round-trip byte for byte.
+ORDER_B = list(ORDER)
+ORDER_B.insert(ORDER_B.index("chi-freeze-steps"), "init-frame")
+
+# The measured stage-A calibration, filled by Calib3 from calib_s3.json.
+TAU_M_OVER_TAU_C = [0.300, 1.863, 3.426, 4.989, 6.553, 8.116, 9.679, 11.242, 12.805,
+                    14.368, 15.932, 17.495, 19.058, 20.621, 22.184, 23.747, 25.311,
+                    26.874, 28.437, 30.000]
+T_OVER_TAU_C = 300.0          # every run, one number
+SERIES_TAU_C = 0.05           # the video/series cadence, in tau_c
+FRAMES_TARGET = 26            # full frames per run
+MEM_FREEZE_TAU_C_B = 1.0      # insurance only: init-frame means the flow is already developed
+CHI_LENGTH_OVER_L_P = 2.0
+FRAME_ROOT = "/scratch/helu/mass_hd/cases/20260904/cw_s3_a"
+# Which open-loop snapshot each start is laid on. chi0 and chi1 each get the flow of the
+# phase they ARE; the two mixed starts get the ladder's middle rung, which is the closest
+# thing to the flow a half-and-half layer generates -- zeta_eff = 0.65 zeta against the
+# 0.65 zeta a 50/50 mixture produces at z0 = 0.3 (r + (1-r)(1-0.5) = 0.65 exactly).
+SNAPSHOT = {"chi0": "a1", "chi1": "a0p3", "leftright": "a0p65", "patches": "a0p65"}
+SEED0, CHI_SEED0 = 4000, 7000
+
+
+class Calib3:
+    """The MEASURED stage-A calibration; without a file, stage A's own predictions."""
+
+    def __init__(self, path=None):
+        self.measured = path is not None
+        if path:
+            import json
+            with open(path) as fh:
+                d = json.load(fh)
+            self.tau_c = float(d["tau_c"]); self.sigma_P = float(d["sigma_P"])
+            self.u_rms = float(d["u_rms"]); self.pmem = float(d["pmem"])
+            self.mc = float(d["mc"]); self.f_top = float(d["f_top"])
+            self.f_floor = float(d["f_floor"]); self.L_P = float(d["L_P"])
+        else:
+            self.tau_c, self.sigma_P, self.u_rms = TAU_C, SIGMA_P, U_RMS
+            self.pmem = PMEM; self.mc = OLD["mc"][0]
+            self.f_top, self.f_floor = OLD_F_TOP, OLD_RUNGS[0.3][4]
+            self.L_P = OLD_RUNGS[1.0][3] * 1.0
+
+
+HDR_B = """20260904 cw_s3_b -- the tau_m scan of the s = 1/3 campaign: 20 memory times x 4 starts.
+
+THE QUESTION. Four initial conditions on one tau_m axis. Where the chi == 0 and chi == 1
+curves COINCIDE the outcome is independent of how the layer started -- a mixed state, or a
+single high phase; where they SEPARATE is tau_freeze. The mixed starts (leftright, patches)
+are not summarised by a number: they are watched, because what they show is whether the low
+phase can hold a domain at all, which is tau_x.
+
+THE FOUR STARTS. m is set to MATCH chi everywhere, because a phase is a (chi, m) pair and
+a half prepared at the wrong m relaxes towards the other phase on tau_m whether or not the
+physics is bistable:
+  chi0        chi == 0 everywhere, m == f(zeta)     = {f_top:.4f}   the ACTIVE phase
+  chi1        chi == 1 everywhere, m == f(0.3 zeta) = {f_floor:.4f}   the PASSIVE phase
+  leftright   x < L/2 is chi = 0, the rest chi = 1; two flat interfaces under PBC
+  patches     correlated Gaussian noise at {chilen:.1f} = 2 L_P, split at its OWN MEDIAN into
+              exactly half and half -- a fixed threshold would let the sample mean scatter
+              the initial area fraction, which is the very quantity the loop amplifies
+Both uniform starts are EXACT fixed points of the hard step chi* = Theta(mc - m), with
+mc = {mc:.4f} between f_floor and f_top, so "did it move" is a clean question.
+
+A NOTE ON THE hi/lo SUFFIXES. The model applies (chi-hi, m-hi) to the left half of a stripe
+and to the above-median half of the binary noise. This campaign puts the ACTIVE phase there,
+so chi-hi = 0 and m-hi = f_top: the suffix names the model's slot, not the value of chi.
+
+EVERY RUN STARTS FROM A DEVELOPED FLOW. init-frame loads Q, u and P from the last frame of
+the matching open-loop rung of stage A ({snap}), and the LB populations are rebuilt as
+f_eq(u_code, n) with n = rho + 3(P + sigma_bulk) and u_code = u_mat - div(sigma)/2n. Only
+the non-equilibrium part of ff is lost and it regenerates on tau = 2 steps; measured on a
+restart test, the flow tracks the continued run to 0.3% over 300 steps with no jump at
+t = 0. This replaces the 10 tau_c memory freeze the L = 800 campaign needed: the memory now
+integrates the pressure of the turbulent state from the first step, which is what it is
+meant to do. A {freeze:.0f}-step freeze is kept purely as insurance.
+
+THE CLOCKS, all from the MEASURED stage-A calibration (calib_s3.json):
+  tau_c   = {tau_c:.1f} steps      the material clock, tracers at full activity
+  sigma_P = {sigma_P:.5f}        pmem = 0.5 sigma_P = {pmem:.6f}
+  T       = {T:g} tau_c = {nsteps} steps, the same for all 80 runs
+  tau_chi = 0.3 tau_c = {tau_chi:.0f} steps
+  series  = every {nvideo} steps = {series:.3f} tau_c, the video stream's own clock; <chi> and
+            std(chi) are written there in double precision from the full-resolution field
+
+THIS CASE: tau_m = {g:g} tau_c = {tau_m:.0f} steps, start {start}, on the {snap} flow.
+seed {seed}, chi-seed {chi_seed}.
+{sat}"""
+
+
+def gen_b(out, cal):
+    made = []
+    nsteps = int(round(T_OVER_TAU_C * cal.tau_c / 100.0)) * 100
+    nvideo = max(1, int(round(SERIES_TAU_C * cal.tau_c)))
+    ninfo = int(round(nsteps / FRAMES_TARGET / 500.0)) * 500
+    tau_chi = 0.3 * cal.tau_c
+    freeze = int(round(MEM_FREEZE_TAU_C_B * cal.tau_c))
+    chilen = CHI_LENGTH_OVER_L_P * cal.L_P
+    base_v = scaled_frozen()
+    base_v.update({
+        "nsteps": nsteps, "ninfo": ninfo, "nvideo": nvideo,
+        "mc": round(cal.mc, 4), "pmem": round(cal.pmem, 6),
+        "tau-chi": round(tau_chi, 1),
+        "mem-freeze-steps": freeze,
+        "ntracer": tracer_interval(cal.tau_c), "tracer-count": TRACER_COUNT,
+        "video-p-scale": round(STORE_SIGMA * cal.sigma_P, 5),
+        "video-u-scale": round(STORE_SIGMA * cal.u_rms, 5),
+    })
+    # (chi, m) of the two phases, and the model slots they go into
+    starts = {
+        "chi0":      {"chi-config": "uniform", "chi0": 0.0, "m0": round(cal.f_top, 4)},
+        "chi1":      {"chi-config": "uniform", "chi0": 1.0, "m0": round(cal.f_floor, 4)},
+        "leftright": {"chi-config": "stripe", "chi0": 0.5, "m0": 0.5,
+                      "chi-hi": 0.0, "m-hi": round(cal.f_top, 4),
+                      "chi-lo": 1.0, "m-lo": round(cal.f_floor, 4)},
+        "patches":   {"chi-config": "binary-noise", "chi0": 0.5, "m0": 0.5,
+                      "chi-noise": 1.0, "chi-length": round(chilen, 2),
+                      "chi-hi": 0.0, "m-hi": round(cal.f_top, 4),
+                      "chi-lo": 1.0, "m-lo": round(cal.f_floor, 4)},
+    }
+    for i, g in enumerate(TAU_M_OVER_TAU_C):
+        tau_m = g * cal.tau_c
+        for j, (name, over) in enumerate(starts.items()):
+            seed = SEED0 + 4 * i + j
+            chi_seed = CHI_SEED0 + 4 * i + j
+            v = dict(base_v)
+            v.update(over)
+            v.update({
+                "seed": seed, "chi-seed": chi_seed, "tau-m": round(tau_m, 1),
+                "init-frame": f"{FRAME_ROOT}/{SNAPSHOT[name]}/frame{NSTEPS}.json",
+            })
+            hdr = HDR_B.format(
+                f_top=cal.f_top, f_floor=cal.f_floor, mc=cal.mc, chilen=chilen,
+                snap=SNAPSHOT[name], freeze=freeze, tau_c=cal.tau_c, sigma_P=cal.sigma_P,
+                pmem=cal.pmem, T=T_OVER_TAU_C, nsteps=nsteps, tau_chi=tau_chi,
+                nvideo=nvideo, series=nvideo / cal.tau_c,
+                g=g, tau_m=tau_m, start=name, seed=seed, chi_seed=chi_seed,
+                sat=saturation_note(nsteps, cal.tau_c, tau_m, tau_chi))
+            made.append(write_case(
+                os.path.join(out, "cw_s3_b", f"tm{tag(g)}_{name}"), hdr, v, order=ORDER_B))
+    return made
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("stage", choices=["a"])
+    ap.add_argument("stage", choices=["a", "b"])
+    ap.add_argument("--calib", default=None,
+                    help="measured calib_s3.json from stage A; stage B refuses "
+                         "to run without it")
     ap.add_argument("--out", default="cases/20260904")
     args = ap.parse_args()
     print(f"s = {S:.4f}: tau_c {OLD_TAU_C:.1f} -> {TAU_C:.1f} steps, sigma_P {OLD_SIGMA_P:.5f} -> "
@@ -247,7 +395,18 @@ def main():
     print(f"Omega_1 tau_c = {2 * math.pi * CS * TAU_C / L_NEW:.2f},  Ma -> "
           f"{U_RMS / CS:.4f},  0.05 pmem = {ACOUSTIC_COEFF * PMEM:.2e}")
     print("class table:\n" + class_table())
-    made = gen_a(args.out)
+    if args.stage == "b":
+        if not args.calib:
+            raise SystemExit("stage B needs --calib: sizing 80 runs on stage A's PREDICTED "
+                             "scales would put every step count and every m0 on numbers the "
+                             "ladder was run to replace")
+        cal = Calib3(args.calib)
+        print(f"measured: tau_c = {cal.tau_c:.1f}, sigma_P = {cal.sigma_P:.5f}, "
+              f"pmem = {cal.pmem:.6f}, f_top = {cal.f_top:.4f}, f_floor = {cal.f_floor:.4f}, "
+              f"L_P = {cal.L_P:.2f}, mc = {cal.mc:.4f}")
+        made = gen_b(args.out, cal)
+    else:
+        made = gen_a(args.out)
     for p in made:
         print(f"  {p}")
     print(f"{len(made)} runcards")

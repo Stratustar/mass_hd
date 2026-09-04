@@ -272,6 +272,41 @@ protected:
    *  the prescribed chi pattern before the pattern is allowed to answer back. */
   unsigned chi_freeze_steps = 0;
 
+  /** START Q, THE VELOCITY AND THE PRESSURE FROM A SAVED FRAME, "" = cold start.
+   *
+   *  WHAT IT LOADS AND WHAT IT DOES NOT. QQxx, QQyx, ux_mat, uy_mat and pressure -- the
+   *  hydrodynamic state. chi and m are NOT loaded: they come from chi-config as always,
+   *  because the campaign's whole design is to put several (chi, m) starts on one
+   *  statistically steady FLOW, and a phase is a (chi, m) pair that the runcard prepares
+   *  deliberately. Loading them would silently overwrite that.
+   *
+   *  WHY IT EXISTS. Every cold start begins at rest, so the first 2-4 tau_c of a run are a
+   *  spin-up in which P is not yet the pressure field of the turbulent state -- and the
+   *  memory integrates P from the first step. mem-freeze-steps was the cheap answer (hold
+   *  the memory source off while the flow develops); this is the honest one: the flow IS
+   *  the developed state at t = 0, so a mixed initial condition is laid on a real turbulent
+   *  field rather than on a quiescent one that will develop under it.
+   *
+   *  HOW THE LB STATE IS REBUILT. The frame carries the physical velocity u_mat and the
+   *  mechanical pressure P, not the populations (frame-light drops ff, and even a full
+   *  frame is written at ~6 significant digits). Both are inverted exactly:
+   *
+   *    sigma_bulk = 1/2 CC (1 - q^2)^2        algebraic in the loaded Q
+   *    n          = rho + 3 (P + sigma_bulk)  from P = (n - rho)/3 - sigma_bulk
+   *    u_code     = u_mat (1 + friction/2n) - div(sigma)/(2n)     the forcing correction
+   *    ff         = f_eq(u_code, n)
+   *
+   *  The last two need the stress, hence a full UpdateQuantities() sweep at configure time
+   *  -- which is why this runs AFTER ConfigurePhenotype(): the active stress needs chi.
+   *  Only the NON-EQUILIBRIUM part of ff is lost, and it is the part that regenerates on
+   *  the collision time tau = 2 steps, against a tau_c of ~700.
+   *
+   *  In a periodic box <n> = rho is pinned by the initial condition, and the reconstruction
+   *  preserves it automatically: the source frame was written from a run where <n> = rho,
+   *  so its <P> = -<sigma_bulk> and the two terms cancel on average, up to the ~1e-6
+   *  relative rounding of the JSON writer. */
+  std::string init_frame = "";
+
   /** Steps during which the MEMORY SOURCE is held off: transport and diffusion of m keep
    *  running, but (g(P) - m)/tau_m is switched out, so m holds its initial value while the
    *  flow spins up.
@@ -405,6 +440,8 @@ protected:
   void ComputeMaterialVelocity();
   /** Set up the initial phenotype and memory */
   void ConfigurePhenotype();
+  /** Seed Q, u and P from init_frame and rebuild the LB populations */
+  void ConfigureFromFrame();
   /** Diffuse a field until its correlation length is `length` (the noise initialisers) */
   void SmoothToLength(ScalarField&, double length);
   /** chi*(m), the target of the phenotype relaxation */
@@ -488,7 +525,9 @@ public:
        & auto_name(frame_light)
        // appended 2026-09-01 (step-switch campaign); never reorder the entries above
        & auto_name(chi_seed)
-       & auto_name(mem_freeze_steps);
+       & auto_name(mem_freeze_steps)
+       // appended 2026-09-04 (the s = 1/3 rescaled campaign)
+       & auto_name(init_frame);
   }
 
   /** Serialization of the current frame (time snapshot)

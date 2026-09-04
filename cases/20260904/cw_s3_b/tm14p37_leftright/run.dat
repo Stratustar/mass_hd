@@ -1,0 +1,97 @@
+# 20260904 cw_s3_b -- the tau_m scan of the s = 1/3 campaign: 20 memory times x 4 starts.
+# 
+# THE QUESTION. Four initial conditions on one tau_m axis. Where the chi == 0 and chi == 1
+# curves COINCIDE the outcome is independent of how the layer started -- a mixed state, or a
+# single high phase; where they SEPARATE is tau_freeze. The mixed starts (leftright, patches)
+# are not summarised by a number: they are watched, because what they show is whether the low
+# phase can hold a domain at all, which is tau_x.
+# 
+# THE FOUR STARTS. m is set to MATCH chi everywhere, because a phase is a (chi, m) pair and
+# a half prepared at the wrong m relaxes towards the other phase on tau_m whether or not the
+# physics is bistable:
+#   chi0        chi == 0 everywhere, m == f(zeta)     = 0.3301   the ACTIVE phase
+#   chi1        chi == 1 everywhere, m == f(0.3 zeta) = 0.0559   the PASSIVE phase
+#   leftright   x < L/2 is chi = 0, the rest chi = 1; two flat interfaces under PBC
+#   patches     correlated Gaussian noise at 7.0 = 2 L_P, split at its OWN MEDIAN into
+#               exactly half and half -- a fixed threshold would let the sample mean scatter
+#               the initial area fraction, which is the very quantity the loop amplifies
+# Both uniform starts are EXACT fixed points of the hard step chi* = Theta(mc - m), with
+# mc = 0.2100 between f_floor and f_top, so "did it move" is a clean question.
+# 
+# A NOTE ON THE hi/lo SUFFIXES. The model applies (chi-hi, m-hi) to the left half of a stripe
+# and to the above-median half of the binary noise. This campaign puts the ACTIVE phase there,
+# so chi-hi = 0 and m-hi = f_top: the suffix names the model's slot, not the value of chi.
+# 
+# EVERY RUN STARTS FROM A DEVELOPED FLOW. init-frame loads Q, u and P from the last frame of
+# the matching open-loop rung of stage A (a0p65), and the LB populations are rebuilt as
+# f_eq(u_code, n) with n = rho + 3(P + sigma_bulk) and u_code = u_mat - div(sigma)/2n. Only
+# the non-equilibrium part of ff is lost and it regenerates on tau = 2 steps; measured on a
+# restart test, the flow tracks the continued run to 0.3% over 300 steps with no jump at
+# t = 0. This replaces the 10 tau_c memory freeze the L = 800 campaign needed: the memory now
+# integrates the pressure of the turbulent state from the first step, which is what it is
+# meant to do. A 674-step freeze is kept purely as insurance.
+# 
+# THE CLOCKS, all from the MEASURED stage-A calibration (calib_s3.json):
+#   tau_c   = 674.3 steps      the material clock, tracers at full activity
+#   sigma_P = 0.03368        pmem = 0.5 sigma_P = 0.016838
+#   T       = 300 tau_c = 202300 steps, the same for all 80 runs
+#   tau_chi = 0.3 tau_c = 202 steps
+#   series  = every 34 steps = 0.050 tau_c, the video stream's own clock; <chi> and
+#             std(chi) are written there in double precision from the full-resolution field
+# 
+# THIS CASE: tau_m = 14.368 tau_c = 9689 steps, start leftright, on the a0p65 flow.
+# seed 4038, chi-seed 7038.
+# SATURATION: record window 161840 steps against 15(tau_c + tau_m + tau_chi) = 158481 -- satisfied.
+model            = confluent-wet
+nsteps           = 202300
+nstart           = 0
+ninfo            = 8000
+LX               = 500
+LY               = 500
+bc               = 0
+seed             = 4038
+
+Gamma            = 0.05
+xi               = 0.4
+CC               = 0.00208333
+LL               = 0.01666667
+tau              = 2.0
+rho              = 40
+friction         = 0.0
+zeta             = 0.06666667
+zeta0-frac       = 0.3
+
+angle            = 0
+noise            = 0.05
+initial-order    = 1
+director-config  = uniform
+defect-sep       = 0
+
+Dbio             = 0.00166667
+chi-config       = stripe
+chi0             = 0.5
+chi-seed         = 7038
+chi-lo           = 1.0
+chi-hi           = 0.0
+m-lo             = 0.0559
+m-hi             = 0.3301
+tau-chi          = 202.3
+chi-width        = 0.0
+switch-sign      = -1
+mc               = 0.21
+m0               = 0.5
+init-frame       = /scratch/helu/mass_hd/cases/20260904/cw_s3_a/a0p65/frame100000.json
+mem-freeze-steps = 674
+
+tau-m            = 9688.8
+pmem             = 0.016838
+pmem-width       = 0.0
+
+ntracer          = 25
+tracer-count     = 2000
+
+nvideo           = 34
+video-stride     = 2
+video-p-scale    = 0.20206
+video-u-scale    = 0.04538
+frame-light      = 1
