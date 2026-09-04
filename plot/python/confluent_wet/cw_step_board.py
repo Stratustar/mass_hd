@@ -154,12 +154,24 @@ def main():
         # the tau_m, so the grid is built from the filenames themselves.
         FLD = [("chi", "chi"), ("m", "m"), ("P", "P"),
                ("p_LB", "p_LB"), ("sigma_B", "sigma_B"), ("Qabs", "|Q|")]
+        def _num(t):
+            # tags are normally tmX; anything else (an initial-condition name, say) sorts
+            # as text and is shown verbatim on its button
+            try:
+                return (0, float(t[2:].replace("p", ".")) if t.startswith("tm")
+                        else float(t.replace("p", ".")))
+            except ValueError:
+                return (1, 0.0)
         tags = sorted({f.split("_")[1] for f in have if f.startswith("fld_")},
-                      key=lambda t: float(t[2:].replace("p", ".")))
+                      key=lambda t: (_num(t), t))
         for t in tags:
-            g = float(t[2:].replace("p", "."))
+            g = t[2:].replace("p", ".") if t.startswith("tm") else t
             rows, cells = [], []
-            for fk, flab in FLD:
+            # only the fields that actually exist: this mode serves both the six-field
+            # comparison and smaller ad-hoc sets, and a row of "-" placeholders for fields
+            # nobody asked to render is just noise
+            for fk, flab in [(k, l) for k, l in FLD
+                             if f"fld_{t}_{k}.mp4" in have]:
                 cells.append(cell(f"fld_{t}_{fk}.mp4", flab, have))
                 if len(cells) == 3:
                     rows.append(("", cells)); cells = []
@@ -192,13 +204,17 @@ def main():
 
     pane_html = []
     for g, rows in panes:
-        body = [f'<div class="pg">&tau;_m/&tau;_c = {g:g}</div>']
+        lbl = f"&tau;_m/&tau;_c = {g:g}" if isinstance(g, float) else str(g)
+        body = [f'<div class="pg">{lbl}</div>']
         for rlab, cells in rows:
             body.append(f'<div class="prow">'
                         + (f'<div class="rl">{rlab}</div>' if rlab else "")
                         + "".join(cells) + "</div>")
-        pane_html.append(f'<div class="pane" data-g="{g:g}">{"".join(body)}</div>')
-    buttons = "".join(f'<button class="tb" data-g="{g:g}">{g:g}</button>' for g, _ in panes)
+        gid = f"{g:g}" if isinstance(g, float) else str(g)
+        pane_html.append(f'<div class="pane" data-g="{gid}">{"".join(body)}</div>')
+    buttons = "".join(
+        f'<button class="tb" data-g="{g:g}">{g:g}</button>' if isinstance(g, float)
+        else f'<button class="tb" data-g="{g}">{g}</button>' for g, _ in panes)
     an_html = "".join(f'<img alt="analysis" src="data:image/png;base64,{i}">' for i in imgs)
     title = a.title or {"taum": "tau_m board", "tchi": "tau_chi board",
                         "long": "500k board", "fields": "fields board"}[a.mode]
