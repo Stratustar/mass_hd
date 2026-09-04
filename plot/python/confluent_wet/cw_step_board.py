@@ -1,14 +1,24 @@
 #!/usr/bin/env python3
-"""One dashboard for the whole tau_m axis at the symmetric operating point.
+"""Spare video dashboards for the step-switch campaign. Three modes, one skeleton.
 
-    cw_step_board.py <fine_results> <sym_results> --videos DIR --out DIR
+    cw_step_board.py taum <fine> <sym>            --videos DIR --out DIR
+    cw_step_board.py tchi <tchi> <fine> <sym>     --videos DIR --out DIR
+    cw_step_board.py long <long> [<long2> ...]    --videos DIR --out DIR
 
-Both trees run at mc = 0.2100, so 0.3-10 from the fine scan and 15/22/30 from the symmetry
-test are one continuous axis and are presented as one.
+All three present the same way: a row of tau_m buttons that toggle (several can be open at
+once), an `analysis` button, and one shared transport -- play/pause, scrubber, 0.5-4x --
+driving every open clip from a common clock. Nothing else; the labels are the explanation.
 
-Deliberately spare: a row of tau_m buttons, an `analysis` button, and nothing else. The
-selected tau_m shows its clips side by side, labelled only by their initial condition. The
-analysis view holds <chi> and std(chi) against tau_m.
+What differs is what a pane holds:
+
+  taum   one row, the three initial conditions. mc = 0.2100 across 0.3-30 tau_c.
+  tchi   three rows, one per tau_chi rule, each with the three starts. The comparison the
+         group exists for reads down a column: same tau_m, same start, different phenotype
+         clock.
+  long   two rows, chi and m, for the 500000-step runs -- m is on the same page because the
+         question there is whether the memory is still moving, not just the phenotype.
+
+Analysis views are the PNGs the per-group analyses already wrote, inlined as data URIs.
 """
 import argparse
 import base64
@@ -23,93 +33,159 @@ import matplotlib.pyplot as plt          # noqa: E402
 import numpy as np                       # noqa: E402
 
 ARMS = [("a", "chi = 0"), ("b", "chi = 1"), ("c1", "chi = noise")]
+TCHI_RULES = [(0.3, "fixed", "tau_chi = 0.3 tau_c"),
+              (1.0, "fixed", "tau_chi = 1.0 tau_c"),
+              (0.5, "prop", "tau_chi = 0.5 tau_m")]
 
 
-def load(d, pat, clip):
-    """{(tau_m, arm): (clip_basename, part)} for one results tree."""
-    out = {}
+def scan(d, pat, clip):
+    """[(tau_m, arm, clip_basename, part)] for one results tree."""
+    out = []
     for p in sorted(glob.glob(os.path.join(d, "*", "part.json"))):
         c = os.path.basename(os.path.dirname(p))
         m = re.match(pat, c)
         if not m:
             continue
-        g, arm = float(m.group(1).replace("p", ".")), m.group(2)
         with open(p) as fh:
-            out[(g, arm)] = (clip.format(case=c), json.load(fh))
+            out.append((float(m.group(1).replace("p", ".")), m.group(2),
+                        clip.format(case=c), json.load(fh)))
     return out
 
 
-def figures(R, gs, outdir):
-    """<chi> and std(chi) against tau_m, as two standalone PNGs."""
-    made = {}
-    for key, ylab, fname, logy in (
-            ("chi", r"$\langle\chi\rangle$", "chi_vs_taum.png", False),
-            ("std", r"$\mathrm{std}(\chi)$", "stdchi_vs_taum.png", False)):
+def b64(path):
+    with open(path, "rb") as fh:
+        return base64.b64encode(fh.read()).decode()
+
+
+def taum_figs(R, gs, outdir):
+    """<chi> and std(chi) against tau_m -- the taum mode writes its own analysis."""
+    made = []
+    for key, ylab, fname in (("chi", r"$\langle\chi\rangle$", "chi_vs_taum.png"),
+                             ("std", r"$\mathrm{std}(\chi)$", "stdchi_vs_taum.png")):
         fig, ax = plt.subplots(figsize=(6.6, 4.2), constrained_layout=True)
         for arm, lab in ARMS:
             x = [g for g in gs if (g, arm) in R]
             if not x:
                 continue
-            y = [R[(g, arm)][1] if key == "chi" else R[(g, arm)][2] for g in x]
-            ax.plot(x, y, "-o", lw=1.4, ms=4, label=lab)
+            ax.plot(x, [R[(g, arm)][key] for g in x], "-o", lw=1.4, ms=4, label=lab)
         ax.set_xscale("log")
-        if logy:
-            ax.set_yscale("log")
         ax.set_xlabel(r"$\tau_m/\tau_c$")
         ax.set_ylabel(ylab)
         ax.grid(alpha=0.25)
         ax.legend(fontsize=9)
         fig.savefig(os.path.join(outdir, fname), dpi=200)
         plt.close(fig)
-        with open(os.path.join(outdir, fname), "rb") as fh:
-            made[key] = base64.b64encode(fh.read()).decode()
+        made.append(b64(os.path.join(outdir, fname)))
     return made
+
+
+def cell(clip, lab, have):
+    if clip not in have:
+        return ('<figure><div class="ph">-</div>'
+                f'<figcaption>{lab}</figcaption></figure>')
+    return (f'<figure><video data-src="clips/{clip}" muted playsinline loop '
+            f'preload="none"></video><figcaption>{lab}</figcaption></figure>')
 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("fine")
-    ap.add_argument("sym")
+    ap.add_argument("mode", choices=["taum", "tchi", "long"])
+    ap.add_argument("trees", nargs="+")
     ap.add_argument("--videos", required=True)
     ap.add_argument("--out", required=True)
+    ap.add_argument("--analysis", nargs="*", default=None,
+                    help="PNGs for the analysis view; taum draws its own if omitted")
+    ap.add_argument("--title", default=None)
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)
-
-    fine = load(a.fine, r"tm(.+)_([abc]\d?)$", "b1_{case}_chi.mp4")
-    sym = load(a.sym, r"s1_tm(.+)_([ab])$", "sym_{case}_chi.mp4")
-
-    # fine wins where they overlap (tau_m = 10): it carries the noise start as well
-    R = {}
-    for (g, arm), (clip, d) in list(sym.items()) + list(fine.items()):
-        s = d.get("settled") or {}
-        f = d.get("fate") or {}
-        R[(g, arm)] = (clip, f.get("chi_tail", s.get("chi_mean_tail", float("nan"))),
-                       d["flow"]["std_chi"])
-    gs = sorted(set(g for g, _ in R))
-
-    imgs = figures(R, gs, a.out)
-
     have = set(os.listdir(a.videos)) if os.path.isdir(a.videos) else set()
-    panes = []
-    for g in gs:
-        cells = []
-        for arm, lab in ARMS:
-            hit = R.get((g, arm))
-            if not hit or hit[0] not in have:
-                continue
-            cells.append(f'<figure><video data-src="clips/{hit[0]}" muted playsinline loop '
-                         f'preload="none"></video><figcaption>{lab}</figcaption></figure>')
-        if cells:
-            panes.append(f'<div class="pane" data-g="{g:g}">'
-                         f'<div class="pg">&tau;_m/&tau;_c = {g:g}</div>'
-                         f'{"".join(cells)}</div>')
 
-    buttons = "".join(f'<button class="tb" data-g="{g:g}">{g:g}</button>' for g in gs)
+    panes, gs, imgs = [], [], []
+
+    if a.mode == "taum":
+        fine = scan(a.trees[0], r"tm(.+)_([abc]\d?)$", "b1_{case}_chi.mp4")
+        sym = scan(a.trees[1], r"s1_tm(.+)_([ab])$", "sym_{case}_chi.mp4")
+        R = {}
+        for g, arm, clip, d in sym + fine:          # fine wins the tau_m = 10 overlap
+            s, f = d.get("settled") or {}, d.get("fate") or {}
+            R[(g, arm)] = {"clip": clip,
+                           "chi": f.get("chi_tail", s.get("chi_mean_tail", float("nan"))),
+                           "std": d["flow"]["std_chi"]}
+        gs = sorted(set(g for g, _ in R))
+        imgs = taum_figs(R, gs, a.out)
+        for g in gs:
+            cells = [cell(R[(g, k)]["clip"], lab, have) for k, lab in ARMS if (g, k) in R]
+            if cells:
+                panes.append((g, [("", cells)]))
+
+    elif a.mode == "tchi":
+        tchi = scan(a.trees[0], r"(?:t1|th|t0p3)_tm(.+)_([abc]\d?)$", "tchi_{case}_chi.mp4")
+        fine = scan(a.trees[1], r"tm(.+)_([abc]\d?)$", "b1_{case}_chi.mp4")
+        sym = scan(a.trees[2], r"s1_tm(.+)_([ab])$", "sym_{case}_chi.mp4")
+        tau_c = None
+        R = {}
+        for g, arm, clip, d in tchi + fine + sym:
+            u = d["params"]
+            tau_c = tau_c or (u["tau_m"] / g if g else None)
+            # classify by the run's OWN clocks, so the three trees pool without a table
+            frac, gchi = u["tau_chi"] / u["tau_m"], u["tau_chi"] / tau_c
+            rule = ("prop", 0.5) if abs(frac - 0.5) < 0.02 else \
+                   ("fixed", round(gchi, 1)) if min(abs(gchi - 1.0), abs(gchi - 0.3)) < 0.05 \
+                   else None
+            if rule:
+                R[(rule, round(g, 3), arm)] = clip
+        # the five tau_m the group was designed on
+        gs = sorted(set(g for _, g, _ in R if any(
+            abs(g - t) / t < 0.06 for t in (0.3, 3, 10, 15, 30))))
+        for g in gs:
+            rows = []
+            for coef, kind, lab in TCHI_RULES:
+                key = ("prop", 0.5) if kind == "prop" else ("fixed", coef)
+                cells = [cell(R[(key, g, k)], al, have) for k, al in ARMS
+                         if (key, g, k) in R]
+                if cells:
+                    rows.append((lab, cells))
+            if rows:
+                panes.append((g, rows))
+
+    else:  # long
+        R = {}
+        for t in a.trees:
+            for g, arm, clip, d in scan(t, r"tm(.+)_([abc]\d?)$", "long_{case}_chi.mp4"):
+                R[(g, arm)] = clip
+        gs = sorted(set(g for g, _ in R))
+        for g in gs:
+            rows = []
+            for fld, flab in (("chi", "chi"), ("m", "m")):
+                cells = [cell(R[(g, k)].replace("_chi.mp4", f"_{fld}.mp4"), al, have)
+                         for k, al in ARMS if (g, k) in R]
+                if cells:
+                    rows.append((flab, cells))
+            if rows:
+                panes.append((g, rows))
+
+    if a.analysis:
+        imgs = [b64(p) for p in a.analysis if os.path.exists(p)]
+    if not panes:
+        raise RuntimeError("no panes built -- check the trees and the clips directory")
+
+    pane_html = []
+    for g, rows in panes:
+        body = [f'<div class="pg">&tau;_m/&tau;_c = {g:g}</div>']
+        for rlab, cells in rows:
+            body.append(f'<div class="prow">'
+                        + (f'<div class="rl">{rlab}</div>' if rlab else "")
+                        + "".join(cells) + "</div>")
+        pane_html.append(f'<div class="pane" data-g="{g:g}">{"".join(body)}</div>')
+    buttons = "".join(f'<button class="tb" data-g="{g:g}">{g:g}</button>' for g, _ in panes)
+    an_html = "".join(f'<img alt="analysis" src="data:image/png;base64,{i}">' for i in imgs)
+    title = a.title or {"taum": "tau_m board", "tchi": "tau_chi board",
+                        "long": "500k board"}[a.mode]
 
     html = f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>tau_m board</title>
+<title>{title}</title>
 <style>
 :root{{--bg:#0e1014;--fg:#e9ebef;--dim:#7f8796;--line:#262b34;--on:#5c9bd6;--panel:#171a21}}
 *{{box-sizing:border-box}}
@@ -124,14 +200,17 @@ button{{background:var(--panel);color:var(--fg);border:1px solid var(--line);bor
 button:hover{{border-color:var(--on)}}
 button[data-on]{{border-color:var(--on);color:var(--on)}}
 .sep{{flex:1}}
-.pane{{display:none;grid-template-columns:repeat(3,1fr);gap:8px 12px}}
-.pane[data-on]{{display:grid}}
-.pg{{grid-column:1/-1;color:var(--dim);border-top:1px solid var(--line);padding-top:8px}}
 .panes{{display:flex;flex-direction:column;gap:14px}}
-@media(max-width:900px){{.pane[data-on]{{grid-template-columns:1fr}}}}
+.pane{{display:none;flex-direction:column;gap:10px}}
+.pane[data-on]{{display:flex}}
+.pg{{color:var(--dim);border-top:1px solid var(--line);padding-top:8px}}
+.prow{{display:grid;grid-template-columns:repeat(3,1fr);gap:6px 12px}}
+.rl{{grid-column:1/-1;color:var(--on);font-size:12.5px}}
+@media(max-width:900px){{.prow{{grid-template-columns:1fr}}}}
 figure{{margin:0;display:flex;flex-direction:column;gap:6px}}
-video{{width:100%;display:block;background:#000;aspect-ratio:400/422;object-fit:contain;
+video,.ph{{width:100%;display:block;background:#000;aspect-ratio:400/422;object-fit:contain;
   border:1px solid var(--line);border-radius:3px}}
+.ph{{display:grid;place-items:center;background:var(--panel);color:var(--dim)}}
 figcaption{{color:var(--dim);text-align:center}}
 .ctl{{display:flex;gap:10px;align-items:center;flex-wrap:wrap}}
 input[type=range]{{flex:1;min-width:220px;accent-color:var(--on)}}
@@ -152,10 +231,9 @@ input[type=range]{{flex:1;min-width:220px;accent-color:var(--on)}}
   <button class="sp" data-r="2">2&times;</button>
   <button class="sp" data-r="4">4&times;</button></div>
 
-<div class="panes">{"".join(panes)}</div>
+<div class="panes">{"".join(pane_html)}</div>
 
-<div id="an"><img alt="mean chi against tau_m" src="data:image/png;base64,{imgs['chi']}">
-<img alt="std chi against tau_m" src="data:image/png;base64,{imgs['std']}"></div>
+<div id="an">{an_html}</div>
 
 </div><script>
 const panes=[...document.querySelectorAll('.pane')],tb=[...document.querySelectorAll('.tb')];
@@ -163,15 +241,13 @@ const an=document.getElementById('an'),anb=document.getElementById('anb');
 const pp=document.getElementById('pp'),sk=document.getElementById('sk'),tt=document.getElementById('tt');
 let rate=1,playing=false;
 
-// every open pane contributes; the first one is the clock everything else is held to
 function vids(){{return [...document.querySelectorAll('.pane[data-on] video')]}}
 function attach(v,t){{
   if(!v.src&&v.dataset.src){{v.src=v.dataset.src;v.preload='auto';v.load();}}
   v.playbackRate=rate;
   // only the seek needs an event, and it needs metadata rather than data. STARTING is left
-  // to the watchdog below: `canplay` fires once, so a listener added after it has already
-  // gone by never runs -- which is exactly what happens when a pane is opened (fires) and
-  // play is pressed a moment later (too late).
+  // to the watchdog: `canplay` fires once, so a listener added after it has gone by never
+  // runs -- exactly what happens when a pane opens (fires) and play is pressed a moment later.
   const go=()=>{{if(v.duration)v.currentTime=t;}};
   if(v.readyState>=1)go(); else v.addEventListener('loadedmetadata',go,{{once:true}});
 }}
@@ -212,13 +288,12 @@ document.querySelectorAll('.sp').forEach(b=>b.addEventListener('click',()=>{{
 }}));
 setInterval(()=>{{
   const vs=vids();
-  // start anything that should be running and is not: a clip still buffering when play was
-  // pressed, or one whose pane was opened afterwards. Self-healing, so no event can be missed.
+  // start anything that should be running and is not -- a clip still buffering when play was
+  // pressed, or one whose pane opened afterwards. Self-healing, so no event can be missed.
   if(playing)vs.forEach(v=>{{if(v.paused&&v.readyState>=2)v.play().catch(()=>{{}})}});
   const v=vs[0]; if(!v||!v.duration)return;
   sk.value=Math.round(1000*v.currentTime/v.duration);
   tt.textContent=v.currentTime.toFixed(1)+'s';
-  // independently decoded clips drift apart over an 89 s loop; pull them back
   vs.slice(1).forEach(o=>{{if(o.duration&&Math.abs(o.currentTime-v.currentTime)>0.25)
     o.currentTime=v.currentTime}});
 }},200);
@@ -228,11 +303,9 @@ toggle(tb[0].dataset.g);
     out = os.path.join(a.out, "index.html")
     with open(out, "w") as fh:
         fh.write(html)
-    print(f"wrote {out} ({len(html)/1024:.0f} KB), {len(gs)} tau_m points, "
-          f"{sum(len(p.split('<figure')) - 1 for p in panes)} clips referenced")
-    for g in gs:
-        arms = [arm for arm, _ in ARMS if (g, arm) in R]
-        print(f"  {g:6g}  " + " ".join(f"{a_}={R[(g,a_)][1]:.3f}" for a_ in arms))
+    nclip = sum(len(c) for _, rows in panes for _, c in rows)
+    print(f"wrote {out} ({len(html)/1024:.0f} KB)  mode={a.mode}  "
+          f"{len(panes)} tau_m, {nclip} cells, {len(imgs)} analysis plots")
 
 
 if __name__ == "__main__":
