@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """Stage B of the s = 1/3 campaign: the per-run series, the three-panel video, the two figures.
 
-Three entry points, because they have different costs and different lifetimes:
+Three stages, because they have different costs and different lifetimes. The positional
+contract is the project's usual `inputdir outdir`, so the per-run stages drop straight into
+scripts_cluster/submit_analysis_array.sh:
 
-    cw_s3_b.py series <sim_dir> <out_dir>          one run  -> series.txt (+ series.json)
-    cw_s3_b.py video  <sim_dir> <out_dir> --calib  one run  -> chi_P_m.mp4
-    cw_s3_b.py figs   <results_root> --calib       all runs -> the two campaign figures
+    cw_s3_b.py <sim_dir> <out_dir> --calib C                one run  -> series.txt + chi_P_m.mp4
+    cw_s3_b.py <sim_dir> <out_dir> --calib C --stage series one run  -> series.txt only
+    cw_s3_b.py <results_root> <out> --calib C --stage figs  all runs -> the two figures
 
 WHY THE SERIES IS NOT COMPUTED FROM THE VIDEO PIXELS. video_meta.csv carries <chi>, std(chi),
 <m>, u_rms and std(P) written by the C++ in double precision from the FULL-RESOLUTION field,
@@ -267,9 +269,10 @@ def make_figs(root, out_dir, tau_c):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("stage", choices=["series", "video", "figs"])
-    ap.add_argument("path", help="sim dir (series/video) or results root (figs)")
+    ap.add_argument("path", help="sim dir (series/video/both) or results root (figs)")
     ap.add_argument("out", nargs="?", default=None)
+    ap.add_argument("--stage", choices=["series", "video", "both", "figs"], default="both",
+                    help="default `both`: the series and the video for one run")
     ap.add_argument("--calib", default=None, help="calib_s3.json; supplies tau_c and sigma_P")
     ap.add_argument("--tau-c", type=float, default=None)
     ap.add_argument("--sigma-p", type=float, default=None)
@@ -286,7 +289,7 @@ def main():
     if tau_c is None:
         raise SystemExit("need --calib or --tau-c: every axis of this stage is in tau_c")
 
-    if a.stage == "series":
+    if a.stage in ("series", "both"):
         out = a.out or a.path
         s = series_of(a.path, tau_c)
         path, meta = write_series(s, out)
@@ -295,14 +298,19 @@ def main():
         print(f"  window {meta['window_frames']} frames: <chi> = {meta['chi_mean_window']:.4f} "
               f"+/- {meta['chi_std_window']:.4f}, Var_x = {meta['var_mean_window']:.5f} "
               f"+/- {meta['var_std_window']:.5f}, drift {meta['chi_drift_window']:+.4f}")
-        print(f"  wrote {path}")
-    elif a.stage == "video":
+        print(f"  wrote {path}", flush=True)
+
+    if a.stage in ("video", "both"):
         out = a.out or a.path
         os.makedirs(out, exist_ok=True)
-        p = os.path.join(out, "chi_P_m.mp4")
-        nb = render_three(a.path, p, tau_c, sigma_P, every=a.every, fps=a.fps)
-        print(f"wrote {p} ({nb/1e6:.1f} MB)")
-    else:
+        if sigma_P is None:
+            raise SystemExit("the video needs sigma_P (--calib or --sigma-p): its P window "
+                             "is the campaign's +/- 2 sigma_P, never the run's own range")
+        vp = os.path.join(out, "chi_P_m.mp4")
+        nb = render_three(a.path, vp, tau_c, sigma_P, every=a.every, fps=a.fps)
+        print(f"wrote {vp} ({nb/1e6:.1f} MB)", flush=True)
+
+    if a.stage == "figs":
         out = a.out or a.path
         os.makedirs(out, exist_ok=True)
         make_figs(a.path, out, tau_c)
