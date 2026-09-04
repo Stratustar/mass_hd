@@ -124,6 +124,15 @@ def main():
             rec = {"frames": [int(st.steps[i0]), int(st.steps[i1 - 1])]}
             for (u, v) in PAIRS:
                 cc = xcorr(D[u], D[v], maxlag)
+                # A field with no spatial variance -- chi in a saturated active phase is
+                # EXACTLY 0 everywhere -- makes every correlation involving it undefined.
+                # That is the physics, not a failure: report it as such instead of letting
+                # nanargmax raise on an all-NaN slice.
+                if not np.any(np.isfinite(cc)):
+                    rec[f"{u}_{v}"] = {"c": None, "peak": None, "peak_lag_tau_c": None,
+                                       "peak_lag_steps": None,
+                                       "undefined": f"{u} or {v} has zero spatial variance"}
+                    continue
                 k = int(np.nanargmax(np.abs(cc)))
                 rec[f"{u}_{v}"] = {"c": cc.tolist(), "peak": float(cc[k]),
                                    "peak_lag_tau_c": float(lag_steps[k]),
@@ -131,16 +140,24 @@ def main():
                 ax[r, PAIRS.index((u, v))].plot(lag_steps, cc, lw=1.2, label=name)
             ac = autocorr(D["chi"], maxlag)
             lg = np.arange(maxlag + 1) * dt / a.tau_c
-            t1e = cross_1e(lg, ac)
-            rec["chi_auto"] = {"c": ac.tolist(), "tau_1e_tau_c": t1e,
-                               "tau_1e_steps": t1e * a.tau_c if t1e == t1e else None}
-            ax[r, 3].plot(lg, ac, lw=1.2, label=f"{name}  1/e = {t1e:.2f}"
-                          if t1e == t1e else name)
+            if not np.any(np.isfinite(ac)):
+                rec["chi_auto"] = {"c": None, "tau_1e_tau_c": None, "tau_1e_steps": None,
+                                   "undefined": "chi has zero spatial variance"}
+                t1e = float("nan")
+            else:
+                t1e = cross_1e(lg, ac)
+                rec["chi_auto"] = {"c": ac.tolist(), "tau_1e_tau_c": t1e,
+                                   "tau_1e_steps": t1e * a.tau_c if t1e == t1e else None}
+                ax[r, 3].plot(lg, ac, lw=1.2, label=f"{name}  1/e = {t1e:.2f}"
+                              if t1e == t1e else name)
             summary[tag]["stages"][name] = rec
-            print(f"    {name:>6}: " + "  ".join(
-                f"{u}->{v} peak {rec[f'{u}_{v}']['peak']:+.3f} @ "
-                f"{rec[f'{u}_{v}']['peak_lag_tau_c']:+.2f}" for u, v in PAIRS)
-                + f"   chi 1/e = {t1e:.2f} tau_c", flush=True)
+            def _fmt(u, v):
+                e = rec[f"{u}_{v}"]
+                return (f"{u}->{v} undefined" if e["peak"] is None else
+                        f"{u}->{v} peak {e['peak']:+.3f} @ {e['peak_lag_tau_c']:+.2f}")
+            print(f"    {name:>6}: " + "  ".join(_fmt(u, v) for u, v in PAIRS)
+                  + (f"   chi 1/e = {t1e:.2f} tau_c" if t1e == t1e
+                     else "   chi 1/e undefined (chi has no spatial variance)"), flush=True)
 
         for j, ttl in enumerate([f"{u} -> {v}" for u, v in PAIRS] + ["chi autocorr"]):
             ax[r, j].axhline(0, color="0.6", lw=0.8)
