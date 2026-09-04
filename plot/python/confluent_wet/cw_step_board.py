@@ -89,8 +89,9 @@ def cell(clip, lab, have):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("mode", choices=["taum", "tchi", "long"])
-    ap.add_argument("trees", nargs="+")
+    ap.add_argument("mode", choices=["taum", "tchi", "long", "fields"])
+    ap.add_argument("trees", nargs="*",
+                    help="results trees; fields mode needs none (it reads the clip names)")
     ap.add_argument("--videos", required=True)
     ap.add_argument("--out", required=True)
     ap.add_argument("--analysis", nargs="*", default=None,
@@ -148,6 +149,26 @@ def main():
             if rows:
                 panes.append((g, rows))
 
+    elif a.mode == "fields":
+        # clips are fld_<tag>_<field>.mp4 and there is no part.json to read: the tags carry
+        # the tau_m, so the grid is built from the filenames themselves.
+        FLD = [("chi", "chi"), ("m", "m"), ("P", "P"),
+               ("p_LB", "p_LB"), ("sigma_B", "sigma_B"), ("Qabs", "|Q|")]
+        tags = sorted({f.split("_")[1] for f in have if f.startswith("fld_")},
+                      key=lambda t: float(t[2:].replace("p", ".")))
+        for t in tags:
+            g = float(t[2:].replace("p", "."))
+            rows, cells = [], []
+            for fk, flab in FLD:
+                cells.append(cell(f"fld_{t}_{fk}.mp4", flab, have))
+                if len(cells) == 3:
+                    rows.append(("", cells)); cells = []
+            if cells:
+                rows.append(("", cells))
+            if rows:
+                panes.append((g, rows))
+        gs = [g for g, _ in panes]
+
     else:  # long
         R = {}
         for t in a.trees:
@@ -180,7 +201,7 @@ def main():
     buttons = "".join(f'<button class="tb" data-g="{g:g}">{g:g}</button>' for g, _ in panes)
     an_html = "".join(f'<img alt="analysis" src="data:image/png;base64,{i}">' for i in imgs)
     title = a.title or {"taum": "tau_m board", "tchi": "tau_chi board",
-                        "long": "500k board"}[a.mode]
+                        "long": "500k board", "fields": "fields board"}[a.mode]
 
     html = f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
