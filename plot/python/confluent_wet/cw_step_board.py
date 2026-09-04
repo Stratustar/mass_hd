@@ -331,8 +331,12 @@ setInterval(()=>{{
   const v=vs[0]; if(!v||!v.duration)return;
   sk.value=Math.round(1000*v.currentTime/v.duration);
   tt.textContent=v.currentTime.toFixed(1)+'s';
-  vs.slice(1).forEach(o=>{{if(o.duration&&Math.abs(o.currentTime-v.currentTime)>0.25)
-    o.currentTime=v.currentTime}});
+  // Only nudge clips that are ALREADY RUNNING. Seeking one that has not started restarts
+  // its buffering, so a heavy clip gets yanked back every 200 ms and can never catch up --
+  // it sits pinned at 0 while the light ones run away. Let it start on its own first; the
+  // next tick will align it.
+  vs.slice(1).forEach(o=>{{if(!o.paused&&o.duration&&
+    Math.abs(o.currentTime-v.currentTime)>0.25) o.currentTime=v.currentTime}});
 }},200);
 toggle(tb[0].dataset.g);
 </script></body></html>
