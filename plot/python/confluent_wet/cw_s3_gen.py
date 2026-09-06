@@ -329,19 +329,21 @@ seed {seed}, chi-seed {chi_seed}.
 {sat}"""
 
 
-def gen_b(out, cal):
+def gen_b(out, cal, study="cw_s3_b", grid=None, rule=("fixed", 0.3), prefix="",
+          seed0=SEED0, chi_seed0=CHI_SEED0, header=None):
+    """The closed-loop scan. rule = ("fixed", k): tau_chi = k tau_c; ("prop", k): k tau_m."""
     made = []
+    grid = grid or TAU_M_OVER_TAU_C
+    header = header or HDR_B
     nsteps = int(round(T_OVER_TAU_C * cal.tau_c / 100.0)) * 100
     nvideo = max(1, int(round(SERIES_TAU_C * cal.tau_c)))
     ninfo = int(round(nsteps / FRAMES_TARGET / 500.0)) * 500
-    tau_chi = 0.3 * cal.tau_c
     freeze = int(round(MEM_FREEZE_TAU_C_B * cal.tau_c))
     chilen = CHI_LENGTH_OVER_L_P * cal.L_P
     base_v = scaled_frozen()
     base_v.update({
         "nsteps": nsteps, "ninfo": ninfo, "nvideo": nvideo,
         "mc": round(cal.mc, 4), "pmem": round(cal.pmem, 6),
-        "tau-chi": round(tau_chi, 1),
         "mem-freeze-steps": freeze,
         "ntracer": tracer_interval(cal.tau_c), "tracer-count": TRACER_COUNT,
         "video-p-scale": round(STORE_SIGMA * cal.sigma_P, 5),
@@ -359,32 +361,87 @@ def gen_b(out, cal):
                       "chi-hi": 0.0, "m-hi": round(cal.f_top, 4),
                       "chi-lo": 1.0, "m-lo": round(cal.f_floor, 4)},
     }
-    for i, g in enumerate(TAU_M_OVER_TAU_C):
+    kind, k = rule
+    rule_text = (f"tau_chi = {k:g} tau_c (fixed)" if kind == "fixed"
+                 else f"tau_chi = {k:g} tau_m (proportional)")
+    for i, g in enumerate(grid):
         tau_m = g * cal.tau_c
+        tau_chi = k * cal.tau_c if kind == "fixed" else k * tau_m
         for j, (name, over) in enumerate(starts.items()):
-            seed = SEED0 + 4 * i + j
-            chi_seed = CHI_SEED0 + 4 * i + j
+            seed = seed0 + 4 * i + j
+            chi_seed = chi_seed0 + 4 * i + j
             v = dict(base_v)
             v.update(over)
             v.update({
                 "seed": seed, "chi-seed": chi_seed, "tau-m": round(tau_m, 1),
+                "tau-chi": round(tau_chi, 1),
                 "init-frame": f"{FRAME_ROOT}/{SNAPSHOT[name]}/frame{NSTEPS}.json",
             })
-            hdr = HDR_B.format(
+            hdr = header.format(
                 f_top=cal.f_top, f_floor=cal.f_floor, mc=cal.mc, chilen=chilen,
                 snap=SNAPSHOT[name], freeze=freeze, tau_c=cal.tau_c, sigma_P=cal.sigma_P,
                 pmem=cal.pmem, T=T_OVER_TAU_C, nsteps=nsteps, tau_chi=tau_chi,
-                nvideo=nvideo, series=nvideo / cal.tau_c,
+                rule=rule_text, nvideo=nvideo, series=nvideo / cal.tau_c,
                 g=g, tau_m=tau_m, start=name, seed=seed, chi_seed=chi_seed,
                 sat=saturation_note(nsteps, cal.tau_c, tau_m, tau_chi))
             made.append(write_case(
-                os.path.join(out, "cw_s3_b", f"tm{tag(g)}_{name}"), hdr, v, order=ORDER_B))
+                os.path.join(out, study, f"{prefix}tm{tag(g)}_{name}"), hdr, v,
+                order=ORDER_B))
+    return made
+
+
+# ======================================================================== tchi
+
+TCHI_GRID = [0.300, 3.426, 9.679, 15.932, 30.000]     # five of the twenty, one per regime
+TCHI_RULES = [("t1", ("fixed", 1.0), 5000, 8000),      # tau_chi = 1.0 tau_c
+              ("th", ("prop", 0.5), 6000, 9000)]       # tau_chi = 0.5 tau_m
+
+HDR_TCHI = """20260906 cw_s3_tchi -- does the phenotype clock move anything, at the rescaled point?
+
+THE QUESTION. cw_s3_b ran the whole tau_m scan at tau_chi = 0.3 tau_c, where the phenotype
+follows the memory almost instantly and tau_m is the only slow clock. This group repeats
+five of its tau_m -- one in each regime the scan found: the flickering mixed state (0.3),
+the peak of Var_x(chi) (3.4), just under the saddle-node (9.7), inside the bistable window
+where the active phase still invades (15.9), and at the foot of the Maxwell point (30) --
+under two other rules: tau_chi = 1.0 tau_c, and tau_chi = 0.5 tau_m, where the phenotype
+lags as much as the memory does. With the 0.3 tau_c rows already in hand, every tau_m gets
+three phenotype clocks on the same four starts.
+
+WHAT COULD MOVE. The mean-field fixed point has no tau_chi in it -- chibar = P(m < mc) is a
+statement about m -- so the S-curve says the FATES do not depend on the rule. What can
+depend on it is everything the fixed point does not describe: the texture of the mixed state
+(std(chi) ordered by clock speed at L = 800), the lifetime of the metastable passive phase
+(a slow chi low-passes m's fluctuations and damps the escape), the front speed of the
+invasion, and the short-tau_m hydrodynamic oscillation. At L = 800 and the symmetric mc the
+separations coincided point by point under all three rules; this asks the same question
+where the acoustics are out of the band.
+
+THE FOUR STARTS, m matched to chi, and every run on the developed flow of its own phase --
+identical to cw_s3_b (see that group's header). The two uniform starts are exact fixed
+points of the hard step; leftright and patches are half and half by construction.
+
+THE CLOCKS, from the measured stage-A calibration (calib_s3.json):
+  tau_c   = {tau_c:.1f} steps      sigma_P = {sigma_P:.5f}      pmem = 0.5 sigma_P = {pmem:.6f}
+  T       = {T:g} tau_c = {nsteps} steps, the same for all 40 runs and for cw_s3_b
+  rule    = {rule}
+  series  = every {nvideo} steps = {series:.3f} tau_c
+
+THIS CASE: tau_m = {g:g} tau_c = {tau_m:.0f} steps, tau_chi = {tau_chi:.0f} steps, start {start},
+on the {snap} flow. seed {seed}, chi-seed {chi_seed}.
+{sat}"""
+
+
+def gen_tchi(out, cal):
+    made = []
+    for prefix, rule, s0, c0 in TCHI_RULES:
+        made += gen_b(out, cal, study="cw_s3_tchi", grid=TCHI_GRID, rule=rule,
+                      prefix=f"{prefix}_", seed0=s0, chi_seed0=c0, header=HDR_TCHI)
     return made
 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("stage", choices=["a", "b"])
+    ap.add_argument("stage", choices=["a", "b", "tchi"])
     ap.add_argument("--calib", default=None,
                     help="measured calib_s3.json from stage A; stage B refuses "
                          "to run without it")
@@ -395,7 +452,7 @@ def main():
     print(f"Omega_1 tau_c = {2 * math.pi * CS * TAU_C / L_NEW:.2f},  Ma -> "
           f"{U_RMS / CS:.4f},  0.05 pmem = {ACOUSTIC_COEFF * PMEM:.2e}")
     print("class table:\n" + class_table())
-    if args.stage == "b":
+    if args.stage in ("b", "tchi"):
         if not args.calib:
             raise SystemExit("stage B needs --calib: sizing 80 runs on stage A's PREDICTED "
                              "scales would put every step count and every m0 on numbers the "
@@ -404,7 +461,7 @@ def main():
         print(f"measured: tau_c = {cal.tau_c:.1f}, sigma_P = {cal.sigma_P:.5f}, "
               f"pmem = {cal.pmem:.6f}, f_top = {cal.f_top:.4f}, f_floor = {cal.f_floor:.4f}, "
               f"L_P = {cal.L_P:.2f}, mc = {cal.mc:.4f}")
-        made = gen_b(args.out, cal)
+        made = gen_tchi(args.out, cal) if args.stage == "tchi" else gen_b(args.out, cal)
     else:
         made = gen_a(args.out)
     for p in made:

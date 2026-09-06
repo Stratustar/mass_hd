@@ -1,0 +1,88 @@
+# 20260906 cw_s3_tchi -- does the phenotype clock move anything, at the rescaled point?
+# 
+# THE QUESTION. cw_s3_b ran the whole tau_m scan at tau_chi = 0.3 tau_c, where the phenotype
+# follows the memory almost instantly and tau_m is the only slow clock. This group repeats
+# five of its tau_m -- one in each regime the scan found: the flickering mixed state (0.3),
+# the peak of Var_x(chi) (3.4), just under the saddle-node (9.7), inside the bistable window
+# where the active phase still invades (15.9), and at the foot of the Maxwell point (30) --
+# under two other rules: tau_chi = 1.0 tau_c, and tau_chi = 0.5 tau_m, where the phenotype
+# lags as much as the memory does. With the 0.3 tau_c rows already in hand, every tau_m gets
+# three phenotype clocks on the same four starts.
+# 
+# WHAT COULD MOVE. The mean-field fixed point has no tau_chi in it -- chibar = P(m < mc) is a
+# statement about m -- so the S-curve says the FATES do not depend on the rule. What can
+# depend on it is everything the fixed point does not describe: the texture of the mixed state
+# (std(chi) ordered by clock speed at L = 800), the lifetime of the metastable passive phase
+# (a slow chi low-passes m's fluctuations and damps the escape), the front speed of the
+# invasion, and the short-tau_m hydrodynamic oscillation. At L = 800 and the symmetric mc the
+# separations coincided point by point under all three rules; this asks the same question
+# where the acoustics are out of the band.
+# 
+# THE FOUR STARTS, m matched to chi, and every run on the developed flow of its own phase --
+# identical to cw_s3_b (see that group's header). The two uniform starts are exact fixed
+# points of the hard step; leftright and patches are half and half by construction.
+# 
+# THE CLOCKS, from the measured stage-A calibration (calib_s3.json):
+#   tau_c   = 674.3 steps      sigma_P = 0.03368      pmem = 0.5 sigma_P = 0.016838
+#   T       = 300 tau_c = 202300 steps, the same for all 40 runs and for cw_s3_b
+#   rule    = tau_chi = 0.5 tau_m (proportional)
+#   series  = every 34 steps = 0.050 tau_c
+# 
+# THIS CASE: tau_m = 3.426 tau_c = 2310 steps, tau_chi = 1155 steps, start patches,
+# on the a0p65 flow. seed 6007, chi-seed 9007.
+# SATURATION: record window 161840 steps against 15(tau_c + tau_m + tau_chi) = 62096 -- satisfied.
+model            = confluent-wet
+nsteps           = 202300
+nstart           = 0
+ninfo            = 8000
+LX               = 500
+LY               = 500
+bc               = 0
+seed             = 6007
+
+Gamma            = 0.05
+xi               = 0.4
+CC               = 0.00208333
+LL               = 0.01666667
+tau              = 2.0
+rho              = 40
+friction         = 0.0
+zeta             = 0.06666667
+zeta0-frac       = 0.3
+
+angle            = 0
+noise            = 0.05
+initial-order    = 1
+director-config  = uniform
+defect-sep       = 0
+
+Dbio             = 0.00166667
+chi-config       = binary-noise
+chi0             = 0.5
+chi-noise        = 1.0
+chi-length       = 7.02
+chi-seed         = 9007
+chi-lo           = 1.0
+chi-hi           = 0.0
+m-lo             = 0.0559
+m-hi             = 0.3301
+tau-chi          = 1155.1
+chi-width        = 0.0
+switch-sign      = -1
+mc               = 0.21
+m0               = 0.5
+init-frame       = /scratch/helu/mass_hd/cases/20260904/cw_s3_a/a0p65/frame100000.json
+mem-freeze-steps = 674
+
+tau-m            = 2310.3
+pmem             = 0.016838
+pmem-width       = 0.0
+
+ntracer          = 25
+tracer-count     = 2000
+
+nvideo           = 34
+video-stride     = 2
+video-p-scale    = 0.20206
+video-u-scale    = 0.04538
+frame-light      = 1
