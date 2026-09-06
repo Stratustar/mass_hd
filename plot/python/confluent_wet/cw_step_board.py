@@ -5,6 +5,7 @@
     cw_step_board.py tchi <tchi> <fine> <sym>     --videos DIR --out DIR
     cw_step_board.py long <long> [<long2> ...]    --videos DIR --out DIR
     cw_step_board.py s3   <cw_s3_b>               --videos DIR --out DIR --analysis PNG...
+    cw_step_board.py s3tchi <cw_s3_b> <cw_s3_tchi> --videos DIR --out DIR --analysis PNG...
 
 All three present the same way: a row of tau_m buttons that toggle (several can be open at
 once), an `analysis` button, and one shared transport -- play/pause, scrubber, 0.5-4x --
@@ -21,6 +22,9 @@ What differs is what a pane holds:
   s3     the s = 1/3 scan (20260904): two rows per tau_m, the two uniform starts above the
          two mixed ones, each cell the three-panel chi | P | m clip. Wide clips, so the
          grid is two columns rather than three.
+  s3tchi the tau_chi group of the s = 1/3 campaign: six rows per tau_m -- three phenotype
+         clocks (0.3 tau_c from cw_s3_b, 1.0 tau_c, 0.5 tau_m), each as a uniform pair over
+         a mixed pair. The comparison reads down a column: same start, three clocks.
 
 Analysis views are the PNGs the per-group analyses already wrote, inlined as data URIs.
 """
@@ -93,7 +97,7 @@ def cell(clip, lab, have):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("mode", choices=["taum", "tchi", "long", "fields", "s3"])
+    ap.add_argument("mode", choices=["taum", "tchi", "long", "fields", "s3", "s3tchi"])
     ap.add_argument("trees", nargs="*",
                     help="results trees; fields mode needs none (it reads the clip names)")
     ap.add_argument("--videos", required=True)
@@ -211,6 +215,49 @@ def main():
                 panes.append((g, rows))
         ncols, aspect = 2, "758/338"
 
+    elif a.mode == "s3tchi":
+        S3 = [("chi0", "chi &equiv; 0"), ("chi1", "chi &equiv; 1"),
+              ("leftright", "left / right"), ("patches", "patches, 2 L_P")]
+        RULES = [("t0p3", "&tau;_&chi; = 0.3 &tau;_c"), ("t1", "&tau;_&chi; = 1.0 &tau;_c"),
+                 ("th", "&tau;_&chi; = 0.5 &tau;_m")]
+        R = {}
+
+        def _add(tree, pat, clipfmt, rule_of):
+            for p in sorted(glob.glob(os.path.join(tree, "*", "part.json"))):
+                c = os.path.basename(os.path.dirname(p))
+                m = re.match(pat, c)
+                if not m:
+                    continue
+                with open(p) as fh:
+                    d = json.load(fh)
+                g = round(d.get("derived", {}).get(
+                    "tau_m_over_tau_c", float(m.group("g").replace("p", "."))), 3)
+                f = d.get("fate") or {}
+                R[(rule_of(m), g, m.group("arm"))] = (
+                    clipfmt.format(case=c), f.get("label", "?"), f.get("chi_tail", float("nan")))
+
+        # the baseline rows come from the B scan and its clips; the two new rules from the
+        # tchi tree, whose clips carry an s3t_ prefix so both can sit in one clips/ directory
+        _add(a.trees[0], r"tm(?P<g>.+)_(?P<arm>chi0|chi1|leftright|patches)$",
+             "s3_{case}.mp4", lambda m: "t0p3")
+        _add(a.trees[1], r"(?P<rule>t1|th)_tm(?P<g>.+)_(?P<arm>chi0|chi1|leftright|patches)$",
+             "s3t_{case}.mp4", lambda m: m.group("rule"))
+        gs = sorted({g for (rk, g, _) in R if rk != "t0p3"})
+        for g in gs:
+            rows = []
+            for rk, rlab in RULES:
+                for sub, keys in (("uniform", ("chi0", "chi1")),
+                                  ("mixed", ("leftright", "patches"))):
+                    cells = [cell(R[(rk, g, k)][0],
+                                  f"{lab} &middot; {R[(rk, g, k)][1]} &middot; &lt;chi&gt; = "
+                                  f"{R[(rk, g, k)][2]:.3f}", have)
+                             for k, lab in S3 if k in keys and (rk, g, k) in R]
+                    if cells:
+                        rows.append((f"{rlab} &middot; {sub} starts", cells))
+            if rows:
+                panes.append((g, rows))
+        ncols, aspect = 2, "758/338"
+
     else:  # long
         R = {}
         for t in a.trees:
@@ -248,7 +295,8 @@ def main():
     an_html = "".join(f'<img alt="analysis" src="data:image/png;base64,{i}">' for i in imgs)
     title = a.title or {"taum": "tau_m board", "tchi": "tau_chi board",
                         "long": "500k board", "fields": "fields board",
-                        "s3": "s = 1/3 tau_m board"}[a.mode]
+                        "s3": "s = 1/3 tau_m board",
+                        "s3tchi": "s = 1/3 tau_chi board"}[a.mode]
 
     html = f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
