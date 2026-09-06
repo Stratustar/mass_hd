@@ -4,6 +4,7 @@
     cw_step_board.py taum <fine> <sym>            --videos DIR --out DIR
     cw_step_board.py tchi <tchi> <fine> <sym>     --videos DIR --out DIR
     cw_step_board.py long <long> [<long2> ...]    --videos DIR --out DIR
+    cw_step_board.py s3   <cw_s3_b>               --videos DIR --out DIR --analysis PNG...
 
 All three present the same way: a row of tau_m buttons that toggle (several can be open at
 once), an `analysis` button, and one shared transport -- play/pause, scrubber, 0.5-4x --
@@ -17,6 +18,9 @@ What differs is what a pane holds:
          clock.
   long   two rows, chi and m, for the 500000-step runs -- m is on the same page because the
          question there is whether the memory is still moving, not just the phenotype.
+  s3     the s = 1/3 scan (20260904): two rows per tau_m, the two uniform starts above the
+         two mixed ones, each cell the three-panel chi | P | m clip. Wide clips, so the
+         grid is two columns rather than three.
 
 Analysis views are the PNGs the per-group analyses already wrote, inlined as data URIs.
 """
@@ -89,7 +93,7 @@ def cell(clip, lab, have):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("mode", choices=["taum", "tchi", "long", "fields"])
+    ap.add_argument("mode", choices=["taum", "tchi", "long", "fields", "s3"])
     ap.add_argument("trees", nargs="*",
                     help="results trees; fields mode needs none (it reads the clip names)")
     ap.add_argument("--videos", required=True)
@@ -102,6 +106,7 @@ def main():
     have = set(os.listdir(a.videos)) if os.path.isdir(a.videos) else set()
 
     panes, gs, imgs = [], [], []
+    ncols, aspect = 3, "400/422"          # the single-field clips of the L = 800 boards
 
     if a.mode == "taum":
         fine = scan(a.trees[0], r"tm(.+)_([abc]\d?)$", "b1_{case}_chi.mp4")
@@ -181,6 +186,31 @@ def main():
                 panes.append((g, rows))
         gs = [g for g, _ in panes]
 
+    elif a.mode == "s3":
+        S3 = [("chi0", "chi &equiv; 0"), ("chi1", "chi &equiv; 1"),
+              ("leftright", "left / right"), ("patches", "patches, 2 L_P")]
+        R = {}
+        for g, arm, clip, d in scan(a.trees[0],
+                                    r"tm(.+)_(chi0|chi1|leftright|patches)$", "s3_{case}.mp4"):
+            # the directory tag is rounded (tm11p24); the runcard carries 11.242
+            gg = round(d.get("derived", {}).get("tau_m_over_tau_c", g), 3)
+            f = d.get("fate") or {}
+            R[(gg, arm)] = (clip, f.get("label", "?"), f.get("chi_tail", float("nan")))
+        gs = sorted(set(g for g, _ in R))
+        for g in gs:
+            rows = []
+            for rlab, keys in (("uniform starts", ("chi0", "chi1")),
+                               ("mixed starts", ("leftright", "patches"))):
+                cells = [cell(R[(g, k)][0],
+                              f"{lab} &middot; {R[(g, k)][1]} &middot; &lt;chi&gt; = "
+                              f"{R[(g, k)][2]:.3f}", have)
+                         for k, lab in S3 if k in keys and (g, k) in R]
+                if cells:
+                    rows.append((rlab, cells))
+            if rows:
+                panes.append((g, rows))
+        ncols, aspect = 2, "758/338"
+
     else:  # long
         R = {}
         for t in a.trees:
@@ -217,7 +247,8 @@ def main():
         else f'<button class="tb" data-g="{g}">{g}</button>' for g, _ in panes)
     an_html = "".join(f'<img alt="analysis" src="data:image/png;base64,{i}">' for i in imgs)
     title = a.title or {"taum": "tau_m board", "tchi": "tau_chi board",
-                        "long": "500k board", "fields": "fields board"}[a.mode]
+                        "long": "500k board", "fields": "fields board",
+                        "s3": "s = 1/3 tau_m board"}[a.mode]
 
     html = f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
@@ -241,11 +272,11 @@ button[data-on]{{border-color:var(--on);color:var(--on)}}
 .pane{{display:none;flex-direction:column;gap:10px}}
 .pane[data-on]{{display:flex}}
 .pg{{color:var(--dim);border-top:1px solid var(--line);padding-top:8px}}
-.prow{{display:grid;grid-template-columns:repeat(3,1fr);gap:6px 12px}}
+.prow{{display:grid;grid-template-columns:repeat({ncols},1fr);gap:6px 12px}}
 .rl{{grid-column:1/-1;color:var(--on);font-size:12.5px}}
 @media(max-width:900px){{.prow{{grid-template-columns:1fr}}}}
 figure{{margin:0;display:flex;flex-direction:column;gap:6px}}
-video,.ph{{width:100%;display:block;background:#000;aspect-ratio:400/422;object-fit:contain;
+video,.ph{{width:100%;display:block;background:#000;aspect-ratio:{aspect};object-fit:contain;
   border:1px solid var(--line);border-radius:3px}}
 .ph{{display:grid;place-items:center;background:var(--panel);color:var(--dim)}}
 figcaption{{color:var(--dim);text-align:center}}
