@@ -1,0 +1,60 @@
+# 20260907 cw_s3_chi_scan: uniform initial phenotype basin scan.
+# tau_m/tau_c = 12,20,30; chi0 = 0..1 in increments of 0.1 (33 runs).
+# Same rescaled working point and duration as cw_s3_b: L=500, T=202300 steps
+# (~300 tau_c), tau_c=674.329033301, tau_chi=202.3 steps (~0.3 tau_c).
+# Initial memory: m0=f(a), linearly interpolated in the measured stage-A ladder
+# at a=1-0.7*chi0. Flow: nearest available ladder snapshot (not exact a).
+# Calibration: results/20260904_cw_s3/calib_s3.json in the parent Code directory.
+# Memory freeze=674 steps retained from cw_s3_b; chi evolves from step zero.
+# Thus the measured boundary is specific to this initialization protocol and T.
+# One realization per point; chi~0=high activity, chi~1=low activity.
+# This case: tau_m/tau_c=12, chi0=0.5, a=0.65, m0=0.2503, snapshot a=0.65.
+model            = confluent-wet
+nsteps           = 202300
+nstart           = 0
+ninfo            = 8000
+LX               = 500
+LY               = 500
+bc               = 0
+seed             = 10005
+
+Gamma            = 0.05
+xi               = 0.4
+CC               = 0.00208333
+LL               = 0.01666667
+tau              = 2.0
+rho              = 40
+friction         = 0.0
+zeta             = 0.06666667
+zeta0-frac       = 0.3
+
+angle            = 0
+noise            = 0.05
+initial-order    = 1
+director-config  = uniform
+defect-sep       = 0
+
+Dbio             = 0.00166667
+chi-config       = uniform
+chi0             = 0.5
+chi-seed         = 11005
+tau-chi          = 202.3
+chi-width        = 0.0
+switch-sign      = -1
+mc               = 0.21
+m0               = 0.2503
+init-frame       = /scratch/helu/mass_hd/cases/20260904/cw_s3_a/a0p65/frame100000.json
+mem-freeze-steps = 674
+
+tau-m            = 8091.9
+pmem             = 0.016838
+pmem-width       = 0.0
+
+ntracer          = 25
+tracer-count     = 2000
+
+nvideo           = 34
+video-stride     = 2
+video-p-scale    = 0.20206
+video-u-scale    = 0.04538
+frame-light      = 1
