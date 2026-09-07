@@ -338,7 +338,17 @@ def main():
             bg.append(gg); bb.append(math.log(pts[0.45] / pts[1.0]) / math.log(0.45))
     bg.append(g_A); bb.append(beta_A)
     o = np.argsort(bg)
-    beta_of = PchipInterpolator(np.log(np.array(bg)[o]), np.array(bb)[o], extrapolate=True)
+    # merge near-duplicate tau_m (the L = 800 point at 9.86 and this ladder's at 10.03 differ
+    # by 1.7 % in tau_m and by 0.18 in beta); left as two knots they put a step into every
+    # branch of the S-curve at tau_m ~ 10. Same 5 % rule as the h anchors.
+    mg, mb = [], []
+    for gg, bb_ in zip(np.array(bg)[o], np.array(bb)[o]):
+        if mg and abs(math.log(gg / mg[-1])) < 0.05:
+            mb[-1] = 0.5 * (mb[-1] + bb_)
+        else:
+            mg.append(float(gg)); mb.append(float(bb_))
+    bg, bb, o = mg, mb, np.arange(len(mg))
+    beta_of = PchipInterpolator(np.log(np.array(bg)), np.array(bb), extrapolate=True)
 
     def h_model(g, aa):
         return math.exp(float(h1(math.log(g)))) * aa ** float(beta_of(math.log(g)))
@@ -609,6 +619,9 @@ def main():
         plt.close(fig)
 
     out = {
+        "branches": {name: {"g": G_GRID.tolist(), "stable": br["stable"],
+                            "unstable": br["unstable"], "tau_freeze": br["tau_freeze"]}
+                     for name, br in branches.items()},
         "fronts": fronts, "tau_maxwell_extrapolated": g_maxwell,
         "tau_c": tau_c, "mc": mc, "pmem": pmem, "r": r,
         "ladder": lad, "beta_A": beta_A,
