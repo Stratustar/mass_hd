@@ -185,6 +185,89 @@ def render_three(sim_dir, out_path, tau_c, sigma_P, every=4, fps=25, bitrate=Non
     return os.path.getsize(out_path)
 
 
+# ------------------------------------------------------------- the row video
+
+ROW_STARTS = [("chi0", "chi = 0"), ("chi1", "chi = 1"),
+              ("leftright", "left / right"), ("patches", "patches")]
+
+
+def render_row(sim_root, tag, out_path, tau_c, every=4, fps=25, cmap="RdBu_r"):
+    """The four starts of one tau_m side by side, chi only, on a blue-white-red scale.
+
+    chi = 0 (active) is blue, chi = 1 (passive) red, the half-and-half state white. Every
+    panel carries its own live <chi>, read from video_meta.csv (the exact domain average),
+    and the row shares one clock. Frames are composed straight from the uint8 streams --
+    the stored range of chi is [0, 1], so the byte indexes the colour table directly -- and
+    encoded once at a size a browser can play, so there is no second transcoding pass.
+    A start whose run is missing gets a dark placeholder rather than aborting the row."""
+    import imageio_ffmpeg
+    from matplotlib import colormaps
+    from PIL import Image, ImageDraw
+
+    streams = []
+    for key, lab in ROW_STARTS:
+        d = os.path.join(sim_root, f"{tag}_{key}")
+        if os.path.isdir(d) and os.path.exists(os.path.join(d, "video_chi.u8")):
+            par = cw.read_params(d)
+            streams.append((key, lab, cw_stream.Stream(d, par), par))
+        else:
+            streams.append((key, lab, None, None))
+    live = [s for s in streams if s[2] is not None]
+    if not live:
+        raise RuntimeError(f"no streams for {tag} under {sim_root}")
+    n = min(s[2].n for s in live)
+    nx, ny = live[0][2].nx, live[0][2].ny
+    g = float(live[0][3]["tau_m"]) / tau_c
+    lut = (colormaps[cmap](np.linspace(0, 1, 256))[:, :3] * 255).astype(np.uint8)
+    raws = [(st.raw("chi") if st is not None else None) for _, _, st, _ in streams]
+    gap = 6
+    w = len(streams) * nx + (len(streams) - 1) * gap
+    bar_h = 46
+    bar_h += (ny + bar_h) % 2
+    head = f"tau_m/tau_c = {g:.3f}"
+    font = cw_stream._fit_font(f"{head}      t/tau_c = {live[0][2].steps[n-1]/tau_c:7.2f}",
+                               w, start=16)
+    lab_font = cw_stream._fit_font("left / right   <chi> = 0.000", nx, start=14)
+    sep = np.full((ny, gap, 3), 16, dtype=np.uint8)
+    blank = np.full((ny, nx, 3), 40, dtype=np.uint8)
+
+    writer = None
+    try:
+        for i in range(0, n, max(1, int(every))):
+            cols = []
+            for j, (key, lab, st, par) in enumerate(streams):
+                if st is None:
+                    cols.append(blank)
+                else:
+                    cols.append(lut[np.flipud(raws[j][i].T)])
+                if j < len(streams) - 1:
+                    cols.append(sep)
+            img = np.concatenate(cols, axis=1)
+            bar = Image.new("RGB", (w, bar_h), (16, 16, 16))
+            d = ImageDraw.Draw(bar)
+            t = live[0][2].steps[i] / tau_c
+            d.text((8, bar_h // 4), f"{head}      t/tau_c = {t:7.2f}",
+                   fill=(235, 235, 235), font=font, anchor="lm")
+            for j, (key, lab, st, par) in enumerate(streams):
+                x0 = j * (nx + gap)
+                txt = (f"{lab}   <chi> = {st.meta['chi_mean'][i]:.3f}" if st is not None
+                       else f"{lab}   (missing)")
+                d.text((x0 + nx // 2, 3 * bar_h // 4), txt, fill=(200, 200, 200),
+                       font=lab_font, anchor="mm")
+            frame = np.concatenate([img, np.asarray(bar, dtype=np.uint8)], axis=0)
+            if writer is None:
+                writer = imageio_ffmpeg.write_frames(
+                    out_path, (frame.shape[1], frame.shape[0]), fps=fps, quality=7,
+                    codec="libx264", macro_block_size=2, pix_fmt_out="yuv420p",
+                    output_params=["-movflags", "+faststart"])
+                writer.send(None)
+            writer.send(frame.tobytes())
+    finally:
+        if writer is not None:
+            writer.close()
+    return os.path.getsize(out_path), n, [k for k, _, st, _ in streams if st is not None]
+
+
 # --------------------------------------------------------------------- figures
 
 def make_figs(root, out_dir, tau_c):
@@ -271,8 +354,10 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("path", help="sim dir (series/video/both) or results root (figs)")
     ap.add_argument("out", nargs="?", default=None)
-    ap.add_argument("--stage", choices=["series", "video", "both", "figs"], default="both",
-                    help="default `both`: the series and the video for one run")
+    ap.add_argument("--stage", choices=["series", "video", "both", "figs", "row"], default="both",
+                    help="default `both`: the series and the video for one run; `row` takes "
+                         "the sim ROOT and --tag and renders the four starts side by side")
+    ap.add_argument("--tag", default=None, help="row: the tau_m directory tag, e.g. tm11p24")
     ap.add_argument("--calib", default=None, help="calib_s3.json; supplies tau_c and sigma_P")
     ap.add_argument("--tau-c", type=float, default=None)
     ap.add_argument("--sigma-p", type=float, default=None)
@@ -314,6 +399,15 @@ def main():
         out = a.out or a.path
         os.makedirs(out, exist_ok=True)
         make_figs(a.path, out, tau_c)
+
+    if a.stage == "row":
+        if not a.tag:
+            raise SystemExit("--stage row needs --tag (the tau_m directory tag, e.g. tm11p24)")
+        out = a.out or a.path
+        os.makedirs(out, exist_ok=True)
+        vp = os.path.join(out, f"row_{a.tag}.mp4")
+        nb, n, have = render_row(a.path, a.tag, vp, tau_c, every=a.every, fps=a.fps)
+        print(f"wrote {vp} ({nb/1e6:.1f} MB, {n//max(1,a.every)} frames, starts {have})", flush=True)
 
 
 if __name__ == "__main__":

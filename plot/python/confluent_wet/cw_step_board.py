@@ -6,6 +6,7 @@
     cw_step_board.py long <long> [<long2> ...]    --videos DIR --out DIR
     cw_step_board.py s3   <cw_s3_b>               --videos DIR --out DIR --analysis PNG...
     cw_step_board.py s3tchi <cw_s3_b> <cw_s3_tchi> --videos DIR --out DIR --analysis PNG...
+    cw_step_board.py s3row <cw_s3_b>              --videos DIR --out DIR --analysis PNG...
 
 All three present the same way: a row of tau_m buttons that toggle (several can be open at
 once), an `analysis` button, and one shared transport -- play/pause, scrubber, 0.5-4x --
@@ -25,6 +26,8 @@ What differs is what a pane holds:
   s3tchi the tau_chi group of the s = 1/3 campaign: six rows per tau_m -- three phenotype
          clocks (0.3 tau_c from cw_s3_b, 1.0 tau_c, 0.5 tau_m), each as a uniform pair over
          a mixed pair. The comparison reads down a column: same start, three clocks.
+  s3row  one clip per tau_m: the four starts side by side, chi only, blue = active,
+         red = passive (row_<tag>.mp4 from cw_s3_b.py --stage row). One column.
 
 Analysis views are the PNGs the per-group analyses already wrote, inlined as data URIs.
 """
@@ -97,7 +100,7 @@ def cell(clip, lab, have):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("mode", choices=["taum", "tchi", "long", "fields", "s3", "s3tchi"])
+    ap.add_argument("mode", choices=["taum", "tchi", "long", "fields", "s3", "s3tchi", "s3row"])
     ap.add_argument("trees", nargs="*",
                     help="results trees; fields mode needs none (it reads the clip names)")
     ap.add_argument("--videos", required=True)
@@ -258,6 +261,23 @@ def main():
                 panes.append((g, rows))
         ncols, aspect = 2, "758/338"
 
+    elif a.mode == "s3row":
+        rows_ = []
+        for p in sorted(glob.glob(os.path.join(a.trees[0], "*_chi0", "part.json"))):
+            c = os.path.basename(os.path.dirname(p))
+            tg = c[:-len("_chi0")]
+            with open(p) as fh:
+                d = json.load(fh)
+            g = round(d.get("derived", {}).get("tau_m_over_tau_c",
+                                                float(tg[2:].replace("p", "."))), 3)
+            rows_.append((g, f"row_{tg}.mp4"))
+        for g, clip in sorted(rows_):
+            panes.append((g, [("", [cell(clip, "chi = 0  |  chi = 1  |  left / right  |  patches"
+                                           "   &nbsp;&middot;&nbsp; blue = active, red = passive",
+                                     have)])]))
+        gs = [g for g, _ in panes]
+        ncols, aspect = 1, "1018/296"
+
     else:  # long
         R = {}
         for t in a.trees:
@@ -296,7 +316,8 @@ def main():
     title = a.title or {"taum": "tau_m board", "tchi": "tau_chi board",
                         "long": "500k board", "fields": "fields board",
                         "s3": "s = 1/3 tau_m board",
-                        "s3tchi": "s = 1/3 tau_chi board"}[a.mode]
+                        "s3tchi": "s = 1/3 tau_chi board",
+                        "s3row": "s = 1/3 four-start rows"}[a.mode]
 
     html = f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
