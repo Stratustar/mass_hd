@@ -191,10 +191,11 @@ ROW_STARTS = [("chi0", "chi = 0"), ("chi1", "chi = 1"),
               ("leftright", "left / right"), ("patches", "patches")]
 
 
-def render_row(sim_root, tag, out_path, tau_c, every=4, fps=25, cmap="RdBu_r"):
+def render_row(sim_root, tag, out_path, tau_c, every=4, fps=25, cmap="bwr"):
     """The four starts of one tau_m side by side, chi only, on a blue-white-red scale.
 
-    chi = 0 (active) is blue, chi = 1 (passive) red, the half-and-half state white. Every
+    chi = 0 (active) is blue, chi = 1 (passive) red, the half-and-half state pure white
+    (matplotlib `bwr`; `RdBu_r` is the softer alternative, selectable with --cmap). Every
     panel carries its own live <chi>, read from video_meta.csv (the exact domain average),
     and the row shares one clock. Frames are composed straight from the uint8 streams --
     the stored range of chi is [0, 1], so the byte indexes the colour table directly -- and
@@ -358,6 +359,7 @@ def main():
                     help="default `both`: the series and the video for one run; `row` takes "
                          "the sim ROOT and --tag and renders the four starts side by side")
     ap.add_argument("--tag", default=None, help="row: the tau_m directory tag, e.g. tm11p24")
+    ap.add_argument("--cmap", default="bwr", help="row: colour map for chi (default bwr)")
     ap.add_argument("--calib", default=None, help="calib_s3.json; supplies tau_c and sigma_P")
     ap.add_argument("--tau-c", type=float, default=None)
     ap.add_argument("--sigma-p", type=float, default=None)
@@ -406,7 +408,7 @@ def main():
         out = a.out or a.path
         os.makedirs(out, exist_ok=True)
         vp = os.path.join(out, f"row_{a.tag}.mp4")
-        nb, n, have = render_row(a.path, a.tag, vp, tau_c, every=a.every, fps=a.fps)
+        nb, n, have = render_row(a.path, a.tag, vp, tau_c, every=a.every, fps=a.fps, cmap=a.cmap)
         print(f"wrote {vp} ({nb/1e6:.1f} MB, {n//max(1,a.every)} frames, starts {have})", flush=True)
 
 
