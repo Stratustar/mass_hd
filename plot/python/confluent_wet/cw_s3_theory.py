@@ -72,7 +72,7 @@ WHAT CAME OUT (2026-09-05, the 80-run scan). The normal closure fails at short t
 structural reason: m is bounded and nearly two-valued there, and Phi cannot reach the
 1 - f limit. The Beta law, with the SAME two moments, halves the closure residual and
 removes its bias, and puts the mixed branch within 0.08 of the measurement everywhere.
-All three variants and the direct map put the saddle-node at 7.7-10 tau_c; the scan
+All three variants and the direct map put the saddle-node at 7-9 tau_c (6.8 / 6.9 / 8.6 for C / B / A once the duplicate beta knots near 10 are merged); the scan
 separates at 12.0 +/- 0.8. The gap is a LIFETIME, not a missing root: chi1 at 8-11 tau_c
 plateaus at 0.85-0.9 for tens of tau_c and then collapses, at 47 / 69 / 121 / > 300 tau_c
 for 8.1 / 9.7 / 11.2 / 12.8 -- the passive phase exists where mean field says, and is
