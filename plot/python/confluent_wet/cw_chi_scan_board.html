@@ -1,0 +1,39 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>χ₀ basin scan · mass_hd</title>
+<style>
+:root{color-scheme:dark;--bg:#101318;--panel:#181d25;--text:#e8edf3;--muted:#9ba9b9;--line:#303a48;--accent:#9fcafa}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:15px/1.55 system-ui,sans-serif}main{max-width:1220px;margin:auto;padding:24px}h1{font-size:26px;font-weight:600;margin:0 0 6px}p{color:var(--muted);margin:5px 0 14px}button,select{font:inherit;background:var(--panel);border:1px solid var(--line);color:var(--text);padding:6px 13px;border-radius:6px;cursor:pointer}button[aria-pressed=true]{background:#294463;border-color:var(--accent)}button:hover{border-color:var(--accent)}.bar{display:flex;gap:7px;align-items:center;flex-wrap:wrap;margin:8px 0}.label{color:var(--muted);min-width:90px}header{position:sticky;top:0;background:#101318f5;backdrop-filter:blur(10px);padding:12px 0;z-index:5;border-bottom:1px solid var(--line)}#seek{flex:1;min-width:150px;accent-color:var(--accent)}#clock{font-variant-numeric:tabular-nums;min-width:175px}article{margin:20px 0 28px;padding:15px;background:var(--panel);border:1px solid var(--line);border-radius:10px}h2{font-size:18px;font-weight:550;margin:0}.caption{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;margin-bottom:10px}.stats{color:var(--muted);font-size:13px}.live{margin-left:auto;font-variant-numeric:tabular-nums;color:var(--accent)}video{width:100%;display:block;aspect-ratio:1018/312;background:#101318}#error{color:#ffb3b3}table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}th,td{text-align:right;padding:7px 10px;border-bottom:1px solid var(--line)}th:first-child,td:first-child{text-align:left}details{margin:25px 0}summary{cursor:pointer;color:var(--accent)}.hint{font-size:13px}.empty{padding:40px;text-align:center;color:var(--muted)}@media(max-width:700px){main{padding:12px}h1{font-size:22px}.live{margin-left:0}.label{min-width:65px}article{padding:8px}}
+</style><main><h1>均匀 χ₀ · basin scan</h1><p>τχ = 0.3 τc · L = 500 · T ≈ 300 τc · 33 runs</p>
+<header><div class="bar"><span class="label">τm / τc</span><button class="tm" data-tm="12" aria-pressed="true">12</button><button class="tm" data-tm="20" aria-pressed="false">20</button><button class="tm" data-tm="30" aria-pressed="false">30</button></div>
+<div class="bar" id="chips"><span class="label">初始 χ₀</span></div>
+<div class="bar"><button id="play">播放</button><button id="reset">回到起点</button><input aria-label="模拟时间" id="seek" type="range" min="0" max="1487" step="1" value="0"><span id="clock">t / τc = 0.00</span><select aria-label="播放速度" id="speed"><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option><option value="4">4×</option></select></div><div id="error" role="status"></div></header>
+<p class="hint">每行依次为 |u|、P、m、χ；色标固定。χ：蓝色 = high activity，红色 = low activity。可同时选择多组 τm 和 χ₀。每帧间隔 136 steps ≈ 0.202 τc；1× 约 60 秒播放全程。</p>
+<div id="cards"></div><details><summary>末 100 τc 的数值汇总</summary><p class="hint">均值与标准差均来自完整分辨率的 χ̄(t)；drift 为该窗口后半段减前半段的均值。不自动把仍在变化的轨迹判作稳定相。</p><div id="table"></div></details>
+<p class="hint">初始化：m₀=f(1−0.7χ₀) 插值，flow 来自最近的 open-loop activity 快照；memory freeze 为 674 steps，χ 从起点演化。|u| 为高频标量视频流，未叠加 streamlines。视频像素为 2×2 block average；实时 χ̄ 使用原始全场统计。</p></main>
+<script>
+const runs=__DATA__;
+const $=s=>document.querySelector(s),tm=new Set([12]),chis=new Set([0,5,10]);
+const cards=$('#cards'),seek=$('#seek'),pp=$('#play'),clock=$('#clock');
+let playing=false,time=0,rate=1,last=performance.now(),entries=[],pending=false;
+const frames=runs[0].frames,fps=runs[0].fps,end=(frames-1)/fps;
+seek.max=frames-1;
+function frameIndex(){return Math.min(frames-1,Math.max(0,Math.round(time*fps)))}
+function stamp(){let i=frameIndex();seek.value=i;clock.textContent='t / τc = '+runs[0].times[i].toFixed(2);for(const {r,live} of entries)live.textContent='χ̄(t) = '+r.chi[i].toFixed(3)}
+function sync(force=false){for(const {v} of entries){if(v.readyState>=1&&(force||Math.abs(v.currentTime-time)>0.10))v.currentTime=time;v.playbackRate=rate;if(playing&&v.readyState>=2&&v.paused)v.play().catch(e=>{$('#error').textContent='播放受阻：'+e.message});if(!playing)v.pause()}stamp()}
+function render(){for(const {v} of entries){v.pause();v.removeAttribute('src');v.load()}entries=[];cards.replaceChildren();
+ for(const r of runs.filter(r=>tm.has(Math.round(r.tau_m))&&chis.has(Math.round(r.chi0*10))).sort((a,b)=>a.tau_m-b.tau_m||a.chi0-b.chi0)){
+ const article=document.createElement('article');article.innerHTML=`<div class="caption"><h2>τm/τc = ${Math.round(r.tau_m)} · χ₀ = ${r.chi0.toFixed(1)}</h2><span class="stats">末段 χ̄ = ${r.mean_tail.toFixed(3)} · drift ${r.drift>=0?'+':''}${r.drift.toFixed(3)}</span><span class="live"></span></div>`;
+ const v=document.createElement('video');v.muted=true;v.playsInline=true;v.preload='auto';v.src=r.url;v.setAttribute('aria-label',`${r.case}: u, P, m, chi`);v.addEventListener('loadedmetadata',()=>{v.currentTime=time;v.playbackRate=rate});v.addEventListener('error',()=>{$('#error').textContent='无法载入 '+r.case+' 视频，请通过本地 HTTP 地址打开。'});article.append(v);cards.append(article);entries.push({r,v,live:article.querySelector('.live')});}
+ if(!entries.length)cards.innerHTML='<div class="empty">选择 τm 和至少一个 χ₀ 查看视频。</div>';
+ document.querySelectorAll('.tm').forEach(b=>b.setAttribute('aria-pressed',tm.has(+b.dataset.tm)));
+ document.querySelectorAll('.chi').forEach(b=>b.setAttribute('aria-pressed',chis.has(+b.dataset.chi)));stamp();}
+for(let i=0;i<=10;i++){let b=document.createElement('button');b.className='chi';b.dataset.chi=i;b.textContent=(i/10).toFixed(1);b.onclick=()=>{chis.has(i)?chis.delete(i):chis.add(i);render()};$('#chips').append(b)}
+for(const [label,fn] of [['全部',()=>{for(let i=0;i<=10;i++)chis.add(i)}],['0 / 0.5 / 1',()=>{chis.clear();[0,5,10].forEach(i=>chis.add(i))}]]){let b=document.createElement('button');b.textContent=label;b.onclick=()=>{fn();render()};$('#chips').append(b)}
+document.querySelectorAll('.tm').forEach(b=>b.onclick=()=>{let n=+b.dataset.tm;tm.has(n)?tm.delete(n):tm.add(n);render()});
+pp.onclick=()=>{if(time>=end)time=0;playing=!playing;pp.textContent=playing?'暂停':'播放';last=performance.now();sync(true)};
+seek.oninput=()=>{time=+seek.value/fps;sync(true)};
+$('#reset').onclick=()=>{time=0;sync(true)};
+$('#speed').onchange=e=>{rate=+e.target.value;sync()};
+setInterval(()=>{const now=performance.now(),dt=(now-last)/1000;last=now;
+ if(playing&&entries.length&&entries.every(e=>e.v.readyState>=2&&!e.v.seeking)){time=Math.min(end,time+dt*rate);if(time>=end){playing=false;pp.textContent='播放'}}sync();},100);
+$('#table').innerHTML='<table><thead><tr><th>τm / τc</th><th>χ₀</th><th>m₀</th><th>χ̄ · tail</th><th>stdₜ</th><th>drift</th><th>χ̄ · last</th></tr></thead><tbody>'+runs.sort((a,b)=>a.tau_m-b.tau_m||a.chi0-b.chi0).map(r=>`<tr><td>${Math.round(r.tau_m)}</td><td>${r.chi0.toFixed(1)}</td><td>${r.m0.toFixed(4)}</td><td>${r.mean_tail.toFixed(4)}</td><td>${r.std_tail.toFixed(4)}</td><td>${r.drift.toFixed(4)}</td><td>${r.last.toFixed(4)}</td></tr>`).join('')+'</tbody></table>';
+render();
+</script></html>
