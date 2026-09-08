@@ -126,7 +126,11 @@ def one_case(src,out,reps=1999):
     from cw_s3_sk import radial_corr,length_1e
     par=cw.read_params(str(src)); oa=loadarchive(str(src))
     L=int(par['LX']); assert L==500 and int(par['LY'])==500
-    idx=[i for i in range(cw.frame_count(str(src))) if cw.ph.frame_time(oa,i)>=par['nsteps']-100*TC]
+    # A final off-cadence frame may also be saved. Counting filenames would turn
+    # it into a nonexistent regular frame; retain only the common ninfo grid.
+    idx=[i for i in range(cw.ph.frame_count(oa))
+         if cw.ph.frame_time(oa,i)>=par['nsteps']-100*TC
+         and (src/f'frame{oa.nstart+i*oa.ninfo}.json').exists()]
     assert len(idx)>=6
     rng=np.random.default_rng(84621+int(par.get('seed',0)))
     ox,oy=rng.integers(0,25,size=2)
