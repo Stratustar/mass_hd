@@ -1,71 +1,61 @@
-# Example: a growing circular colony with chi=0.5 and a random director.
-# phi is biomass density; chi=0 is motile/active and chi=1 is proliferative.
 # sigma_active = -[zeta*phi*(1-chi) + k-growth*R_div] Q
-# R_div = chi*phi*alpha inside the current division mask.
+# R_div = chi*phi*alpha inside the current division mask
 
-# Run control
+# Run
 model = bacterial
 config = circle
 nsteps = 12000
 nstart = 0
 ninfo = 200
-
-# Domain size, boundary condition (0: periodic), and random seed
 LX = 192
 LY = 192
 bc = 0
 seed = 20260909
 
-# Q-tensor and phase-field mobilities
+# Active nematics
 GammaQ = 0.03
 GammaP = 0.02
-
-# Motility stress, isotropic activity, and substrate friction
 zeta = 0.2
 zetaI = 0
 friction = 100
-
-# Inherited viscosity parameters; the bacterial model uses dry force balance
 tauNem = 1
 tauIso = 1
 
-# Phase-field and nematic free-energy parameters
+# Free-energy
 AA = 0.03
 CC = 0.1
 LL = 0.02
 KK = 0.06
 
-# Reference density, flow alignment, and crowding penalty
 rho = 40
 xi = 0.3
-B = 1
+# Crowding penalty, should be large in bacterial
+B = 1 
 Snem = 1
 
-# Circular colony: radius and density inside the colony
-# level is used by stripe/square initial conditions and is inactive here
-level = 50
-radius = 30
-conc = 1.1
+# Initialization
+level = 50 # for half-half geometry
+radius = 30 
+conc = 1.1 # initial density
 
-# director-config=uniform uses angle plus local noise;
-# noise=1 gives a random nematic director at each material site
+# director
 noise = 1
 initial-order = 1
 angle = 0
 director-config = uniform
 
-# Optional free-energy relaxation before the recorded run; disabled here
+# Optional free-energy relaxation before the recorded run
 relax-steps = 0
 relax-phi = 0
 relax-Q = 0
 
-# Phenotype initialization: chi-noise=0 makes chi uniform at chi0=0.5
+# Phenotype initialization
 chi-config = noise
 chi0 = 0.5
 chi-noise = 0
 chi-length = 0
 
-# Phenotype diffusion and pressure-driven switching; all disabled here
+# Phenotype dynamics, disabled here
 Dchi = 0
 Achi = 0
 Ochi = 0
@@ -74,14 +64,13 @@ pswitch = 0
 # growTogether=1 adds chi*R to phi*chi, so growth preserves local chi
 growTogether = 1
 
-# Death source; beta=0 and death-rate=0 disable it
+# Death source
 beta = 0
 death-rate = 0
 death-time = 1
 death-radius = 0
 
-# A division mask is sampled with per-site probability division-rate*phi,
-# kept for division-time steps, and drawn as discs of division-radius
+# Division mask 
 division-rate = 0.01
 division-time = 100
 division-radius = 2
@@ -89,12 +78,12 @@ division-radius = 2
 # 0: do not suppress mask sampling by 1-phi/phi-critical
 division-phi-critical-factor = 0
 
-# Local biomass source coefficient and crowding threshold
+# Proliferation rate, threshold of stop
 alpha = 0.001
 phi-critical = 1.2
 
 # Include phase-field surface stress in force balance (0: disabled)
 surface-stress = 0
 
-# Growth-stress coefficient multiplying the same local R_div used above
+# Growth induced extensile stress 
 k-growth = 200
