@@ -1,0 +1,54 @@
+# 20260909 cw_mc_tm_phase: finite-size, finite-time phase map.
+# tau_c reference = 674.3290333006435 steps, inherited from L=500.
+# Same physical coefficients and pmem=0.016838 as cw_s3_chi_scan.
+# Prepare uniform chi with reaction frozen; flow and m evolve.
+# Release chi after 202299 steps; then observe 1348658 steps.
+# Preparation >=100 tau_c and >=10 tau_m; NOT counted in observation.
+# Observation >=2000 tau_c and >=60 tau_m.
+# Tail window >=500 tau_c and >=20 tau_m.
+# Two independent Q seeds; a seed is shared across parameters and
+# chi arms within its replicate (paired initial perturbations).
+# Exact full-field averages are in video_meta.csv; pixels are coarse.
+model                = confluent-wet
+nsteps               = 1550957
+nstart               = 0
+ninfo                = 67400
+LX                   = 256
+LY                   = 256
+bc                   = 0
+seed                 = 190902
+Gamma                = 0.05
+xi                   = 0.4
+CC                   = 0.00208333
+LL                   = 0.01666667
+tau                  = 2
+rho                  = 40
+friction             = 0
+zeta                 = 0.06666667
+zeta0-frac           = 0.3
+angle                = 0
+noise                = 0.05
+initial-order        = 1
+director-config      = uniform
+defect-sep           = 0
+Dbio                 = 0.00166667
+chi-config           = uniform
+chi0                 = 1
+chi-seed             = 200902
+tau-chi              = 202.3
+chi-width            = 0
+switch-sign          = -1
+mc                   = 0.16
+m0                   = 0.0559
+chi-freeze-steps     = 202299
+mem-freeze-steps     = 0
+tau-m                = 20229.87099902
+pmem                 = 0.016838
+pmem-width           = 0
+ntracer              = 0
+tracer-count         = 0
+nvideo               = 337
+video-stride         = 8
+video-p-scale        = 0.20206
+video-u-scale        = 0.04538
+frame-light          = 1

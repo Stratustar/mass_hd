@@ -34,7 +34,12 @@ mkdir -p "${LOG_DIR}"
 NAME="$(basename "${SCRIPT}" .py)"
 RUN_DIR="$(dirname "${SCRIPT}")"
 
-sbatch --job-name="${NAME}" \
+# Match submit_analysis_array.sh so a campaign-wide summary can run after all
+# simulation arrays finish, including reporting failed or missing cases.
+DEP_ARG=()
+[[ -n "${DEPEND:-}" ]] && DEP_ARG=(--dependency="${DEPEND}")
+
+sbatch "${DEP_ARG[@]}" --job-name="${NAME}" \
   --partition="${ANALYSIS_PARTITION:-standard}" --qos="${ANALYSIS_QOS:-serial}" \
   --nodes=1 --ntasks=1 --cpus-per-task="${ANALYSIS_CPUS:-8}" \
   --time="${ANALYSIS_TIME:-04:00:00}" \
