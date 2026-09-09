@@ -11,6 +11,7 @@
 #include "models/lyotropic-with-division-stress.hpp"
 #include "models/go-or-grow.hpp"
 #include "models/dry-go-or-grow.hpp"
+#include "models/bacterial.hpp"
 #include "models/confluent-memory.hpp"
 #include "models/confluent-wet.hpp"
 #include "models/nematic.hpp"
@@ -68,6 +69,11 @@ void DeclareModels()
       "Go-or-grow model with the same Q, phi, and phenotype dynamics, but "
       "with velocity solved from overdamped force balance instead of LB "
       "hydrodynamics."
+      );
+
+  declare_model<Bacterial>(
+      "bacterial",
+      "Dry bacterial go-or-grow model with optional mechanical memory."
       );
 
   declare_model<ConfluentMemory>(

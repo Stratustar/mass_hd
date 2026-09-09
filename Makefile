@@ -27,6 +27,7 @@ MODELS = \
 	 build/models/lyotropic-with-division-stress.o \
          build/models/go-or-grow.o \
          build/models/dry-go-or-grow.o \
+         build/models/bacterial.o \
          build/models/confluent-memory.o \
          build/models/confluent-wet.o \
          build/models/phases.o \
