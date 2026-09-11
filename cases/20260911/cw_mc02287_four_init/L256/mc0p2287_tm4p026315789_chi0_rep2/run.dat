@@ -1,0 +1,55 @@
+# 20260911 cw_mc02287_four_init; same L256 baseline and timing as phase scan.
+# tau_m/tau_c=4.026315789; tau_c=674.3290333006435 steps; mc=0.2287.
+# Initial condition at t=0: 0; paired realization 2.
+# Prepare 67433 steps with chi REACTION off; then observe 1348658 steps.
+# Advection/diffusion remain on during preparation; mixed patterns evolve.
+# The release distribution is measured; do not equate it to the t=0 pattern.
+# Stripe: left chi=0,m=.3301; right chi=1,m=.0559 (two periodic interfaces).
+# Noise: correlated Gaussian, mean .5, std 0.1, length 7.02; clamp to [0,1].
+# Noise m starts uniform at .2503, the old a=.65 duty estimate; preparation equilibrates it.
+# Exact full-field statistics every 337 steps; final window 500 tau_c.
+model                = confluent-wet
+nsteps               = 1416091
+nstart               = 0
+ninfo                = 67400
+LX                   = 256
+LY                   = 256
+bc                   = 0
+seed                 = 190902
+Gamma                = 0.05
+xi                   = 0.4
+CC                   = 0.00208333
+LL                   = 0.01666667
+tau                  = 2
+rho                  = 40
+friction             = 0
+zeta                 = 0.06666667
+zeta0-frac           = 0.3
+angle                = 0
+noise                = 0.05
+initial-order        = 1
+director-config      = uniform
+defect-sep           = 0
+Dbio                 = 0.00166667
+chi-config           = uniform
+chi0                 = 0
+chi-seed             = 200902
+tau-chi              = 202.3
+chi-width            = 0
+switch-sign          = -1
+mc                   = 0.2287
+m0                   = 0.3301
+chi-freeze-steps     = 67433
+mem-freeze-steps     = 0
+tau-m                = 2715.061633759
+pmem                 = 0.016838
+pmem-width           = 0
+ntracer              = 0
+tracer-count         = 0
+nvideo               = 337
+video-stride         = 8
+video-p-scale        = 0.20206
+video-u-scale        = 0.04538
+frame-light          = 1
+chi-noise            = 0
+chi-length           = 0
