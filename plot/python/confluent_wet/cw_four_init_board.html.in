@@ -40,7 +40,7 @@ function render(){const old=entries[0]?.r,oldTime=old?timeOf(old,index):0;stop()
  v.addEventListener('loadedmetadata',()=>{if(!entries.includes(e))return;if(Math.abs(v.duration-r.duration)>.1){report('视频长度与记录不符：'+r.case,true);return}v.currentTime=index/r.fps;e.target=index/r.fps;v.playbackRate=rate;stamp()});
  v.addEventListener('error',()=>{if(entries.includes(e))report('无法载入视频：'+r.case+'。请检查 downloads 文件夹是否随 index.html 一起保留。',true)});
  v.addEventListener('play',()=>{if(!entries.includes(e))return;if(!playing){master=e;index=Math.round(v.currentTime*r.fps);seekTo(index);play()}});
- v.addEventListener('pause',()=>{if(playing&&master===e&&!v.ended)stop()});
+ v.addEventListener('pause',()=>{if(playing&&entries.includes(e)&&!v.ended)stop()});
  v.addEventListener('seeked',()=>{if(!entries.includes(e))return;if(e.target!==null&&Math.abs(v.currentTime-e.target)<.08){e.target=null;return}master=e;seekTo(Math.round(v.currentTime*r.fps))});
  }
  master=entries[0]||null;if(entries.length){[first,last]=frameRange(entries[0].r,$('window').value);index=Math.round((oldTime*tc+entries[0].r.preparation_steps)/entries[0].r.frame_steps);setWindow(!old)}else{$('cards').innerHTML='<div class="empty">选择至少一种初始化来查看视频。</div>';$('trace').replaceChildren()}
