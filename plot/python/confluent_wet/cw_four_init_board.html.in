@@ -14,7 +14,7 @@
 </header>
 <p class="guide">每张卡片从左至右为 |u|、P、m、χ，所有案例色标相同。χ 蓝色对应 high activity，红色对应 low activity。t = 0 为反馈释放；负时间为准备阶段。</p>
 <div id="cards" class="grid"></div>
-<section class="plotbox"><h2>所选轨迹 · 全场平均 χ</h2><p class="small">曲线取自完整网格统计；虚线为当前视频时刻。点击曲线区域可跳转。</p><svg id="trace" viewBox="0 0 1000 200" role="img" aria-label="所选初始化的平均chi随时间变化"></svg></section>
+<section class="plotbox"><h2>所选轨迹 · 全场平均 χ</h2><p class="small">横轴为相对释放时间 t / τc；竖直虚线标记当前视频时刻。种子 1 用实线，种子 2 用短虚线。点击曲线区域可跳转。</p><svg id="trace" viewBox="0 0 1000 200" role="img" aria-label="所选初始化的平均chi随时间变化"></svg></section>
 <details><summary>末态统计与诊断</summary><p class="small">末态取最后 500 τc；stdₜ 是 χ̄(t) 的时间标准差。诊断标记保留原分析结果，模拟成功不等于所有收敛检查均通过。</p><div class="tablewrap" id="table"></div></details>
 <details><summary>初始化、时间与画面说明</summary><p>全 0 的 m₀ = 0.3301；全 1 的 m₀ = 0.0559。对半初始化左侧 χ = 0、右侧 χ = 1，m₀ 分别匹配这两个值。Noise 为均值 0.5、标准差 0.1、平滑长度 7.02 的相关 Gaussian 场，截断到 [0,1]，m₀ = 0.2503。</p><p>准备阶段为 100–180 τc：冻结 χ 反应，保留输运与扩散。对半和 noise 指模拟启动时的初始化，在页面时间轴上位于负时间。反馈释放时已发生混合；卡片列出了实际释放时的 χ 均值和空间标准差。</p><p>每帧间隔 337 steps ≈ 0.499756 τc，25 fps；1× 每秒经过约 12.49 τc。视频保留全部存储帧，窗口切换只改变播放区间。反馈释放一般不落在采样时刻，时间标签使用真实存储步数，末帧略早于 2000 τc。</p><p>原模拟为 256×256；视频经过 8×8 空间平均，真实分辨率为 32×32，放大采用 nearest neighbour。|u| 流只保存速度模长，不能重建流线。实时 χ̄、m̄ 均来自完整网格统计，不从量化像素计算。</p><p>本页面及 MP4 均为本地文件，无外部脚本或网络依赖。移动文件时请保留整个 dashboard 文件夹；可直接打开 index.html，无需服务器。</p></details>
 </main><script type="application/json" id="data">__DATA__</script><script>
