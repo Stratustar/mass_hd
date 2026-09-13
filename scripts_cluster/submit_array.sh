@@ -13,6 +13,7 @@
 #
 # Usage: submit_array.sh <sif_name> <cases_dir>
 # Env:   CONCURRENCY (default 20), ARRAY_TIME (03:00:00), ARRAY_CPUS (32),
+#        CASE_LIST (optional validated subset), DEPEND (optional Slurm dependency),
 #        plus anything submit_case.sh reads (SKIP_PLOTS, PLOT_SCRIPT, ...)
 set -euo pipefail
 
@@ -35,7 +36,22 @@ TAG="$(echo "${CASES_DIR}" | tr '/' '_')"
 LIST="${LIST_ROOT}/${TAG}.txt"
 # The list must live on a SHARED filesystem: /tmp on the login node is not the /tmp a compute
 # node sees, and a job that reads its task list from there silently gets an empty path.
-find "${SEARCH_ROOT}" -type f -name '*.dat' | sort > "${LIST}"
+if [[ -n "${CASE_LIST:-}" ]]; then
+  # A campaign gate may select existing tracked inputs; it never rewrites cases.
+  # Reject duplicates, missing inputs and paths outside this campaign subtree.
+  [[ -f "${CASE_LIST}" ]] || { echo "Missing CASE_LIST" >&2; exit 1; }
+  while IFS= read -r DAT; do
+    [[ "${DAT}" == "${SEARCH_ROOT}/"*/run.dat && -f "${DAT}" && "${DAT}" != *'/../'* ]] || {
+      echo "Invalid selected case: ${DAT}" >&2; exit 1;
+    }
+  done < "${CASE_LIST}"
+  [[ "$(sort "${CASE_LIST}" | uniq -d | wc -l)" -eq 0 ]] || { echo "Duplicate selected cases" >&2; exit 1; }
+  # Keep the selection itself for provenance and avoid overwriting it in place.
+  [[ "${CASE_LIST}" != "${LIST}" ]] || { echo "CASE_LIST must differ from generated list" >&2; exit 1; }
+  sort "${CASE_LIST}" > "${LIST}"
+else
+  find "${SEARCH_ROOT}" -type f -name '*.dat' | sort > "${LIST}"
+fi
 N="$(wc -l < "${LIST}")"
 [[ "${N}" -gt 0 ]] || { echo "No .dat files under ${SEARCH_ROOT}" >&2; exit 1; }
 
@@ -43,7 +59,9 @@ echo "Array: ${N} cases from ${SEARCH_ROOT}"
 echo "  list        ${LIST}"
 echo "  concurrency ${CONCURRENCY}, time ${ARRAY_TIME}, cpus ${ARRAY_CPUS}"
 
-JOBID=$(sbatch --parsable --export=ALL \
+DEP_ARG=()
+[[ -n "${DEPEND:-}" ]] && DEP_ARG=(--dependency="${DEPEND}")
+JOBID=$(sbatch --parsable --export=ALL "${DEP_ARG[@]}" \
   --job-name="arr_${TAG}" \
   --array="0-$((N-1))%${CONCURRENCY}" \
   --partition=standard --qos=serial --nodes=1 --ntasks=1 \

@@ -1,0 +1,64 @@
+# 20260913/cw_pmem_pulse; paired temporary pmem reduction, no mechanical forcing.
+# tm/tc=8.3; tp/tc=10; tau_c=674.3290333006435 steps.
+# Pulse threshold 0; baseline .016838. Endpoints are a half-open step interval.
+# Preparation 67433; full-feedback wait 337165; pulse start 404598.
+# All five paired arms end at 748506; recovery covers longest pulse plus 337165 steps.
+# Binary patches describe t=0, with matched m in each phase; preparation transports them.
+# Controls are inspected before pulse submission; near-critical waiting is provisional.
+model                    = confluent-wet
+nsteps                   = 748506
+nstart                   = 0
+ninfo                    = 67433
+LX                       = 256
+LY                       = 256
+bc                       = 0
+seed                     = 190902
+Gamma                    = 0.05
+xi                       = 0.4
+CC                       = 0.00208333
+LL                       = 0.01666667
+tau                      = 2
+rho                      = 40
+friction                 = 0
+zeta                     = 0.06666667
+zeta0-frac               = 0.3
+angle                    = 0
+noise                    = 0.05
+initial-order            = 1
+director-config          = uniform
+defect-sep               = 0
+Dbio                     = 0.00166667
+chi-config               = uniform
+chi0                     = 1
+chi-seed                 = 200902
+tau-chi                  = 202.3
+chi-width                = 0
+switch-sign              = -1
+mc                       = 0.2287
+m0                       = 0.0559
+chi-freeze-steps         = 67433
+mem-freeze-steps         = 0
+tau-m                    = 5596.93097639534
+pmem                     = 0.016838
+pmem-width               = 0
+ntracer                  = 0
+tracer-count             = 0
+nvideo                   = 674
+video-stride             = 1
+video-p-scale            = 0.20206
+video-u-scale            = 0.04538
+frame-light              = 1
+pmem-pulse-value         = 0
+pmem-pulse-start         = 404598
+pmem-pulse-steps         = 6743
+chi-noise                = 0
+chi-length               = 0
+chi-lo                   = 0
+chi-hi                   = 1
+m-lo                     = 0.3301
+m-hi                     = 0.0559
+nresponse                = 13
+video-start              = 391111
+nvideo-dense             = 34
+video-dense-start        = 391111
+video-dense-end          = 478774
