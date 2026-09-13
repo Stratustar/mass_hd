@@ -344,6 +344,14 @@ protected:
   double tau_m = 1.;
   /** Threshold and smoothing width of the memory response g(P); width 0 is a sharp step */
   double pmem = 0., pmem_width = 0.;
+  /** Temporary sensing threshold on [start,start+steps); zero steps disables it.
+   * This changes the memory source, not the mechanical pressure or LB populations. */
+  double pmem_pulse_value = 0.;
+  unsigned pmem_pulse_start = 0, pmem_pulse_steps = 0;
+  /** Full-grid response diagnostics on their own clock, including pulse boundaries. */
+  unsigned nresponse = 0;
+  std::ofstream response_meta;
+  bool response_open = false;
   /** Initial memory */
   double m0 = 0.;
 
@@ -384,6 +392,9 @@ protected:
    * clipped fractions are recorded in the CSV so a badly chosen scale is visible in the
    * data rather than only in a washed-out picture. */
   unsigned nvideo = 0, video_stride = 2;
+  /** Optional video window and dense clock; defaults preserve the legacy cadence. */
+  unsigned video_start = 0, nvideo_dense = 0;
+  unsigned video_dense_start = 0, video_dense_end = 0;
   double video_p_scale = 0., video_u_scale = 0.;
   /** Write only the seven fields the analysis reads, dropping the LB populations.
    *
@@ -448,6 +459,11 @@ protected:
   double ChiStar(double) const;
   /** g(P), the target of the memory relaxation */
   double MemoryTarget(unsigned) const;
+  bool PmemPulseActive(unsigned step) const;
+  double EffectivePmem(unsigned step) const;
+  bool ResponseDue(unsigned step) const;
+  bool VideoDue(unsigned step) const;
+  void WriteResponse(const std::string& dir, unsigned step);
   /** Clamp a field back into [0,1] */
   static void ClampUnit(ScalarField&, unsigned);
   /** zeta_eff at one node: the constant zeta_open in open loop, the floored law otherwise */
@@ -527,7 +543,16 @@ public:
        & auto_name(chi_seed)
        & auto_name(mem_freeze_steps)
        // appended 2026-09-04 (the s = 1/3 rescaled campaign)
-       & auto_name(init_frame);
+       & auto_name(init_frame)
+       // appended 2026-09-13 (temporary sensing-threshold pulse)
+       & auto_name(pmem_pulse_value)
+       & auto_name(pmem_pulse_start)
+       & auto_name(pmem_pulse_steps)
+       & auto_name(nresponse)
+       & auto_name(video_start)
+       & auto_name(nvideo_dense)
+       & auto_name(video_dense_start)
+       & auto_name(video_dense_end);
   }
 
   /** Serialization of the current frame (time snapshot)

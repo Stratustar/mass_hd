@@ -14,6 +14,7 @@ namespace opt = boost::program_options;
 // from main.cpp:
 extern unsigned nthreads;
 extern unsigned nsubsteps;
+extern unsigned nsteps;
 
 ConfluentWet::ConfluentWet(unsigned LX_, unsigned LY_, unsigned BC_)
   : Nematic(LX_, LY_, BC_)
@@ -36,6 +37,7 @@ ConfluentWet::~ConfluentWet()
   {
     vid_u.close(); vid_p.close(); vid_m.close(); vid_chi.close(); vid_meta.close();
   }
+  if(response_open) response_meta.close();
 }
 
 void ConfluentWet::Initialize()
@@ -118,6 +120,16 @@ void ConfluentWet::Initialize()
   if(mem_freeze_steps && nsubsteps != 1)
     throw error_msg("confluent-wet: mem-freeze-steps counts Step() calls and is only equal "
                     "to runcard time at nsubsteps=1, got nsubsteps=", nsubsteps, ".");
+  if((pmem_pulse_steps || nresponse || video_start || nvideo_dense) && nsubsteps != 1)
+    throw error_msg("confluent-wet: pulse/response/windowed video clocks require nsubsteps=1.");
+  if(!isfinite(pmem) || !isfinite(pmem_pulse_value))
+    throw error_msg("confluent-wet: pressure thresholds must be finite.");
+  if(pmem_pulse_steps && (pmem_pulse_value > pmem || pmem_pulse_start > nsteps ||
+                         pmem_pulse_steps > nsteps-pmem_pulse_start))
+    throw error_msg("confluent-wet: pulse must lower pmem and lie inside the run.");
+  if(nvideo_dense && (!nvideo || video_dense_start < video_start ||
+                      video_dense_end <= video_dense_start))
+    throw error_msg("confluent-wet: dense video needs nvideo>0 and a valid window after video-start.");
   // The video stream.
   if(nvideo)
   {
@@ -489,9 +501,42 @@ double ConfluentWet::ChiStar(double mm) const
 double ConfluentWet::MemoryTarget(unsigned k) const
 {
   const double P = pressure[k];
+  const double threshold = EffectivePmem(nstep_done);
   return pmem_width > 0
-    ? .5*(1. + tanh((P - pmem)/pmem_width))
-    : (P > pmem ? 1. : 0.);
+    ? .5*(1. + tanh((P - threshold)/pmem_width))
+    : (P > threshold ? 1. : 0.);
+}
+
+bool ConfluentWet::PmemPulseActive(unsigned step) const
+{
+  return pmem_pulse_steps && step >= pmem_pulse_start &&
+         step-pmem_pulse_start < pmem_pulse_steps;
+}
+
+double ConfluentWet::EffectivePmem(unsigned step) const
+{
+  return PmemPulseActive(step) ? pmem_pulse_value : pmem;
+}
+
+bool ConfluentWet::ResponseDue(unsigned step) const
+{
+  return nresponse && (step%nresponse == 0 || step == nsteps ||
+    step == chi_freeze_steps || step == pmem_pulse_start ||
+    (pmem_pulse_steps && step >= pmem_pulse_start &&
+     step-pmem_pulse_start == pmem_pulse_steps));
+}
+
+bool ConfluentWet::VideoDue(unsigned step) const
+{
+  if(!nvideo || step < video_start) return false;
+  // No changed defaults for existing video campaigns.
+  if(!video_start && !nvideo_dense) return step%nvideo == 0;
+  if(step == video_start || step == nsteps || step == pmem_pulse_start ||
+     (pmem_pulse_steps && step >= pmem_pulse_start &&
+      step-pmem_pulse_start == pmem_pulse_steps)) return true;
+  if(nvideo_dense && step >= video_dense_start && step <= video_dense_end)
+    return (step-video_dense_start)%nvideo_dense == 0 || step == video_dense_end;
+  return (step-video_start)%nvideo == 0;
 }
 
 void ConfluentWet::ClampUnit(ScalarField& fld, unsigned k)
@@ -1038,12 +1083,58 @@ void ConfluentWet::WriteTracers(const string& dir, unsigned t)
   trc_meta.flush();
 }
 
+void ConfluentWet::WriteResponse(const string& dir, unsigned t)
+{
+  if(!response_open)
+  {
+    response_meta.open((dir + "response.csv").c_str(), ios::out | ios::trunc);
+    if(!response_meta) throw error_msg("confluent-wet: cannot open response.csv in '", dir, "'.");
+    response_meta << "step,pmem_effective,pulse_on,chi_mean,chi_std,m_mean,m_std,"
+                     "u_rms,P_mean,P_std,source_mean,source_base_mean,chi_target_mean\n";
+    response_meta.precision(17);
+    response_open = true;
+  }
+  double cm=0., c2=0., mm=0., m2=0., u2=0., pm=0., p2=0., gm=0., gb=0., qm=0.;
+  const double effective = EffectivePmem(t);
+  for(unsigned k=0; k<DomainSize; ++k)
+  {
+    const double P = pressure[k];
+    cm += chi[k]; c2 += chi[k]*chi[k]; mm += m[k]; m2 += m[k]*m[k];
+    u2 += ux_mat[k]*ux_mat[k] + uy_mat[k]*uy_mat[k];
+    pm += P; p2 += P*P;
+    gm += pmem_width > 0 ? .5*(1.+tanh((P-effective)/pmem_width)) : (P>effective ? 1. : 0.);
+    gb += pmem_width > 0 ? .5*(1.+tanh((P-pmem)/pmem_width)) : (P>pmem ? 1. : 0.);
+    qm += ChiStar(m[k]);
+  }
+  const double N = DomainSize;
+  cm /= N; mm /= N; pm /= N;
+  response_meta << t << ',' << effective << ',' << PmemPulseActive(t) << ','
+    << cm << ',' << sqrt(max(0.,c2/N-cm*cm)) << ','
+    << mm << ',' << sqrt(max(0.,m2/N-mm*mm)) << ',' << sqrt(u2/N) << ','
+    << pm << ',' << sqrt(max(0.,p2/N-pm*pm)) << ',' << gm/N << ',' << gb/N << ',' << qm/N << '\n';
+  // The application does not destroy model objects; flush at every sample.
+  response_meta.flush();
+  if(!response_meta) throw error_msg("confluent-wet: response.csv write failed.");
+}
+
 void ConfluentWet::WriteAuxiliary(const string& dir, unsigned t)
 {
+  const bool response_due = ResponseDue(t), video_due = VideoDue(t);
+  if((response_due || video_due) && nresponse)
+  {
+    // Sample the state at t, not quantities cached before the final corrector update.
+    // These derived fields are recomputed by Step() before use; no evolved state changes.
+    BoundaryConditionsFields();
+    UpdateQuantities();
+    BoundaryConditionsFields2();
+    ComputeMaterialVelocity();
+    BoundaryConditionsFields2();
+  }
+  if(response_due) WriteResponse(dir, t);
   // The tracers run on their own, finer clock, so this is before the video gate.
   WriteTracers(dir, t);
 
-  if(nvideo == 0 || t % nvideo) return;
+  if(!video_due) return;
   if(!video_open) VideoOpen(dir);
 
   const unsigned nx = LX/video_stride, ny = LY/video_stride;
@@ -1114,6 +1205,14 @@ option_list ConfluentWet::GetOptions()
      "pressure threshold of the memory source g(P)")
     ("pmem-width", opt::value<double>(&pmem_width),
      "smoothing width of g(P); 0 is a sharp step")
+    ("pmem-pulse-value", opt::value<double>(&pmem_pulse_value),
+     "temporary lower sensing threshold; mechanical pressure is unchanged")
+    ("pmem-pulse-start", opt::value<unsigned>(&pmem_pulse_start),
+     "first step using the temporary threshold")
+    ("pmem-pulse-steps", opt::value<unsigned>(&pmem_pulse_steps),
+     "number of steps using the temporary threshold; 0 disables the pulse")
+    ("nresponse", opt::value<unsigned>(&nresponse),
+     "steps between full-grid response diagnostics; 0 disables; also samples event boundaries")
     ("zeta0-frac", opt::value<double>(&zeta0_frac),
      "activity floor as a fraction of zeta: zeta_eff = zeta*(z0 + (1-z0)*(1-chi)). "
      "0 (default) is the pre-2026-09 law zeta*(1-chi)")
@@ -1132,6 +1231,14 @@ option_list ConfluentWet::GetOptions()
      "stays on; a frozen m holds chi* fixed too)")
     ("nvideo", opt::value<unsigned>(&nvideo),
      "steps between video-stream frames; 0 disables the stream")
+    ("video-start", opt::value<unsigned>(&video_start),
+     "first video step; sparse cadence is anchored here")
+    ("nvideo-dense", opt::value<unsigned>(&nvideo_dense),
+     "optional steps between frames in the dense video window")
+    ("video-dense-start", opt::value<unsigned>(&video_dense_start),
+     "start and cadence origin of the dense video window")
+    ("video-dense-end", opt::value<unsigned>(&video_dense_end),
+     "last step of the dense video window")
     ("video-stride", opt::value<unsigned>(&video_stride),
      "block-averaging factor of the video lattice (must divide LX and LY)")
     ("video-p-scale", opt::value<double>(&video_p_scale),
