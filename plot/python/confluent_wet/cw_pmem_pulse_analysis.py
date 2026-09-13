@@ -297,7 +297,7 @@ def exponential_fit(t, response):
     return report
 
 
-def pair_response(pulse, control, pseries, cseries, alternate_control=None):
+def pair_response(pulse, control, pseries, cseries, alternate_control=None, allow_drift=False):
     result = {'classification': 'invalid_pair', 'fits': {}, 'flags': []}
     for key in ('tm_over_tc', 'initialization', 'replicate', 'seed', 'L', 'mc', 'pmem',
                 'tau_chi', 'preparation_steps', 'pulse_start_steps'):
@@ -328,7 +328,11 @@ def pair_response(pulse, control, pseries, cseries, alternate_control=None):
     series = {'time_after_pulse_tc': t, 'step': absolute[after]}
     for name in ('chi_mean', 'm_mean'):
         series['delta_' + name] = pseries[name][pi[after]] - cseries[name][ci[after]]
-    if not pulse['baseline_usable'] or not control['control_usable']:
+    result['baseline_stationary_by_legacy_checks'] = bool(pulse['baseline_usable'] and control['control_usable'])
+    result['response_interpretation'] = ('Fixed-age paired response; drift diagnostics do not veto measurement. '
+        'A fitted decay time alone does not establish stationary-state stability.' if allow_drift else
+        'Stationarity-screened return to the original state.')
+    if (not pulse['baseline_usable'] or not control['control_usable']) and not allow_drift:
         result['classification'] = 'baseline_drift'
         result['flags'].extend(['pulse_baseline:' + f for f in pulse['baseline']['flags']])
         result['flags'].extend(['control_baseline:' + f for f in control['baseline']['flags']])
@@ -343,6 +347,20 @@ def pair_response(pulse, control, pseries, cseries, alternate_control=None):
         tolerances[name] = max(base_tolerance, CRITERIA['return_noise_multiplier'] * noise)
     result.update({'terminal_paired_shift': shifts, 'return_tolerances': tolerances})
     same_state = all(abs(shifts[k]) <= tolerances[k] for k in shifts)
+    if allow_drift:
+        result['diagnostic_flags'] = (['pulse_baseline:' + f for f in pulse['baseline']['flags']]
+            + ['control_baseline:' + f for f in control['baseline']['flags']]
+            + ['control_post:' + f for f in control['control_post_flags']]
+            + ['pulse_terminal:' + f for f in pulse['terminal']['flags']])
+        result['classification'] = 'paired_response_decayed' if same_state else 'persistent_paired_difference'
+        result['control_terminal_chi'] = control['terminal']['metrics']['chi_mean']['mean']
+        result['pulse_terminal_chi'] = pulse['terminal']['metrics']['chi_mean']['mean']
+        if same_state:
+            for name in ('chi_mean', 'm_mean'):
+                result['fits'][name] = exponential_fit(t, series['delta_' + name])
+            if all(f['status'] == 'signal_too_weak' for f in result['fits'].values()):
+                result['classification'] = 'signal_too_weak'
+        return result, series
     if same_state and pulse['terminal']['usable']:
         result['classification'] = 'returned_to_original_state'
         for name in ('chi_mean', 'm_mean'):
@@ -393,7 +411,7 @@ def locate_case(root, name):
     return None
 
 
-def aggregate(root, out, manifest_path, make_figures=True):
+def aggregate(root, out, manifest_path, make_figures=True, allow_drift=False):
     manifest = json.loads(manifest_path.read_text())
     rows, directories, missing, invalid = {}, {}, [], []
     fixed = manifest['fixed']
@@ -448,7 +466,7 @@ def aggregate(root, out, manifest_path, make_figures=True):
         try:
             with np.load(directories[case] / 'response_series.npz') as ps, \
                     np.load(directories[control_case] / 'response_series.npz') as cs:
-                result, response = pair_response(pulse, rows[control_case], ps, cs, alternate)
+                result, response = pair_response(pulse, rows[control_case], ps, cs, alternate, allow_drift)
             base.update(result)
             if response is not None:
                 curves[case] = response
@@ -487,9 +505,14 @@ def aggregate(root, out, manifest_path, make_figures=True):
                                          'interpretation': 'Descriptive duration sensitivity; no iid time-sample significance test.'}
         consistency.append(record)
     summary = {'expected_cases': len(manifest['cases']), 'available_cases': len(rows),
+               'allow_drift': allow_drift,
                'missing': missing, 'invalid': invalid, 'cases': rows, 'pairs': pairs,
                'groups': groups, 'duration_consistency': consistency, 'criteria': CRITERIA,
-               'interpretation': 'Finite-horizon basin and recovery evidence. No relaxation fit is assigned to switched, drifting or unresolved responses. Seed ranges are not confidence intervals.'}
+               'interpretation': ('Fixed-age paired responses; baseline/velocity drift is descriptive. '
+                    'Fit decay only when the paired late residual is consistent with zero. '
+                    'Decay times are not proof of stationary-state stability. Seed ranges are not confidence intervals.'
+                    if allow_drift else 'Finite-horizon basin and recovery evidence. No relaxation fit is assigned '
+                    'to switched, drifting or unresolved responses. Seed ranges are not confidence intervals.')}
     out.mkdir(parents=True, exist_ok=True)
     for case, curve in curves.items():
         target = out / 'paired_series' / case
@@ -507,9 +530,12 @@ def aggregate(root, out, manifest_path, make_figures=True):
         f'tau_c before the pulse, or {CRITERIA["baseline_windows_tc"]["near_transition"]:g} tau_c '
         'near the transition. Frozen preparation is excluded. The entire feedback-on '
         'waiting window is also reported descriptively, but its initial transients '
-        'do not gate baseline usability. Late-baseline and control '
-        'drift make a response unsuitable for a relaxation fit. Terminal windows classify '
-        'return, branch switching or incomplete recovery before fitting.\n\n'
+        'do not gate baseline usability. '
+        + ('Fixed-age mode treats all drift diagnostics as descriptive. Fits measure paired-response '
+           'decay without requiring a stationary baseline; persistent late differences are kept without '
+           'a forced zero-offset fit. These times alone do not establish stationary-state stability.\n\n'
+           if allow_drift else 'Late-baseline and control drift make a response unsuitable for a relaxation fit. '
+           'Terminal windows classify return, branch switching or incomplete recovery before fitting.\n\n') +
         'The late fit is A exp(-(t-t_start)/tau), with no constant offset. '
         'Initial continued excursions are excluded; all trial start times and fit quality '
         'are saved in pulse_summary.json. A fit must resolve decay above the noise floor '
@@ -603,11 +629,13 @@ def main():
     parser.add_argument('--summary', action='store_true')
     parser.add_argument('--manifest', type=Path)
     parser.add_argument('--no-figures', action='store_true')
+    parser.add_argument('--allow-drift', action='store_true',
+                        help='Analyze fixed-age paired responses without stationarity/velocity vetoes')
     args = parser.parse_args()
     if args.summary:
         if args.manifest is None:
             parser.error('--summary requires --manifest')
-        aggregate(args.input, args.output, args.manifest, not args.no_figures)
+        aggregate(args.input, args.output, args.manifest, not args.no_figures, args.allow_drift)
     else:
         reduce_case(args.input, args.output)
 
