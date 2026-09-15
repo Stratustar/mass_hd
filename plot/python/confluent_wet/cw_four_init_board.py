@@ -32,7 +32,8 @@ def digest(path):
 def render(src, out, summary_path):
     import imageio_ffmpeg
     from matplotlib import colormaps
-    from PIL import Image, ImageDraw
+    from PIL import Image, ImageDraw, ImageFont
+    from matplotlib.font_manager import FontProperties, findfont
     summary = json.loads(summary_path.read_text())
     rows = [r for r in summary['cases'] if Path(r['case']).name == src.name]
     if len(rows) != 1:
@@ -47,26 +48,29 @@ def render(src, out, summary_path):
     if not np.isclose(p['tau_m']/TC, row['tm_over_tc'], rtol=5e-6):
         raise ValueError('Wrong memory coordinate')
     st = Stream(str(src), p)
+    full = st.stride == 1
+    native = 256 if full else 32
     expected = int(p['nsteps'])//337+1
     if (st.n != expected or len(st.meta['t']) != expected or st.steps[0] != 0
-            or st.nvideo != 337 or st.stride != 8 or (st.nx, st.ny) != (32, 32)
+            or st.nvideo != 337 or st.stride not in (1, 8) or (st.nx, st.ny) != (native, native)
             or not np.all(np.diff(st.steps) == 337)):
         raise ValueError('Unexpected/incomplete video grid or sampling cadence')
     for name, *_ in PANELS:
-        if (src/f'video_{name}.u8').stat().st_size != expected*32*32:
+        if (src/f'video_{name}.u8').stat().st_size != expected*native*native:
             raise ValueError(f'Wrong byte count for {name}')
     out.mkdir(parents=True, exist_ok=True)
-    panel, gap, header, footer = 128, 8, 24, 38
+    panel, gap, header, footer = (256, 12, 32, 44) if full else (128, 8, 24, 38)
     width, height = 4*panel+3*gap, panel+header+footer
     canvas = Image.new('RGB', (width, height), '#101318')
     draw = ImageDraw.Draw(canvas)
-    font = _fit_font('0.0000', panel, 13)
+    font = (ImageFont.truetype(findfont(FontProperties(family='DejaVu Sans')), 18)
+            if full else _fit_font('0.0000', panel, 13))
     luts, raw = {}, {}
     for j, (name, cmap, low, high, label) in enumerate(PANELS):
         x = j*(panel+gap)
         lut = (colormaps[cmap](np.linspace(0, 1, 256))[:, :3]*255).astype(np.uint8)
         luts[name], raw[name] = lut, st.raw(name)
-        draw.text((x+panel//2, 12), label, font=font, fill='white', anchor='mm')
+        draw.text((x+panel//2, header/2), label, font=font, fill='white', anchor='mm')
         ramp = lut[np.rint(np.linspace(0, 255, panel)).astype(int)]
         canvas.paste(Image.fromarray(np.tile(ramp[None, :, :], (9, 1, 1))), (x, header+panel+5))
         draw.text((x, height-12), f'{low:.3g}', font=font, fill='#cbd5e1', anchor='lm')
@@ -75,7 +79,7 @@ def render(src, out, summary_path):
     path, temp = out/'fields.mp4', out/'fields.tmp.mp4'
     writer = imageio_ffmpeg.write_frames(str(temp), (width, height), fps=FPS,
         codec='libx264', pix_fmt_out='yuv420p', macro_block_size=2, quality=None,
-        output_params=['-crf', '23', '-preset', 'fast', '-threads', '2', '-movflags', '+faststart'])
+        output_params=['-crf', '18' if full else '23', '-preset', 'fast', '-threads', '2', '-movflags', '+faststart'])
     writer.send(None)
     try:
         for i in range(st.n):
@@ -85,11 +89,15 @@ def render(src, out, summary_path):
                 values = slo+raw[name][i].astype(np.float32)*(shi-slo)/255
                 q = np.clip(np.rint((values-low)/(high-low)*255), 0, 255).astype(np.uint8)
                 rgb = luts[name][np.flipud(q.T)]
-                # Nearest-neighbour enlargement preserves the true 32x32 block grid.
-                rgb = np.repeat(np.repeat(rgb, 4, axis=0), 4, axis=1)
+                # Native 256x256 fields are encoded pixel-for-pixel; coarse streams
+                # retain their original nearest-neighbour display enlargement.
+                if not full:
+                    rgb = np.repeat(np.repeat(rgb, 4, axis=0), 4, axis=1)
                 x = j*(panel+gap)
                 frame[header:header+panel, x:x+panel] = rgb
             writer.send(frame.tobytes())
+            if full and i == int(np.ceil(row['preparation_steps']/337)):
+                Image.fromarray(frame).save(out/'poster.png')
     finally:
         writer.close()
     reader = imageio_ffmpeg.read_frames(str(temp))
@@ -107,12 +115,17 @@ def render(src, out, summary_path):
     info.update(fps=FPS, frames=st.n, duration=st.n/FPS, frame_steps=337, tau_c=TC,
         start_tc=-row['preparation_steps']/TC,
         end_tc=(float(st.steps[-1])-row['preparation_steps'])/TC,
-        width=width, height=height, native_shape=[32, 32], block_size=8,
+        width=width, height=height, native_shape=[native, native], block_size=st.stride,
         chi=np.round(st.meta['chi_mean'], 7).tolist(),
         memory=np.round(st.meta['m_mean'], 7).tolist(),
         clip_fraction=st.clip_fraction(), panels=PANELS,
         video_bytes=path.stat().st_size, video_sha256=digest(path),
         render_sha256=digest(Path(__file__)), analysis_sha256=row['script_sha256'])
+    if full:
+        info.update(source_campaign=summary['campaign'], summary_sha256=digest(summary_path),
+            input_sha256={name: digest(src/name) for name in
+                          ['parameters.json', 'video_meta.csv']+[f'video_{f}.u8' for f, *_ in PANELS]},
+            poster_sha256=digest(out/'poster.png'), crf=18)
     (out/'video.json').write_text(json.dumps(info, allow_nan=False))
     print(json.dumps({'case': row['case'], 'frames': st.n, 'MB': path.stat().st_size/1e6}), flush=True)
 
