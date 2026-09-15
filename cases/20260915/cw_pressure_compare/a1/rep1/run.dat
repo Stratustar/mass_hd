@@ -1,0 +1,45 @@
+# Fixed-activity pressure comparison; no phenotype feedback into stress.
+# p1=pressure; p2=-sigma_bulk; pLB=pressure_lb, all directly serialized.
+# Full frames every 6740 steps; analysis window 134800..404400.
+model                  = confluent-wet
+nsteps                 = 404400
+nstart                 = 0
+ninfo                  = 6740
+LX                     = 256
+LY                     = 256
+bc                     = 0
+seed                   = 191501
+Gamma                  = 0.05
+xi                     = 0.4
+CC                     = 0.00208333
+LL                     = 0.01666667
+tau                    = 2.0
+rho                    = 40
+friction               = 0.0
+zeta                   = 0.06666667
+zeta0-frac             = 0.3
+open-loop              = 1
+zeta-open              = 0.06666667
+angle                  = 0
+noise                  = 0.05
+initial-order          = 1
+director-config        = uniform
+defect-sep             = 0
+Dbio                   = 0.00166667
+chi-config             = uniform
+chi0                   = 0.5
+tau-chi                = 202.3
+chi-width              = 0.0
+switch-sign            = -1
+mc                     = 0.2287
+m0                     = 0.25
+tau-m                  = 6743.290333006435
+pmem                   = 0.016838
+pmem-width             = 0.0
+ntracer                = 0
+tracer-count           = 0
+nvideo                 = 0
+video-stride           = 2
+video-p-scale          = 0.07333
+video-u-scale          = 0.02856
+frame-light            = 0
