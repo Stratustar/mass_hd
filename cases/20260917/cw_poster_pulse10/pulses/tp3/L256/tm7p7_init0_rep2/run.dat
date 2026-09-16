@@ -1,0 +1,59 @@
+# 20260917/cw_poster_pulse10
+# Paired pulse; core mc=.2287, pc=.016838; tau_m/tau_c=7.7.
+# 10% compression-sensing pulse: pc=.016838 -> .0151542 -> .016838.
+# The memory threshold changes; no direct mechanical force is added.
+# Frozen-reaction preparation 67433; full-feedback wait 1348658; pulse 2023 steps.
+# All paired arms end at 2092443; >=1000tau_c recovery; exact means every13steps.
+# Three signed paired responses are averaged before fitting; retain all fit statuses.
+model                    = confluent-wet
+nsteps                   = 2092443
+nstart                   = 0
+ninfo                    = 67433
+LX                       = 256
+LY                       = 256
+bc                       = 0
+seed                     = 190902
+Gamma                    = 0.05
+xi                       = 0.4
+CC                       = 0.00208333
+LL                       = 0.01666667
+tau                      = 2
+rho                      = 40
+friction                 = 0
+zeta                     = 0.06666667
+zeta0-frac               = 0.3
+angle                    = 0
+noise                    = 0.05
+initial-order            = 1
+director-config          = uniform
+defect-sep               = 0
+Dbio                     = 0.00166667
+chi-config               = uniform
+chi0                     = 0
+chi-seed                 = 200902
+tau-chi                  = 202.3
+chi-width                = 0
+switch-sign              = -1
+mc                       = 0.2287
+m0                       = 0.3301
+chi-freeze-steps         = 67433
+mem-freeze-steps         = 0
+tau-m                    = 5192.333556414955
+pmem                     = 0.016838
+pmem-width               = 0
+ntracer                  = 0
+tracer-count             = 0
+nvideo                   = 0
+video-stride             = 8
+video-p-scale            = 0.20206
+video-u-scale            = 0.04538
+frame-light              = 1
+chi-noise                = 0
+chi-length               = 0
+open-loop                = 0
+pmem-pulse-value         = 0.0151542
+pmem-pulse-start         = 1416091
+pmem-pulse-steps         = 2023
+nresponse                = 13
+nvideo-dense             = 0
+video-start              = 0
