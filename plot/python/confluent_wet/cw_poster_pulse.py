@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Audit and summarize the three-seed, 10%-p_c poster pulse campaign.
+"""Audit and summarize the three-seed poster sensing-threshold pulse campaigns.
 
 Per case: RAW_CASE OUT_CASE --manifest MANIFEST
 Summary:  RESULTS_ROOT OUT_SUMMARY --manifest MANIFEST --summary
@@ -58,16 +58,19 @@ def equal(actual, expected):
 def load_manifest(path):
     manifest = read_json(path)
     fixed = manifest['fixed']
+    decrease = manifest.get('relative_threshold_decrease', .1)
+    if not any(equal(decrease, value) for value in (.1, .5)):
+        raise ValueError('Expected an approved10% or50% threshold decrease')
     if manifest['replicates'] != 3:
         raise ValueError('This campaign requires exactly three independent seeds per group')
     required = {'L': 256, 'mc': .2287, 'pmem': .016838,
-                'pmem_pulse_value': .0151542, 'tau_chi': 202.3,
+                'pmem_pulse_value': (1-decrease)*.016838, 'tau_chi': 202.3,
                 'r': .3, 'tau_c': legacy.TC}
     for key, value in required.items():
         if key not in fixed or not equal(fixed[key], value):
             raise ValueError(f'Unexpected campaign fixed parameter {key}')
-    if not equal(fixed['pmem_pulse_value'], .9 * fixed['pmem']):
-        raise ValueError('The pulse must lower p_c by 10%')
+    if not equal(fixed['pmem_pulse_value'], (1-decrease)*fixed['pmem']):
+        raise ValueError('The pulse threshold must match its declared amplitude')
     if manifest['tp_grid'] != [3] or not manifest['tm_grid']:
         raise ValueError('Expected a nonempty memory grid and t_p/tau_c=3')
     names = [item['case'] for item in manifest['cases']]
@@ -87,6 +90,8 @@ def load_manifest(path):
         if name.is_absolute() or '..' in name.parts:
             raise ValueError('Case must be a relative path below the campaign')
         if item['kind'] == 'pulse':
+            if not equal(item['expected_parameters']['pmem-pulse-value'], fixed['pmem_pulse_value']):
+                raise ValueError('Pulse case amplitude differs from manifest')
             control = index[item['paired_control']]
             if control['kind'] != 'control':
                 raise ValueError('paired_control is not a control')
@@ -127,8 +132,10 @@ def audit_parameters(parameters, item, fixed):
                    else equal(parameters[actual_key], value))
         if not matches:
             raise ValueError(f'Runtime mismatch {actual_key}: {parameters[actual_key]} != {value}')
+    pulse_value = (fixed['pmem_pulse_value'] if item['kind'] == 'pulse'
+                   else expected['pmem-pulse-value'])
     checks = {'LX': fixed['L'], 'LY': fixed['L'], 'mc': fixed['mc'],
-              'pmem': fixed['pmem'], 'pmem_pulse_value': .9 * fixed['pmem'],
+              'pmem': fixed['pmem'], 'pmem_pulse_value': pulse_value,
               'tau_chi': fixed['tau_chi'], 'zeta0_frac': fixed['r'],
               'tau_m': item['tm_over_tc'] * legacy.TC, 'chi_config': 'uniform',
               'chi0': item['initialization'], 'seed': item['seed'],
@@ -200,9 +207,13 @@ def load_case(directory, item, manifest, manifest_path):
                 'preparation_steps', 'pulse_start_steps', 'pulse_duration_steps'):
         if str(row[key]) != str(item[key]):
             raise ValueError(f'Reduced metadata mismatch: {key}')
-    for key in ('L', 'mc', 'pmem', 'pmem_pulse_value', 'tau_chi'):
+    for key in ('L', 'mc', 'pmem', 'tau_chi'):
         if not equal(row[key], manifest['fixed'][key]):
             raise ValueError(f'Reduced fixed parameter mismatch: {key}')
+    expected_pulse_value = (manifest['fixed']['pmem_pulse_value'] if item['kind'] == 'pulse'
+                            else item['expected_parameters']['pmem-pulse-value'])
+    if not equal(row['pmem_pulse_value'], expected_pulse_value):
+        raise ValueError('Reduced pulse threshold differs from its case')
     if not equal(row['tm_over_tc'], item['tm_over_tc']) or not equal(row['tau_c_reference'], legacy.TC):
         raise ValueError('Reduced clock mismatch')
     return row, provenance
@@ -251,6 +262,18 @@ def validate_pair_clock(curve, pulse):
 
 def group_name(tm, init, tp):
     return f'tm{tm:g}_init{init}_tp{tp:g}'.replace('.', 'p')
+
+
+def audit_pair_parameters(pulse, control):
+    if int(control['pmem_pulse_steps']) != 0 or int(pulse['pmem_pulse_steps']) <= 0:
+        raise ValueError('Pair must contain one applied pulse and one zero-duration control')
+    if set(pulse) != set(control):
+        raise ValueError('Pair runtime parameter inventories differ')
+    for key in pulse:
+        # A reused zero-duration control can retain its old inactive pulse value.
+        # Each arm's full parameter set and applied amplitude are audited separately.
+        if key not in ('pmem_pulse_steps', 'pmem_pulse_value') and pulse[key] != control[key]:
+            raise ValueError(f'Runtime pulse/control mismatch: {key}')
 
 
 def summarize(root, out, manifest_path, make_figures=True):
@@ -307,10 +330,7 @@ def summarize(root, out, manifest_path, make_figures=True):
             try:
                 pulse, control = rows[case], rows[control_case]
                 pp, cp = provenance[case]['parameters'], provenance[control_case]['parameters']
-                for key in pp:
-                    # The scheduled pulse duration is the only runtime difference.
-                    if key != 'pmem_pulse_steps' and pp[key] != cp.get(key):
-                        raise ValueError(f'Runtime pulse/control mismatch: {key}')
+                audit_pair_parameters(pp, cp)
                 with np.load(directories[case] / 'response_series.npz') as ps, \
                         np.load(directories[control_case] / 'response_series.npz') as cs:
                     report, curve = legacy.pair_response(pulse, control, ps, cs, allow_drift=True)
@@ -377,7 +397,9 @@ def summarize(root, out, manifest_path, make_figures=True):
                           'fits': {metric: group['metrics'][metric]['fit']['status'] for metric in METRICS}}), flush=True)
     result = {'manifest': str(manifest_path), 'manifest_sha256': sha(manifest_path),
               'analysis_sha256': sha(Path(__file__)), 'fit_script_sha256': sha(Path(legacy.__file__)),
-              'fixed': manifest['fixed'], 'expected_cases': len(manifest['cases']),
+              'fixed': manifest['fixed'],
+              'relative_threshold_decrease': manifest.get('relative_threshold_decrease', .1),
+              'expected_cases': len(manifest['cases']),
               'available_cases': len(rows), 'expected_groups': len(expected_groups),
               'complete_groups': sum(group['status'] == 'complete' for group in groups),
               'independent_seeds_per_group': 3, 'criteria': legacy.CRITERIA,
@@ -404,12 +426,13 @@ def summarize(root, out, manifest_path, make_figures=True):
 
 
 def write_readme(out, result):
+    decrease = result.get('relative_threshold_decrease', .1)
     (out / 'README.md').write_text(
-        '# Dense 10% threshold-pulse response\n\n'
+        f'# Dense {100*decrease:g}% threshold-pulse response\n\n'
         f"Coverage: {result['available_cases']}/{result['expected_cases']} cases; "
         f"{result['complete_groups']}/{result['expected_groups']} complete three-seed groups.\n\n"
         'L256, mc=0.2287, pc=0.016838, activity floor r=0.3, tau_chi=202.3 steps. '
-        'pc is temporarily lowered to 0.9 pc, for 3 tau_c (integer-step rounding), '
+        f'pc is temporarily lowered to {1-decrease:g} pc, for 3 tau_c (integer-step rounding), '
         'after 2000 tau_c feedback-on waiting. Both uniform initializations are shown '
         'separately, with 1000 tau_c recovery. tau_c=674.3290333006435 steps.\n\n'
         'At each memory time and initialization, the signed pulse-minus-control curves '
@@ -432,7 +455,7 @@ def write_readme(out, result):
         'only resolved fits; coverage and all failures remain in the CSV/JSON and status figure.\n\n'
         'These are fixed-age paired responses. Baseline, control and pulse-terminal drift '
         'flags remain in the report and do not exclude seeds. A three-seed mean can hide '
-        'individual persistent responses; inspect individual curves. A finite 10% pulse '
+        f'individual persistent responses; inspect individual curves. A finite {100*decrease:g}% pulse '
         'does not by itself verify linear response, a stationary-state restoring rate, '
         'a critical exponent or divergence. No time-constant uncertainty is inferred '
         'from correlated time samples.\n\n'

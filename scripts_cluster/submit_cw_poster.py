@@ -19,6 +19,7 @@ SCRATCH = Path('/scratch/helu/mass_hd')
 CONFIG = {
     'distributions': ('20260917/cw_poster_distributions', 'cw_poster_distribution.py', 16, '03:00:00'),
     'pulse10': ('20260917/cw_poster_pulse10', 'cw_poster_pulse.py', 32, '04:00:00'),
+    'pulse50': ('20260917/cw_poster_pulse50', 'cw_poster_pulse.py', 32, '04:00:00'),
 }
 
 
@@ -57,11 +58,20 @@ def launch(kind, expected_commit, previous, sif_name):
                'scripts_cluster/submit_analysis.sh', 'scripts_cluster/verify_campaign_reuse.py',
                'scripts_cluster/submit_cw_poster.py', 'scripts/gen_cw_poster_campaigns.py',
                'plot/python/confluent_wet/'+analysis_name]
-    if kind == 'pulse10':
+    if kind.startswith('pulse'):
         runtime.append('plot/python/confluent_wet/cw_pmem_pulse_analysis.py')
+    reused = [row for row in manifest['cases'] if 'reuse_from' in row]
+    fresh = [row for row in manifest['cases'] if 'reuse_from' not in row]
+    if reused:
+        if any(row['kind'] != 'control' for row in reused) or any(row['kind'] != 'pulse' for row in fresh):
+            raise ValueError('Reuse must contain controls only, and new runs pulses only')
+        runtime += ['scripts/gen_cw_poster_pulse50.py', 'scripts_cluster/prepare_cw_pulse_reuse.py']
     # Check analysis/workflow AND committed case contents before any scheduling.
     input_names = [str(manifest_path.relative_to(REPO))] + [
         str((manifest_path.parent/row['case']/'run.dat').relative_to(REPO)) for row in manifest['cases']]
+    if reused:
+        input_names += ['cases/'+manifest['source_campaign']+'/manifest.json']
+        input_names += ['cases/'+row['reuse_from']+'/run.dat' for row in reused]
     hashes = {}
     for name in runtime+input_names:
         tracked = subprocess.check_output(['git', 'show', f'HEAD:{name}'], cwd=REPO)
@@ -77,6 +87,7 @@ def launch(kind, expected_commit, previous, sif_name):
     mplconfig = proof/'mplconfig'
     mplconfig.mkdir(exist_ok=True)
     record = dict(campaign=campaign, expected_cases=len(manifest['cases']),
+                  new_simulations=len(fresh), reused_controls=len(reused),
                   local_commit=expected_commit, cluster_commit=commit,
                   manifest_sha256=digest(manifest_path.read_bytes()),
                   runtime_sha256=hashes, sif_name=sif_name,
@@ -95,6 +106,19 @@ def launch(kind, expected_commit, previous, sif_name):
                PLOT_HD_ARGS='--manifest '+str(manifest_path),
                OPENBLAS_NUM_THREADS='1', MKL_NUM_THREADS='1',
                MPLCONFIGDIR=str(mplconfig), PYTHONDONTWRITEBYTECODE='1')
+    if reused:
+        env.update(ANALYSIS_CPUS='4', ANALYSIS_TIME='01:00:00')
+        command = ['bash', str(REPO/'scripts_cluster/submit_analysis.sh'),
+                   str(REPO/'scripts_cluster/prepare_cw_pulse_reuse.py'),
+                   str(manifest_path), '--poster']
+        output = subprocess.check_output(command, cwd=REPO, env=env, text=True)
+        print(output, flush=True)
+        record.update(control_reuse_job_id=job_id(output), control_reuse_command=command,
+                      status='control_reuse_submitted')
+        write_record(record_path, record)
+        selected = proof/'pulse_inputs.txt'
+        selected.write_text(''.join(str(manifest_path.parent/row['case']/'run.dat')+'\n' for row in fresh))
+        env.update(CASE_LIST=str(selected), DEPEND='afterok:'+record['control_reuse_job_id'])
     command = ['bash', str(REPO/'scripts_cluster/submit_array.sh'), sif_name,
                'cases/'+campaign]
     record['array_command'] = command

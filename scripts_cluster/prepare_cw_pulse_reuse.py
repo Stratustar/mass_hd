@@ -5,18 +5,27 @@ import hashlib
 import importlib.util
 import json
 from pathlib import Path
+import sys
 
 
-def main(manifest_path):
+def main(manifest_path, poster=False):
     repo = Path(__file__).resolve().parents[1]
     manifest = json.loads(manifest_path.read_text())
     scratch = Path('/scratch/helu/mass_hd')
     raw = scratch / 'cases' / manifest['campaign']
     results = scratch / 'results/cases' / manifest['campaign']
-    spec = importlib.util.spec_from_file_location('pulse_analysis',
-        repo / 'plot/python/confluent_wet/cw_pmem_pulse_analysis.py')
-    analysis = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(analysis)
+    if poster:
+        sys.path.insert(0, str(repo/'plot/python/confluent_wet'))
+        import cw_poster_pulse as analysis
+        analysis.load_manifest(manifest_path)
+        original_manifest = repo/'cases'/manifest['source_campaign']/'manifest.json'
+        if analysis.sha(original_manifest) != manifest['source_manifest_sha256']:
+            raise ValueError('Source control campaign manifest changed')
+    else:
+        spec = importlib.util.spec_from_file_location('pulse_analysis',
+            repo / 'plot/python/confluent_wet/cw_pmem_pulse_analysis.py')
+        analysis = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(analysis)
     reused = []
     for item in manifest['cases']:
         if 'reuse_from' not in item:
@@ -29,7 +38,14 @@ def main(manifest_path):
             raise ValueError('Reused control does not have identical inputs')
         source = scratch / 'cases' / item['reuse_from']
         destination = raw / item['case']
-        row = analysis.reduce_case(source, results / item['case'])
+        if poster:
+            # Re-reduce the completed raw control with current strict auditing;
+            # do not relabel an old analysis provenance record as a new one.
+            analysis.reduce_case(source, results/item['case'], manifest_path)
+            row = json.loads((results/item['case']/'pulse_case.json').read_text())
+            analysis.load_case(results/item['case'], item, manifest, manifest_path)
+        else:
+            row = analysis.reduce_case(source, results / item['case'])
         for key in ('nsteps', 'preparation_steps', 'pulse_start_steps', 'pulse_duration_steps',
                     'initialization', 'replicate', 'seed'):
             if row[key] != item[key]:
@@ -43,6 +59,8 @@ def main(manifest_path):
         reused.append({'case': item['case'], 'source': str(source),
                        'input_sha256': item['run_dat_sha256'],
                        'response_sha256': hashlib.sha256((source / 'response.csv').read_bytes()).hexdigest()})
+    if poster and len(reused) != manifest['reused_controls']:
+        raise ValueError('Wrong reused-control count')
     results.mkdir(parents=True, exist_ok=True)
     (results / 'reused_controls.json').write_text(json.dumps(reused, indent=2) + '\n')
     print(json.dumps({'validated_reused_controls': len(reused)}))
@@ -51,4 +69,6 @@ def main(manifest_path):
 if __name__ == '__main__':
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('manifest', type=Path)
-    main(p.parse_args().manifest)
+    p.add_argument('--poster', action='store_true')
+    args = p.parse_args()
+    main(args.manifest, poster=args.poster)
