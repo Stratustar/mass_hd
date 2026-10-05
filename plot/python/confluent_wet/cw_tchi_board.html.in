@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>tau_chi scan</title>
+<style>
+:root{color-scheme:light;--ink:#26343d;--muted:#718089;--line:#dfe5e7;--bg:#f7f8f8;--c0:#3f9fb0;--c1:#d9737d}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+main{max-width:1180px;margin:auto;padding:22px 24px 36px}.parameters{display:flex;gap:28px;flex-wrap:wrap;margin-bottom:12px;font-size:17px;font-variant-numeric:tabular-nums}
+#summary{display:block;width:100%;height:auto;background:white;border:1px solid var(--line);border-radius:7px;margin-bottom:14px}
+#summary .pt{cursor:pointer}
+header{position:sticky;top:0;z-index:5;padding:12px 14px;background:#fafcfbf5;border:1px solid var(--line);border-radius:9px;backdrop-filter:blur(12px)}
+.row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.row+.row{margin-top:9px}.label{color:var(--muted);margin-right:3px}.spacer{flex:1}.choices{display:inline-flex;gap:5px;flex-wrap:wrap}
+button,select{font:inherit;color:var(--ink);background:white;border:1px solid var(--line);border-radius:6px;padding:5px 10px;cursor:pointer}button:hover,select:hover{border-color:#9bb8bf}button[aria-pressed=true]{border-color:#86b9c2;background:#e8f2f4}button:disabled{opacity:.4;cursor:default}button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid #8C6BB1;outline-offset:2px}
+#play{min-width:63px;color:white;background:#304851;border-color:#304851}#seek{flex:1;min-width:160px;accent-color:#557f8c}#clock{min-width:145px;text-align:right;font-variant-numeric:tabular-nums}#notice{color:#9b4248;font-size:12px;margin-top:8px}#notice:empty{display:none}
+#cards{display:grid;gap:14px;margin-top:16px}#cards.grid{grid-template-columns:auto repeat(var(--n),1fr);gap:6px 6px;align-items:center}
+article{overflow:hidden;border:1px solid var(--line);border-top:2px solid var(--case);border-radius:7px;background:white}.caption{padding:6px 12px;font-size:13px;display:flex;gap:10px;color:var(--ink)}.caption .stat{color:var(--muted);font-variant-numeric:tabular-nums}
+video{display:block;width:100%;background:#101318}
+.crop{position:relative;overflow:hidden;aspect-ratio:1;border-radius:4px;background:#101318;border-bottom:3px solid var(--case)}
+.crop video{position:absolute;width:var(--w);left:var(--l);top:var(--t);max-width:none}
+.colhead,.rowhead{font-size:12px;color:var(--muted);text-align:center;font-variant-numeric:tabular-nums}.rowhead{writing-mode:vertical-rl;transform:rotate(180deg);padding:0 2px}
+.colhead button{padding:2px 6px;font-size:12px}
+#trace{display:block;width:100%;height:auto;margin-top:18px;background:white;border-radius:7px;border:1px solid var(--line)}
+@media(max-width:650px){main{padding:14px 10px 24px}.parameters{gap:15px;font-size:15px}header{padding:9px}.spacer{display:none}#clock{min-width:120px;font-size:12px}button,select{padding:5px 8px}}
+</style>
+</head>
+<body><main>
+<div class="parameters"><span>m<sub>c</sub> = <span id="mc"></span></span><span>τ<sub>m</sub> = <span id="tau-m"></span> τ<sub>c</sub></span><span>L = <span id="size"></span></span><span>seed = 1</span></div>
+<svg id="summary" viewBox="0 0 1100 250" role="img" aria-label="Late-time mean chi and binariness versus tau_chi"></svg>
+<header>
+<div class="row"><span class="label">View</span><div class="choices" role="group" aria-label="View"><button id="view-single">Single τ<sub>χ</sub> (u, P, m, χ)</button><button id="view-grid">All τ<sub>χ</sub> (χ only)</button></div></div>
+<div class="row" id="tchi-row"><span class="label">τ<sub>χ</sub>/τ<sub>c</sub></span><div id="tchis" class="choices" role="group" aria-label="Phenotype time"></div></div>
+<div class="row"><button id="play">Play</button><button id="reset" aria-label="Restart">↺</button><input id="seek" type="range" min="0" max="1" step="any" value="0" aria-label="Time after release"><span id="clock">t / τc = —</span><select id="speed" aria-label="Playback speed"><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option><option value="4">4×</option><option value="8">8×</option></select><label><input type="checkbox" id="prep"> show preparation</label><button id="fullscreen" aria-label="Full screen">⛶</button></div>
+<div id="notice" role="status"></div>
+</header>
+<div id="cards"></div>
+<svg id="trace" viewBox="0 0 1100 270" role="img" aria-label="Mean chi versus time"></svg>
+</main>
+<script type="application/json" id="data">__DATA__</script>
+<script>
+(()=>{'use strict';
+const $=id=>document.getElementById(id);
+try {
+  const data=JSON.parse($('data').textContent), runs=data.runs, tc=data.tau_c, P=data.panel;
+  const grid=[...new Set(runs.map(r=>r.tau_chi_over_tc))].sort((a,b)=>a-b);
+  const colors={}, css=getComputedStyle(document.documentElement);
+  colors['0']=css.getPropertyValue('--c0').trim();colors['1']=css.getPropertyValue('--c1').trim();
+  const viridis=['#440154','#443983','#31688e','#21918c','#35b779','#90d743','#fde725'];
+  const tcolor=k=>viridis[Math.round(k*(viridis.length-1)/Math.max(grid.length-1,1))];
+  let view='single', gi=Math.max(0,grid.indexOf(0.3)), entries=[], playing=false, rate=1, position=0, startTime=0, endTime=0, timer;
+  const fmt=x=>String(Number(x.toFixed(3)));
+  const timeOf=(r,i)=>(i*r.frame_steps-r.preparation_steps)/tc;
+  const secondsPerTc=r=>tc/(r.frame_steps*r.fps);
+  const mediaStart=r=>r.preparation_steps/(r.frame_steps*r.fps);
+  const mediaAt=(r,t)=>mediaStart(r)+t*secondsPerTc(r);
+  const report=m=>{$('notice').textContent=m;};
+  const xMin=-data.preparation_tc, xMax=data.observation_tc;
+  const tx=t=>64+1010*(t-($('prep').checked?xMin:0))/(xMax-($('prep').checked?xMin:0));
+  // One JS clock is the only time base. Every video chases it on its own: small drift is
+  // absorbed by nudging playbackRate, large drift by a seek, and a seek that never completes
+  // (a stalled byte-range fetch) is re-issued. Nothing waits for all movies to be ready, so
+  // one slow decoder or network fetch cannot freeze the rest.
+  let wall0=0, pos0=0;
+  const now=()=>playing?pos0+(performance.now()-wall0)/1000*rate*data.tc_per_second:position;
+  function stamp(){
+    if(!entries.length)return;
+    $('seek').value=position;$('clock').textContent=`t / τc = ${position.toFixed(1)}`;
+    const c=$('cursor');if(c){const x=tx(position);c.setAttribute('x1',x);c.setAttribute('x2',x);}
+  }
+  function seekVideo(e,target){e.v.currentTime=target;e.seekAt=performance.now();}
+  function sync(){
+    for(const e of entries){
+      const v=e.v;if(v.readyState<1)continue;
+      const target=mediaAt(e.r,position);
+      if(v.seeking){if(performance.now()-(e.seekAt||0)>1500)seekVideo(e,target);continue;}
+      const drift=v.currentTime-target;
+      if(!playing){if(!v.paused)v.pause();if(Math.abs(drift)>.02)seekVideo(e,target);continue;}
+      if(Math.abs(drift)>.35){seekVideo(e,target);continue;}
+      v.playbackRate=rate*(1-Math.max(-.25,Math.min(.25,drift)));
+      if(v.paused&&v.readyState>=2&&!v.ended)v.play().catch(()=>{});
+    }
+  }
+  function stop(){position=Math.max(startTime,Math.min(endTime,now()));playing=false;$('play').textContent='Play';for(const e of entries)e.v.pause();sync();stamp();}
+  function seekTo(t){position=Math.max(startTime,Math.min(endTime,t));if(playing){pos0=position;wall0=performance.now();}sync();stamp();}
+  function play(){
+    if(!entries.length)return;
+    if(position>=endTime-1e-6)position=startTime;
+    pos0=position;wall0=performance.now();playing=true;$('play').textContent='Pause';report('');
+    for(const e of entries){e.v.playbackRate=rate;e.v.play().catch(()=>{});}
+    sync();
+  }
+  function summary(){
+    // Two log-x panels: late-time <chi> and binariness, one point per run; click selects tau_chi.
+    const W=520, H=190, ox=[60,600], oy=24, lx=Math.log10(grid[0])-.12, hx=Math.log10(grid[grid.length-1])+.12;
+    const px=(o,x)=>o+W*(Math.log10(x)-lx)/(hx-lx);
+    const panels=[{key:'tail_mean',label:'late-time ⟨χ⟩',lo:.7,hi:.9},{key:'tail_binariness',label:'Var(χ) / χ̄(1−χ̄)',lo:0,hi:.8}];
+    let s='';
+    panels.forEach((p,j)=>{
+      const o=ox[j], py=v=>oy+H*(1-(v-p.lo)/(p.hi-p.lo));
+      s+=`<path d="M${o} ${oy}V${oy+H}H${o+W}" fill="none" stroke="#a5b0b6"/>`;
+      for(let k=0;k<=4;k++){const v=p.lo+(p.hi-p.lo)*k/4,y=py(v);s+=`<path d="M${o-5} ${y}H${o}" stroke="#a5b0b6"/><text x="${o-8}" y="${y+4}" text-anchor="end" fill="#677781" font-size="11">${fmt(v)}</text>`;}
+      for(const g of grid){const x=px(o,g);s+=`<path d="M${x} ${oy+H}V${oy+H+5}" stroke="#a5b0b6"/><text x="${x}" y="${oy+H+18}" text-anchor="middle" fill="#677781" font-size="11">${fmt(g)}</text>`;}
+      s+=`<text x="${o+W/2}" y="${oy+H+36}" text-anchor="middle" fill="#45565f" font-size="12">τχ / τc</text><text x="${o+10}" y="${oy-8}" fill="#45565f" font-size="13">${p.label}</text>`;
+      if(view==='single'){const x=px(o,grid[gi]);s+=`<rect x="${x-11}" y="${oy}" width="22" height="${H}" fill="#e8f2f4"/>`;}
+      for(const st of ['0','1']){
+        const rr=runs.filter(r=>r.initialization===st).sort((a,b)=>a.tau_chi_over_tc-b.tau_chi_over_tc);
+        s+=`<polyline points="${rr.map(r=>`${px(o,r.tau_chi_over_tc).toFixed(1)},${py(r[p.key]).toFixed(1)}`).join(' ')}" fill="none" stroke="${colors[st]}" stroke-width="1.4" ${st==='1'?'stroke-dasharray="5 3"':''}/>`;
+        for(const r of rr){const x=px(o,r.tau_chi_over_tc),y=py(r[p.key]);
+          s+=st==='0'?`<circle class="pt" data-g="${grid.indexOf(r.tau_chi_over_tc)}" cx="${x}" cy="${y}" r="5" fill="${colors[st]}"><title>τχ=${fmt(r.tau_chi_over_tc)}, χ0=0: ${r[p.key].toFixed(4)}</title></circle>`
+                     :`<rect class="pt" data-g="${grid.indexOf(r.tau_chi_over_tc)}" x="${x-4}" y="${y-4}" width="8" height="8" fill="none" stroke="${colors[st]}" stroke-width="1.6"><title>τχ=${fmt(r.tau_chi_over_tc)}, χ0=1: ${r[p.key].toFixed(4)}</title></rect>`;}
+      }
+    });
+    s+=`<circle cx="975" cy="14" r="4.5" fill="${colors['0']}"/><text x="984" y="18" font-size="12" fill="#45565f">χ0 = 0</text><rect x="1035" y="10" width="8" height="8" fill="none" stroke="${colors['1']}" stroke-width="1.6"/><text x="1048" y="18" font-size="12" fill="#45565f">χ0 = 1</text>`;
+    $('summary').innerHTML=s;
+    $('summary').querySelectorAll('.pt').forEach(el=>el.onclick=()=>{gi=+el.dataset.g;view='single';render();});
+  }
+  function trace(){
+    const svg=$('trace'), lo=$('prep').checked?xMin:0;
+    let s='<path d="M64 18V216H1074" fill="none" stroke="#a5b0b6"/>';
+    for(const y of [0,.25,.5,.75,1]){const yy=216-y*198;s+=`<path d="M59 ${yy}H64" stroke="#a5b0b6"/><text x="52" y="${yy+4}" text-anchor="end" fill="#677781" font-size="12">${y}</text>`;}
+    const ticks=lo<0?[lo,0,250,500,750,1000]:[0,250,500,750,1000];
+    for(const t of ticks){const x=tx(t);s+=`<path d="M${x} 216V221" stroke="#a5b0b6"/><text x="${x}" y="236" text-anchor="middle" fill="#677781" font-size="12">${Math.round(t)}</text>`;}
+    const shown=view==='single'?entries.map(e=>e.r):runs;
+    for(const r of shown){
+      const pts=[];for(let i=0;i<r.frames;i++){const t=timeOf(r,i);if(t<lo-1e-9)continue;pts.push(`${tx(t).toFixed(1)},${(216-r.chi[i]*198).toFixed(1)}`);}
+      const col=view==='single'?colors[r.initialization]:tcolor(grid.indexOf(r.tau_chi_over_tc));
+      s+=`<polyline points="${pts.join(' ')}" fill="none" stroke="${col}" stroke-width="1.3" ${r.initialization==='1'?'stroke-dasharray="5 3"':''}/>`;
+    }
+    if(view==='grid')grid.forEach((g,k)=>{s+=`<text x="${1074-(grid.length-1-k)*44}" y="14" text-anchor="end" font-size="12" fill="${tcolor(k)}">${fmt(g)}</text>`;});
+    s+=`<text x="569" y="258" text-anchor="middle" fill="#45565f" font-size="13">t / τc after release${view==='grid'?'   (colour: τχ/τc; dashed: χ0 = 1)':'   (dashed: χ0 = 1)'}</text><text x="18" y="117" text-anchor="middle" transform="rotate(-90 18 117)" fill="#45565f" font-size="14">⟨χ⟩</text><line id="cursor" x1="64" x2="64" y1="18" y2="216" stroke="#52636d" stroke-dasharray="4 4"/>`;
+    svg.innerHTML=s;stamp();
+  }
+  function addVideo(r,parent,label){
+    const v=document.createElement('video');v.muted=true;v.playsInline=true;v.preload='auto';v.poster=r.poster;v.src=r.url;
+    v.setAttribute('aria-label',label);parent.append(v);
+    const e={r,v};entries.push(e);
+    v.addEventListener('loadedmetadata',()=>{if(!entries.includes(e))return;
+      if(v.videoWidth!==r.width||v.videoHeight!==r.height||Math.abs(v.duration-r.duration)>.1){stop();report('Video metadata mismatch: '+r.url);return;}
+      sync();});
+    v.addEventListener('error',()=>{if(entries.includes(e))report('Unable to load video: '+r.url);});
+  }
+  function render(){
+    const old=position;stop();
+    for(const e of entries){e.v.removeAttribute('src');e.v.load();}
+    entries=[];const cards=$('cards');cards.replaceChildren();cards.className='';report('');
+    if(view==='single'){
+      for(const st of ['0','1']){
+        const r=runs.find(q=>q.tau_chi_over_tc===grid[gi]&&q.initialization===st);if(!r)continue;
+        const card=document.createElement('article');card.style.setProperty('--case',colors[st]);
+        const cap=document.createElement('div');cap.className='caption';
+        cap.innerHTML=`<span>χ<sub>0</sub> = ${st}</span><span class="stat">τχ/τc = ${fmt(r.tau_chi_over_tc)} · late ⟨χ⟩ = ${r.tail_mean.toFixed(3)} · Var(χ)/χ̄(1−χ̄) = ${r.tail_binariness.toFixed(3)}</span>`;
+        card.append(cap);addVideo(r,card,`chi0 ${st}, tau_chi ${r.tau_chi_over_tc}: speed, pressure, memory, chi`);
+        entries[entries.length-1].v.style.aspectRatio=`${r.width}/${r.height}`;cards.append(card);
+      }
+    }else{
+      cards.className='grid';cards.style.setProperty('--n',grid.length);
+      cards.append(document.createElement('div'));
+      grid.forEach((g,k)=>{const h=document.createElement('div');h.className='colhead';const b=document.createElement('button');b.textContent=fmt(g);b.title='Open all four fields';b.onclick=()=>{gi=k;view='single';render();};h.append(b);cards.append(h);});
+      for(const st of ['0','1']){
+        const h=document.createElement('div');h.className='rowhead';h.textContent=`χ0 = ${st}`;cards.append(h);
+        for(const g of grid){
+          const r=runs.find(q=>q.tau_chi_over_tc===g&&q.initialization===st);
+          const box=document.createElement('div');box.className='crop';box.style.setProperty('--case',colors[st]);
+          // Show only the chi panel of the composite movie: scale the movie so one native
+          // panel fills the square, then shift it to the last panel below the header.
+          box.style.setProperty('--w',`${100*r.width/P.size}%`);box.style.setProperty('--l',`${-100*P.chi_x/P.size}%`);box.style.setProperty('--t',`${-100*P.header/P.size}%`);
+          box.title=`τχ/τc = ${fmt(g)}, χ0 = ${st}: late ⟨χ⟩ = ${r.tail_mean.toFixed(3)}`;
+          if(r)addVideo(r,box,`chi only, chi0 ${st}, tau_chi ${g}`);cards.append(box);
+        }
+      }
+    }
+    if(entries.length){const r=entries[0].r;startTime=$('prep').checked?timeOf(r,0):0;endTime=timeOf(r,r.frames-1);$('seek').min=startTime;$('seek').max=endTime;seekTo(old);}
+    $('view-single').setAttribute('aria-pressed',view==='single');$('view-grid').setAttribute('aria-pressed',view==='grid');
+    $('tchi-row').style.display=view==='single'?'':'none';
+    document.querySelectorAll('[data-g]').forEach(b=>{if(b.tagName==='BUTTON')b.setAttribute('aria-pressed',+b.dataset.g===gi);});
+    summary();trace();
+  }
+  $('mc').textContent=data.mc;$('tau-m').textContent=data.tau_m_over_tc;$('size').textContent=data.shape.join(' × ');
+  grid.forEach((g,i)=>{const b=document.createElement('button');b.dataset.g=i;b.textContent=fmt(g);b.onclick=()=>{gi=i;render();};$('tchis').append(b);});
+  $('view-single').onclick=()=>{view='single';render();};$('view-grid').onclick=()=>{view='grid';render();};
+  $('play').onclick=()=>playing?stop():play();$('reset').onclick=()=>seekTo(startTime);$('seek').oninput=()=>seekTo(+$('seek').value);
+  $('speed').onchange=()=>{if(playing){position=now();pos0=position;wall0=performance.now();}rate=+$('speed').value;sync();};
+  $('prep').onchange=()=>{if(!entries.length)return;const r=entries[0].r;startTime=$('prep').checked?timeOf(r,0):0;$('seek').min=startTime;trace();seekTo(position);};
+  $('fullscreen').hidden=!document.documentElement.requestFullscreen;
+  $('fullscreen').onclick=()=>{const a=document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen();a.catch(err=>report('Full screen unavailable: '+err.message));};
+  $('trace').onclick=ev=>{if(!entries.length)return;const b=$('trace').getBoundingClientRect(),x=(ev.clientX-b.left)/b.width*1100,lo=$('prep').checked?xMin:0;seekTo(lo+(xMax-lo)*(x-64)/1010);};
+  timer=setInterval(()=>{
+    if(!entries.length)return;
+    if(playing){position=Math.min(endTime,now());if(position>=endTime){stop();return;}}
+    sync();stamp();
+  },150);
+  window.addEventListener('pagehide',()=>{stop();clearInterval(timer);});render();
+}catch(error){$('notice').textContent='Unable to initialize: '+error.message;console.error(error);}
+})();
+</script>
+</body></html>

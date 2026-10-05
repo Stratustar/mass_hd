@@ -157,6 +157,48 @@ def render(src, out, summary_path):
     (out/'video.json').write_text(json.dumps(info, allow_nan=False))
 
 
+def board(data_root, out, summary_path):
+    """Offline page over fetched <data_root>/<case>/dashboard/{fields.mp4,video.json}."""
+    summary = json.loads(summary_path.read_text())
+    if summary['missing'] or summary['invalid']:
+        raise ValueError('Board needs a complete summary')
+    runs = []
+    for row in summary['cases']:
+        meta = data_root/row['case']/'dashboard/video.json'
+        r = json.loads(meta.read_text())
+        for key in ('case', 'initialization', 'tau_chi_over_tc', 'preparation_steps', 'tail_mean'):
+            if r[key] != row[key]:
+                raise ValueError(f'Wrong {key}: {meta}')
+        movie, poster = meta.with_name('fields.mp4'), meta.with_name('poster.png')
+        if movie.stat().st_size != r['video_bytes'] or \
+                hashlib.sha256(movie.read_bytes()).hexdigest() != r['video_sha256']:
+            raise ValueError(f'Movie does not match metadata: {movie}')
+        if r['frames'] != row['nsteps']//337+1 or len(r['chi']) != r['frames'] or r['native_shape'] != [256, 256]:
+            raise ValueError(f'Frame count or shape mismatch: {meta}')
+        runs.append({k: r[k] for k in ('case', 'initialization', 'tau_chi_over_tc', 'tail_mean',
+                     'tail_binariness', 'frames', 'frame_steps', 'fps', 'duration', 'width',
+                     'height', 'preparation_steps', 'chi')}
+                    | {'url': movie.relative_to(out).as_posix(),
+                       'poster': poster.relative_to(out).as_posix()})
+    if len({(r['tau_chi_over_tc'], r['initialization']) for r in runs}) != len(runs) or \
+            len({(r['frames'], r['preparation_steps'], r['width']) for r in runs}) != 1:
+        raise ValueError('Duplicate runs or movies that cannot be synchronized')
+    first = summary['cases'][0]
+    payload = {'runs': runs, 'tau_c': TC, 'mc': first['mc'], 'tau_m_over_tc': first['tm_over_tc'],
+               'shape': [256, 256], 'observation_tc': first['observation_tc'],
+               'preparation_tc': first['preparation_steps']/TC,
+               'tc_per_second': runs[0]['frame_steps']*runs[0]['fps']/TC,
+               # Geometry of the native four-panel composite written by cw_four_init_board.
+               'panel': {'size': 256, 'header': 32, 'chi_x': 3*(256+12)}}
+    template = Path(__file__).with_name('cw_tchi_board.html.in').read_text()
+    if template.count('__DATA__') != 1:
+        raise ValueError('Invalid template marker')
+    text = template.replace('__DATA__', json.dumps(payload).replace('</', '<\\/'))
+    (out/'index.html').write_text(text)
+    print(json.dumps({'board': str(out/'index.html'), 'videos': len(runs),
+                      'html_MB': len(text.encode())/1e6}))
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('input', type=Path)
@@ -165,8 +207,14 @@ if __name__ == '__main__':
                         help='campaign summary (no value), or the summary JSON for --render')
     parser.add_argument('--manifest', type=Path)
     parser.add_argument('--render', action='store_true')
+    parser.add_argument('--board', action='store_true',
+                        help='<fetched results root> <page dir> --board --summary <json>')
     args = parser.parse_args()
-    if args.render:
+    if args.board:
+        if not isinstance(args.summary, str):
+            parser.error('--board requires --summary <tchi_summary.json>')
+        board(args.input.resolve(), args.out.resolve(), Path(args.summary))
+    elif args.render:
         if not isinstance(args.summary, str):
             parser.error('--render requires --summary <tchi_summary.json>')
         render(args.input, args.out, Path(args.summary))
