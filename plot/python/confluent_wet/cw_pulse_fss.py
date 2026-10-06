@@ -298,10 +298,12 @@ def main():
     ap.add_argument('out', type=Path)
     ap.add_argument('--manifest', type=Path, required=True)
     ap.add_argument('--summary', action='store_true')
+    ap.add_argument('--allow-missing', action='store_true',
+                    help='summary of whatever is complete (e.g. the L256 reference alone)')
     a = ap.parse_args()
     manifest_path = a.manifest.resolve()
     if a.summary:
-        if not summarize(a.root, a.out, manifest_path):
+        if not summarize(a.root, a.out, manifest_path) and not a.allow_missing:
             raise SystemExit(2)
         return
     manifest = json.loads(manifest_path.read_text())
