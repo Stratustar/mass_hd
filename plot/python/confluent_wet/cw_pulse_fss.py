@@ -19,9 +19,10 @@ Two headline metrics, per (L, tau_m, init):
            t in [-1000, 1000] tau_c (the last 2000 tau_c of 3000 tau_c with feedback);
            S = L^2 sigma2 is the susceptibility, size-independent away from a critical point.
            (rising variance: Carpenter & Brock 2006, Scheffer et al. 2009)
-Supporting: T_1/e, escape count (seed whose last-300 tau_c response still exceeds half
-the initial response, same sign), integrated autocorrelation time tau_ac of the controls,
-D_eff = sigma2 / tau_ac, Binder cumulant U = 1 - <d^4>/(3<d^2>^2), the across-seed
+Supporting: T_1/e, escape count (seed whose last-300 tau_c response, with the sign of the
+kick, still exceeds both half the kick and 3 sqrt(2) sigma_seed, the decorrelation floor),
+a stationarity flag (mean |half-window drift| / sigma <= 1), integrated autocorrelation time tau_ac of the controls,
+D_eff = sigma2 / tau_ac, Binder cumulant U = 1 - <d^4>/(3<d^2>^2) (0 Gaussian, -> 2/3 bimodal, < 0 heavy tails), the across-seed
 ensemble variance, and the same quantities for m. Errors: delete-one-seed jackknife.
 """
 import argparse
@@ -156,8 +157,12 @@ def group_stats(L, pulses, controls):
     for obs in OBS:
         r = [p[obs] - c[obs] for p, c in zip(pulses, controls)]
         r0 = float(np.mean([x[post][:2].mean() for x in r]))
-        esc = [bool(np.sign(x[late].mean()) == np.sign(r0) and abs(x[late].mean()) > .5 * abs(r0))
-               for x in r]
+        # Escape = the pulse run still sits beyond half the kick AND beyond 3x the chaotic
+        # decorrelation floor sqrt(2) sigma_seed of two independent trajectories of this run.
+        sig = [c[obs][win].std() for c in controls]
+        esc = [bool(np.sign(x[late].mean()) == np.sign(r0) and
+                    abs(x[late].mean()) > max(.5 * abs(r0), 3 * np.sqrt(2) * s))
+               for x, s in zip(r, sig)]
         o = {'r0': r0, 'escaped_seeds': int(sum(esc)),
              'late_over_r0_per_seed': [float(x[late].mean() / r0) for x in r]}
         for name, lev in (('T_half', .5), ('T_1e', np.exp(-1))):
@@ -181,7 +186,12 @@ def group_stats(L, pulses, controls):
         o['binder_pooled'] = binder(x, True)
         o['skew'] = float(np.mean([np.mean((v - v.mean()) ** 3) / np.std(v) ** 3 for v in x]))
         half = len(x[0]) // 2
-        o['drift_over_sigma'] = float(np.mean([(v[half:].mean() - v[:half].mean()) / v.std() for v in x]))
+        drift = [(v[half:].mean() - v[:half].mean()) / v.std() for v in x]
+        o['drift_over_sigma'] = float(np.mean(np.abs(drift)))
+        o['drift_over_sigma_per_seed'] = [float(d) for d in drift]
+        # a control that drifts by more than one sigma between window halves is not stationary:
+        # its variance then measures a transition in progress, not fluctuations
+        o['stationary'] = bool(abs(o['drift_over_sigma']) <= 1.)
         res[obs] = o
     res['chi_std_spatial'] = float(np.mean([c['chi_std'][win].mean() for c in controls]))
     res['response_mean'] = {obs: np.mean([p[obs] - c[obs] for p, c in zip(pulses, controls)], 0)[post]
@@ -279,12 +289,17 @@ def figures(out, rows):
                 esc = [r for r in sel if r['chi_mean.escaped_seeds'] > 0]
                 if key.endswith('T_half') and esc:
                     ax.plot([r['tm_over_tc'] for r in esc], [5] * len(esc), 'x', color=colors.get(L, 'k'))
+                bad = [r for r in sel if not r['chi_mean.stationary']]
+                if not key.endswith('T_half') and bad:
+                    ax.plot([r['tm_over_tc'] for r in bad], [r[key] for r in bad], 'x', ms=9,
+                            color=colors.get(L, 'k'))
             ax.set_xlabel('tau_m / tau_c')
             ax.set_title(label, fontsize=10)
             if logy:
                 ax.set_yscale('log')
         axes[0].legend(fontsize=8)
         axes[0].text(.02, .02, 'x: >=1 seed escaped (no T_half)', transform=axes[0].transAxes, fontsize=7)
+        axes[1].text(.02, .02, 'x: control not stationary (|drift| > sigma)', transform=axes[1].transAxes, fontsize=7)
         fig.suptitle(f'Finite-size scan, init {init}: recovery and fluctuation of <chi>')
         fig.tight_layout()
         for ext in ('png', 'pdf'):
