@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>tau_chi videos</title>
+<style>
+:root{color-scheme:light;--ink:#26343d;--muted:#718089;--line:#dfe5e7;--bg:#ffffff}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+main{max-width:1180px;margin:auto;padding:16px 20px 28px}
+header{position:sticky;top:0;z-index:5;padding:10px 0;background:#fffffff2}
+.row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.row+.row{margin-top:8px}.label{color:var(--muted);min-width:44px}.choices{display:inline-flex;gap:5px;flex-wrap:wrap}
+button,select{font:inherit;color:var(--ink);background:white;border:1px solid var(--line);border-radius:6px;padding:4px 10px;cursor:pointer}button[aria-pressed=true]{border-color:#304851;background:#304851;color:white}
+#play{min-width:63px}#seek{flex:1;min-width:160px;accent-color:#304851}#clock{min-width:110px;text-align:right;font-variant-numeric:tabular-nums}#notice{color:#9b4248;font-size:12px}#notice:empty{display:none}
+#cards{display:grid;gap:10px;margin-top:10px}#cards.grid{grid-template-columns:auto repeat(var(--n),1fr);gap:5px;align-items:center}
+.caption{font-size:13px;color:var(--muted);margin:0 0 3px 2px}
+video{display:block;width:100%;background:#101318}
+.crop{position:relative;overflow:hidden;aspect-ratio:1;background:#101318}
+.crop video{position:absolute;width:var(--w);left:var(--l);top:var(--t);max-width:none}
+.colhead,.rowhead{font-size:12px;color:var(--muted);text-align:center}.rowhead{writing-mode:vertical-rl;transform:rotate(180deg)}
+@media(max-width:650px){main{padding:10px 8px 20px}#clock{min-width:90px;font-size:12px}button,select{padding:4px 7px}}
+</style>
+</head>
+<body><main>
+<header>
+<div class="row"><span class="label">view</span><div class="choices"><button id="view-single">u, P, m, χ</button><button id="view-grid">χ, all τ<sub>χ</sub></button></div></div>
+<div class="row" id="tm-row"><span class="label">τ<sub>m</sub>/τ<sub>c</sub></span><div id="tms" class="choices"></div></div>
+<div class="row" id="tchi-row"><span class="label">τ<sub>χ</sub>/τ<sub>c</sub></span><div id="tchis" class="choices"></div></div>
+<div class="row"><button id="play">Play</button><input id="seek" type="range" min="0" max="1" step="any" value="0" aria-label="Time"><span id="clock">t/τc = 0</span><select id="speed" aria-label="Speed"><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option><option value="4">4×</option><option value="8">8×</option></select><button id="fullscreen" aria-label="Full screen">⛶</button></div>
+<div id="notice" role="status"></div>
+</header>
+<div id="cards"></div>
+</main>
+<script type="application/json" id="data">__DATA__</script>
+<script>
+(()=>{'use strict';
+const $=id=>document.getElementById(id);
+try {
+  const data=JSON.parse($('data').textContent), tc=data.tau_c, P=data.panel;
+  const tms=[...new Set(data.runs.map(r=>r.tm_over_tc))].sort((a,b)=>a-b);
+  const grid=[...new Set(data.runs.map(r=>r.tau_chi_over_tc))].sort((a,b)=>a-b);
+  let ti=0, runs=[], view='single', gi=0, entries=[], playing=false, rate=1, position=0, endTime=0;
+  const fmt=x=>String(Number(x.toFixed(2)));
+  const timeOf=(r,i)=>(i*r.frame_steps-r.preparation_steps)/tc;
+  const mediaAt=(r,t)=>(r.preparation_steps+t*tc)/(r.frame_steps*r.fps);
+  const report=m=>{$('notice').textContent=m;};
+  // One JS clock drives every movie; each one chases it (rate nudge for small drift,
+  // seek for large drift, re-issued seek if a fetch stalls), so no movie can block the rest.
+  let wall0=0, pos0=0;
+  const now=()=>playing?pos0+(performance.now()-wall0)/1000*rate*data.tc_per_second:position;
+  const stamp=()=>{$('seek').value=position;$('clock').textContent=`t/τc = ${position.toFixed(0)}`;};
+  function seekVideo(e,t){e.v.currentTime=t;e.seekAt=performance.now();}
+  function sync(){
+    for(const e of entries){
+      const v=e.v;if(v.readyState<1)continue;
+      const t=mediaAt(e.r,position);
+      if(v.seeking){if(performance.now()-(e.seekAt||0)>1500)seekVideo(e,t);continue;}
+      const d=v.currentTime-t;
+      if(!playing){if(!v.paused)v.pause();if(Math.abs(d)>.02)seekVideo(e,t);continue;}
+      if(Math.abs(d)>.35){seekVideo(e,t);continue;}
+      v.playbackRate=rate*(1-Math.max(-.25,Math.min(.25,d)));
+      if(v.paused&&v.readyState>=2&&!v.ended)v.play().catch(()=>{});
+    }
+  }
+  function stop(){position=Math.max(0,Math.min(endTime,now()));playing=false;$('play').textContent='Play';for(const e of entries)e.v.pause();sync();stamp();}
+  function seekTo(t){position=Math.max(0,Math.min(endTime,t));if(playing){pos0=position;wall0=performance.now();}sync();stamp();}
+  function play(){if(!entries.length)return;if(position>=endTime-1e-6)position=0;pos0=position;wall0=performance.now();playing=true;$('play').textContent='Pause';for(const e of entries){e.v.playbackRate=rate;e.v.play().catch(()=>{});}sync();}
+  function addVideo(r,parent){
+    const v=document.createElement('video');v.muted=true;v.playsInline=true;v.preload='auto';v.poster=r.poster;v.src=r.url;parent.append(v);
+    const e={r,v};entries.push(e);
+    v.addEventListener('loadedmetadata',()=>{if(entries.includes(e))sync();});
+    v.addEventListener('error',()=>{if(entries.includes(e))report('Unable to load '+r.url);});
+    return v;
+  }
+  function render(){
+    const old=position;stop();
+    for(const e of entries){e.v.removeAttribute('src');e.v.load();}
+    entries=[];const cards=$('cards');cards.replaceChildren();cards.className='';report('');
+    if(view==='single'){
+      for(const st of ['0','1']){
+        const r=runs.find(q=>q.tau_chi_over_tc===grid[gi]&&q.initialization===st);if(!r)continue;
+        const box=document.createElement('div');const cap=document.createElement('div');cap.className='caption';cap.textContent=`χ0 = ${st}`;box.append(cap);
+        addVideo(r,box).style.aspectRatio=`${r.width}/${r.height}`;cards.append(box);
+      }
+    }else{
+      cards.className='grid';cards.style.setProperty('--n',grid.length);cards.append(document.createElement('div'));
+      grid.forEach(g=>{const h=document.createElement('div');h.className='colhead';h.textContent=`τχ = ${fmt(g)}`;cards.append(h);});
+      for(const st of ['0','1']){
+        const h=document.createElement('div');h.className='rowhead';h.textContent=`χ0 = ${st}`;cards.append(h);
+        for(const g of grid){
+          const r=runs.find(q=>q.tau_chi_over_tc===g&&q.initialization===st);const box=document.createElement('div');box.className='crop';
+          // Crop the composite to its chi panel: scale one native panel to the box, shift past the header.
+          box.style.setProperty('--w',`${100*r.width/P.size}%`);box.style.setProperty('--l',`${-100*P.chi_x/P.size}%`);box.style.setProperty('--t',`${-100*P.header/P.size}%`);
+          addVideo(r,box);cards.append(box);
+        }
+      }
+    }
+    if(entries.length){const r=entries[0].r;endTime=timeOf(r,r.frames-1);$('seek').max=endTime;seekTo(old);}
+    $('view-single').setAttribute('aria-pressed',view==='single');$('view-grid').setAttribute('aria-pressed',view==='grid');
+    $('tchi-row').style.display=view==='single'?'':'none';
+    document.querySelectorAll('[data-g]').forEach(b=>b.setAttribute('aria-pressed',+b.dataset.g===gi));
+    document.querySelectorAll('[data-tm]').forEach(b=>b.setAttribute('aria-pressed',+b.dataset.tm===ti));
+  }
+  const setTm=i=>{ti=i;runs=data.runs.filter(r=>r.tm_over_tc===tms[ti]);};
+  tms.forEach((t,i)=>{const b=document.createElement('button');b.dataset.tm=i;b.textContent=fmt(t);b.onclick=()=>{setTm(i);render();};$('tms').append(b);});
+  grid.forEach((g,i)=>{const b=document.createElement('button');b.dataset.g=i;b.textContent=fmt(g);b.onclick=()=>{gi=i;render();};$('tchis').append(b);});
+  $('tm-row').style.display=tms.length>1?'':'none';setTm(0);
+  $('view-single').onclick=()=>{view='single';render();};$('view-grid').onclick=()=>{view='grid';render();};
+  $('play').onclick=()=>playing?stop():play();$('seek').oninput=()=>seekTo(+$('seek').value);
+  $('speed').onchange=()=>{if(playing){position=now();pos0=position;wall0=performance.now();}rate=+$('speed').value;sync();};
+  $('fullscreen').hidden=!document.documentElement.requestFullscreen;
+  $('fullscreen').onclick=()=>{const a=document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen();a.catch(()=>{});};
+  setInterval(()=>{if(!entries.length)return;if(playing){position=Math.min(endTime,now());if(position>=endTime){stop();return;}}sync();stamp();},150);
+  render();
+}catch(error){$('notice').textContent='Unable to initialize: '+error.message;console.error(error);}
+})();
+</script>
+</body></html>

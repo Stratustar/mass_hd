@@ -158,7 +158,7 @@ def render(src, out, summary_path):
     (out/'video.json').write_text(json.dumps(info, allow_nan=False))
 
 
-def board(scans, out, mechanism=None):
+def board(scans, out, mechanism=None, template='cw_tchi_board.html.in'):
     """Offline page over fetched <data_root>/<case>/dashboard/{fields.mp4,video.json}.
 
     scans: [(data_root, summary_json), ...], one per memory time; the page switches between
@@ -212,7 +212,8 @@ def board(scans, out, mechanism=None):
         # Keys are the scans' own memory-time coordinates, as the page looks them up.
         payload['mf'] = {str(tm): v for tm in sorted({r['tm_over_tc'] for r in runs})
                          for k, v in mech['homogeneous_fixed_points'].items() if np.isclose(float(k), tm)}
-    template = Path(__file__).with_name('cw_tchi_board.html.in').read_text()
+    # cw_tchi_board.html.in: analysis board; cw_tchi_videos.html.in: videos and controls only.
+    template = Path(__file__).with_name(template).read_text()
     if template.count('__DATA__') != 1:
         raise ValueError('Invalid template marker')
     text = template.replace('__DATA__', json.dumps(payload).replace('</', '<\\/'))
@@ -235,13 +236,15 @@ if __name__ == '__main__':
     parser.add_argument('--scan', nargs=2, action='append', metavar=('DATA_ROOT', 'SUMMARY'),
                         help='additional scan for the board (another memory time)')
     parser.add_argument('--mechanism', type=Path, help='tchi_mechanism.json for the board')
+    parser.add_argument('--template', default='cw_tchi_board.html.in',
+                        help='page template next to this script (cw_tchi_videos.html.in: videos only)')
     args = parser.parse_args()
     if args.board:
         if not isinstance(args.summary, str):
             parser.error('--board requires --summary <tchi_summary.json>')
         scans = [(args.input.resolve(), Path(args.summary))]
         scans += [(Path(d).resolve(), Path(j)) for d, j in args.scan or []]
-        board(scans, args.out.resolve(), args.mechanism)
+        board(scans, args.out.resolve(), args.mechanism, args.template)
     elif args.render:
         if not isinstance(args.summary, str):
             parser.error('--render requires --summary <tchi_summary.json>')
