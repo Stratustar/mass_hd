@@ -27,9 +27,10 @@ video{display:block;width:100%;background:#101318}
 </head>
 <body><main>
 <div class="parameters"><span>m<sub>c</sub> = <span id="mc"></span></span><span>τ<sub>m</sub> = <span id="tau-m"></span> τ<sub>c</sub></span><span>L = <span id="size"></span></span><span>seed = 1</span></div>
-<svg id="summary" viewBox="0 0 1100 250" role="img" aria-label="Late-time mean chi and binariness versus tau_chi"></svg>
+<svg id="summary" viewBox="0 0 1100 262" role="img" aria-label="Late-time mean chi and binariness versus tau_chi"></svg>
 <header>
 <div class="row"><span class="label">View</span><div class="choices" role="group" aria-label="View"><button id="view-single">Single τ<sub>χ</sub> (u, P, m, χ)</button><button id="view-grid">All τ<sub>χ</sub> (χ only)</button></div></div>
+<div class="row" id="tm-row"><span class="label">τ<sub>m</sub>/τ<sub>c</sub></span><div id="tms" class="choices" role="group" aria-label="Memory time"></div></div>
 <div class="row" id="tchi-row"><span class="label">τ<sub>χ</sub>/τ<sub>c</sub></span><div id="tchis" class="choices" role="group" aria-label="Phenotype time"></div></div>
 <div class="row"><button id="play">Play</button><button id="reset" aria-label="Restart">↺</button><input id="seek" type="range" min="0" max="1" step="any" value="0" aria-label="Time after release"><span id="clock">t / τc = —</span><select id="speed" aria-label="Playback speed"><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option><option value="4">4×</option><option value="8">8×</option></select><label><input type="checkbox" id="prep"> show preparation</label><button id="fullscreen" aria-label="Full screen">⛶</button></div>
 <div id="notice" role="status"></div>
@@ -42,8 +43,10 @@ video{display:block;width:100%;background:#101318}
 (()=>{'use strict';
 const $=id=>document.getElementById(id);
 try {
-  const data=JSON.parse($('data').textContent), runs=data.runs, tc=data.tau_c, P=data.panel;
-  const grid=[...new Set(runs.map(r=>r.tau_chi_over_tc))].sort((a,b)=>a-b);
+  const data=JSON.parse($('data').textContent), tc=data.tau_c, P=data.panel;
+  const tms=[...new Set(data.runs.map(r=>r.tm_over_tc))].sort((a,b)=>a-b);
+  let ti=tms.length-1, runs=data.runs.filter(r=>r.tm_over_tc===tms[ti]);
+  const grid=[...new Set(data.runs.map(r=>r.tau_chi_over_tc))].sort((a,b)=>a-b);
   const colors={}, css=getComputedStyle(document.documentElement);
   colors['0']=css.getPropertyValue('--c0').trim();colors['1']=css.getPropertyValue('--c1').trim();
   const viridis=['#440154','#443983','#31688e','#21918c','#35b779','#90d743','#fde725'];
@@ -55,7 +58,7 @@ try {
   const mediaStart=r=>r.preparation_steps/(r.frame_steps*r.fps);
   const mediaAt=(r,t)=>mediaStart(r)+t*secondsPerTc(r);
   const report=m=>{$('notice').textContent=m;};
-  const xMin=-data.preparation_tc, xMax=data.observation_tc;
+  let xMin=-runs[0].preparation_steps/tc, xMax=runs[0].observation_tc;
   const tx=t=>64+1010*(t-($('prep').checked?xMin:0))/(xMax-($('prep').checked?xMin:0));
   // One JS clock is the only time base. Every video chases it on its own: small drift is
   // absorbed by nudging playbackRate, large drift by a seek, and a seek that never completes
@@ -91,21 +94,28 @@ try {
     sync();
   }
   function summary(){
-    // Two log-x panels: late-time <chi> and binariness, one point per run; click selects tau_chi.
-    const W=520, H=190, ox=[60,600], oy=24, lx=Math.log10(grid[0])-.12, hx=Math.log10(grid[grid.length-1])+.12;
+    // Log-x panels, one point per run; click selects tau_chi. The dashed grey line in the first
+    // panel is the uniform-activity mean-field fixed point (open-loop calibration), the
+    // tau_chi -> infinity reference; the third panel is sigma_P over its uniform-activity value.
+    const has=runs.every(r=>r.sigma_excess!=null), W=has?300:520, H=190, ox=has?[60,425,790]:[60,600], oy=30, lx=Math.log10(grid[0])-.12, hx=Math.log10(grid[grid.length-1])+.12;
     const px=(o,x)=>o+W*(Math.log10(x)-lx)/(hx-lx);
     // Axis ranges follow the data in 0.05 steps, clipped to [0,1]: a scan far from the
     // threshold sits in a narrow band, one near it can span both branches.
     const range=(key,floor0)=>{const v=runs.map(r=>r[key]);let lo=floor0?0:Math.max(0,Math.floor((Math.min(...v)-.03)*20)/20),hi=Math.min(1,Math.ceil((Math.max(...v)+.03)*20)/20);if(hi-lo<.1)hi=Math.min(1,lo+.1);return {lo,hi};};
-    const panels=[{key:'tail_mean',label:'late-time ⟨χ⟩',...range('tail_mean',false)},{key:'tail_binariness',label:'Var(χ) / χ̄(1−χ̄)',...range('tail_binariness',true)}];
+    const mf=(data.mf||{})[String(tms[ti])]||[];
+    const cr=range('tail_mean',false);for(const x of mf){cr.lo=Math.min(cr.lo,Math.floor((x-.03)*20)/20);cr.hi=Math.max(cr.hi,Math.min(1,Math.ceil((x+.03)*20)/20));}
+    const panels=[{key:'tail_mean',label:'late-time ⟨χ⟩',...cr},{key:'tail_binariness',label:'Var(χ) / χ̄(1−χ̄)',...range('tail_binariness',true)}];
+    if(has){const v=runs.map(r=>r.sigma_excess);panels.push({key:'sigma_excess',label:'σP / σP,uniform(ā)',lo:1,hi:Math.max(1.1,Math.ceil((Math.max(...v)+.02)*20)/20)});}
     let s='';
     panels.forEach((p,j)=>{
       const o=ox[j], py=v=>oy+H*(1-(v-p.lo)/(p.hi-p.lo));
       s+=`<path d="M${o} ${oy}V${oy+H}H${o+W}" fill="none" stroke="#a5b0b6"/>`;
       const dv=p.hi-p.lo<=.25?.05:p.hi-p.lo<=.5?.1:.2;for(let k=Math.ceil(p.lo/dv-1e-9);k*dv<=p.hi+1e-9;k++){const v=k*dv,y=py(v);s+=`<path d="M${o-5} ${y}H${o}" stroke="#a5b0b6"/><text x="${o-8}" y="${y+4}" text-anchor="end" fill="#677781" font-size="11">${fmt(v)}</text>`;}
       for(const g of grid){const x=px(o,g);s+=`<path d="M${x} ${oy+H}V${oy+H+5}" stroke="#a5b0b6"/><text x="${x}" y="${oy+H+18}" text-anchor="middle" fill="#677781" font-size="11">${fmt(g)}</text>`;}
-      s+=`<text x="${o+W/2}" y="${oy+H+36}" text-anchor="middle" fill="#45565f" font-size="12">τχ / τc</text><text x="${o+10}" y="${oy-8}" fill="#45565f" font-size="13">${p.label}</text>`;
+      s+=`<text x="${o+W/2}" y="${oy+H+36}" text-anchor="middle" fill="#45565f" font-size="12">τχ / τc</text><text x="${o+4}" y="${oy-10}" fill="#45565f" font-size="13">${p.label}</text>`;
       if(view==='single'){const x=px(o,grid[gi]);s+=`<rect x="${x-11}" y="${oy}" width="22" height="${H}" fill="#e8f2f4"/>`;}
+      if(j===0)for(const x of mf){const y=py(x);s+=`<path d="M${o} ${y}H${o+W}" stroke="#7d8a91" stroke-dasharray="6 4"/><text x="${o+W-4}" y="${y-5}" text-anchor="end" fill="#5f6d75" font-size="11">uniform-activity mean field</text>`;}
+      if(p.key==='sigma_excess'){const y=py(1);s+=`<path d="M${o} ${y}H${o+W}" stroke="#7d8a91" stroke-dasharray="6 4"/>`;}
       for(const st of ['0','1']){
         const rr=runs.filter(r=>r.initialization===st).sort((a,b)=>a.tau_chi_over_tc-b.tau_chi_over_tc);
         s+=`<polyline points="${rr.map(r=>`${px(o,r.tau_chi_over_tc).toFixed(1)},${py(r[p.key]).toFixed(1)}`).join(' ')}" fill="none" stroke="${colors[st]}" stroke-width="1.4" ${st==='1'?'stroke-dasharray="5 3"':''}/>`;
@@ -114,7 +124,7 @@ try {
                      :`<rect class="pt" data-g="${grid.indexOf(r.tau_chi_over_tc)}" x="${x-4}" y="${y-4}" width="8" height="8" fill="none" stroke="${colors[st]}" stroke-width="1.6"><title>τχ=${fmt(r.tau_chi_over_tc)}, χ0=1: ${r[p.key].toFixed(4)}</title></rect>`;}
       }
     });
-    s+=`<circle cx="975" cy="14" r="4.5" fill="${colors['0']}"/><text x="984" y="18" font-size="12" fill="#45565f">χ0 = 0</text><rect x="1035" y="10" width="8" height="8" fill="none" stroke="${colors['1']}" stroke-width="1.6"/><text x="1048" y="18" font-size="12" fill="#45565f">χ0 = 1</text>`;
+    s+=`<circle cx="975" cy="10" r="4.5" fill="${colors['0']}"/><text x="984" y="14" font-size="12" fill="#45565f">χ0 = 0</text><rect x="1035" y="6" width="8" height="8" fill="none" stroke="${colors['1']}" stroke-width="1.6"/><text x="1048" y="14" font-size="12" fill="#45565f">χ0 = 1</text>`;
     $('summary').innerHTML=s;
     $('summary').querySelectorAll('.pt').forEach(el=>el.onclick=()=>{gi=+el.dataset.g;view='single';render();});
   }
@@ -179,7 +189,11 @@ try {
     document.querySelectorAll('[data-g]').forEach(b=>{if(b.tagName==='BUTTON')b.setAttribute('aria-pressed',+b.dataset.g===gi);});
     summary();trace();
   }
-  $('mc').textContent=data.mc;$('tau-m').textContent=data.tau_m_over_tc;$('size').textContent=data.shape.join(' × ');
+  $('mc').textContent=data.mc;$('size').textContent=data.shape.join(' × ');
+  function setTm(i){ti=i;runs=data.runs.filter(r=>r.tm_over_tc===tms[ti]);xMin=-runs[0].preparation_steps/tc;xMax=runs[0].observation_tc;
+    $('tau-m').textContent=fmt(tms[ti]);document.querySelectorAll('[data-tm]').forEach(b=>b.setAttribute('aria-pressed',+b.dataset.tm===ti));}
+  tms.forEach((t,i)=>{const b=document.createElement('button');b.dataset.tm=i;b.textContent=fmt(t);b.onclick=()=>{setTm(i);render();};$('tms').append(b);});
+  $('tm-row').style.display=tms.length>1?'':'none';setTm(ti);
   grid.forEach((g,i)=>{const b=document.createElement('button');b.dataset.g=i;b.textContent=fmt(g);b.onclick=()=>{gi=i;render();};$('tchis').append(b);});
   $('view-single').onclick=()=>{view='single';render();};$('view-grid').onclick=()=>{view='grid';render();};
   $('play').onclick=()=>playing?stop():play();$('reset').onclick=()=>seekTo(startTime);$('seek').oninput=()=>seekTo(+$('seek').value);
