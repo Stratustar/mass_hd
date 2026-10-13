@@ -28,6 +28,32 @@
  * smoothing of -- chi* = Theta(s(m - mc)) and g = Theta(P - pmem). The two are independent
  * switches; the 2026-09 step campaign sets both.
  *
+ * THE HILL MODEL (switch-model = hill, 2026-10). A second response law in which the steps
+ * above are LIMITS rather than the model, and in which chi = 1 is the ACTIVE phenotype:
+ *
+ *   zeta_eff = zeta [z0 + (1 - z0) chi]
+ *   D_t m    = Dm   lap m   + (s(P) - m)/tau_m       , s(P) = 1/(1 + exp(-(P - pmem)/wp))
+ *   D_t chi  = Dchi lap chi + (chi* - chi)/tau_chi
+ *     g-lock = active  : chi* = h(m) + beta g(chi) (1 - h(m))
+ *     g-lock = passive : chi* = h(m) [1 - beta g(1 - chi)]
+ *   h(m) = m^n1/(mc^n1 + m^n1)                       , n1 = h-n
+ *   g(x) = (1 + chic^n) x^n/(chic^n + x^n)           , n = g-n >= 2, g(1) = 1
+ *
+ * beta g is the phenotype's OWN memory: with no signal (h = 0) an active cell stays active
+ * with weight beta g(chi). It is what the legacy law lacks -- there chi* is a memoryless
+ * function of m, so tau_chi can only filter the decision, never store it. The passive lock
+ * is the exact mirror under chi -> 1 - chi, h -> 1 - h; substituting g(1 - chi) into the
+ * active form instead would push chi UP at chi = 0 and lock nothing. With beta in [0,1]
+ * and g(1) = 1 the target stays in [0,1]. For fixed h the local fixed points have a cusp at
+ * beta_c and become irreversible (a stable switched root at h = 0) at
+ * beta_irr = n chic/(n-1)^((n-1)/n) / (1 + chic^n): 0.68 and 0.80 at n = 2, chic = 0.5.
+ *
+ * LIMITS. wp = 0 and h-n = 0 are the hard steps s = Theta(P - pmem) and h = Theta(m - mc)
+ * (h-n = 0 standing for n1 -> infinity). At beta = 0, both steps and Dm = Dchi = Dbio this
+ * is the 2026-09 step campaign mirrored, chi_hill = 1 - chi_legacy at switch-sign = -1. A
+ * finite wp is the legacy tanh exactly, wp = pmem-width/2; a finite h-n matches the tanh
+ * only near mc, chi-width ~ 2 mc/n1.
+ *
  * LANDAU-DE GENNES CONVENTION. H = 2 CC term Q, matching go-or-grow / confluent-memory,
  * NOT the H = CC term Q of nematic.cpp. That file pairs H = CC term Q with a bulk stress
  * 1/2 CC term^2, but H = -dF/dQ forces f = 1/4 CC term^2 for that H: its isotropic stress
@@ -150,7 +176,8 @@ class ConfluentWet : public Nematic
 {
 protected:
   /** Phenotype in [0,1]: chi = 1 is the passive/grow branch, so the active stress is
-   *  -zeta*(1-chi)*Q. Predictor and buffer for the predictor-corrector step. */
+   *  -zeta*(1-chi)*Q -- in legacy mode. The hill model FLIPS this, chi = 1 being active.
+   *  Predictor and buffer for the predictor-corrector step. */
   ScalarField chi, chiN, chi_tmp;
   /** Mechanical memory in [0,1]: the exponentially weighted fraction of recent time the
    *  material element spent above the pressure threshold. */
@@ -203,6 +230,29 @@ protected:
   /** Biomass (cell-motility) diffusivity, applied IDENTICALLY to chi and m: a cell
    *  carries its phenotype and its memory together. Defaults to 0. */
   double Dbio = 0.;
+  /** SEPARATE diffusivities of m and chi; negative (the default) means "use Dbio".
+   *
+   *  Splitting them gives up the one-motility argument above: Dm is then a spreading of
+   *  the memory that the cells do not carry with them, and sigma_m -- set by the diffusion,
+   *  not by the one-pole filter -- is calibrated by Dm alone. Dchi is meant as a numerical
+   *  cutoff, but it is not inert once beta makes chi locally bistable: it then sets the
+   *  speed of chi fronts, ~ sqrt(Dchi/tau_chi), and a front narrower than a lattice unit is
+   *  pinned by the grid. Dm_eff/Dchi_eff are the resolved values used by the update. */
+  double Dm = -1., Dchi = -1.;
+  double Dm_eff = 0., Dchi_eff = 0.;
+
+  /** Response law: "legacy" (tanh/step chi*(m), chi = 1 passive) or "hill" (header). */
+  std::string switch_model = "legacy";
+  /** Hill-model parameters, see the class comment. Unused, and rejected if changed, in
+   *  legacy mode. */
+  double wp = 0.;            // logistic width of s(P); 0 = Theta(P - pmem)
+  double h_n = 0.;           // Hill exponent n1 of h(m); 0 = Theta(m - mc)
+  double beta = 0.;          // strength of the phenotype lock, in [0,1]
+  double g_n = 2., g_chic = .5;
+  std::string g_lock = "active";
+  /** Cached from the above in Initialize() */
+  bool hill = false, lock_passive = false;
+  double g_norm = 1.;        // 1 + chic^n, so that g(1) = 1
   /** Phenotype relaxation time. tau_chi <= 0 disables switching (frozen-chi control). */
   double tau_chi = 0.;
   /** Width and centre of the switch in chi*(m).
@@ -455,8 +505,16 @@ protected:
   void ConfigureFromFrame();
   /** Diffuse a field until its correlation length is `length` (the noise initialisers) */
   void SmoothToLength(ScalarField&, double length);
-  /** chi*(m), the target of the phenotype relaxation */
+  /** chi*(m), the target of the phenotype relaxation (legacy law) */
   double ChiStar(double) const;
+  /** h(m) and the normalised lock g(x) of the hill law */
+  double HillH(double) const;
+  double LockG(double) const;
+  /** The phenotype target at (m, chi): ChiStar(m) in legacy mode, the locked hill law
+   *  otherwise */
+  double ChiTarget(double mm, double cc) const;
+  /** The memory source at pressure P against threshold `threshold` */
+  double MemorySource(double P, double threshold) const;
   /** g(P), the target of the memory relaxation */
   double MemoryTarget(unsigned) const;
   bool PmemPulseActive(unsigned step) const;
@@ -552,7 +610,17 @@ public:
        & auto_name(video_start)
        & auto_name(nvideo_dense)
        & auto_name(video_dense_start)
-       & auto_name(video_dense_end);
+       & auto_name(video_dense_end)
+       // appended 2026-10-13 (hill response law, separate diffusivities)
+       & auto_name(switch_model)
+       & auto_name(wp)
+       & auto_name(h_n)
+       & auto_name(beta)
+       & auto_name(g_n)
+       & auto_name(g_chic)
+       & auto_name(g_lock)
+       & auto_name(Dm)
+       & auto_name(Dchi);
   }
 
   /** Serialization of the current frame (time snapshot)

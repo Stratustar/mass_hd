@@ -158,6 +158,47 @@ void ConfluentWet::Initialize()
   if(pmem_width < 0.)
     throw error_msg("confluent-wet: pmem-width must be non-negative.");
 
+  // ---- the response law -----------------------------------------------------
+  if(switch_model != "legacy" && switch_model != "hill")
+    throw error_msg("confluent-wet: switch-model must be 'legacy' or 'hill', got '",
+                    switch_model, "'.");
+  hill = (switch_model == "hill");
+  if(hill)
+  {
+    // pmem-width and switch-sign belong to the legacy law. A card copied from the 2026-09
+    // campaign carries switch-sign = -1, which under the hill law's flipped convention
+    // (chi = 1 active) would silently mean the opposite of what it says.
+    if(pmem_width != 0.)
+      throw error_msg("confluent-wet: switch-model=hill smooths s(P) with wp; pmem-width "
+                      "is the legacy tanh width and must stay 0.");
+    if(switch_sign != 1)
+      throw error_msg("confluent-wet: switch-model=hill has h(m) increasing by "
+                      "construction and chi = 1 ACTIVE; switch-sign must be left at +1.");
+    if(!(wp >= 0.) || !isfinite(wp))
+      throw error_msg("confluent-wet: wp must be finite and non-negative (0 = step).");
+    if(!(h_n >= 0.) || !isfinite(h_n))
+      throw error_msg("confluent-wet: h-n must be finite and non-negative (0 = step).");
+    if(!(mc > 0.))
+      throw error_msg("confluent-wet: switch-model=hill needs mc > 0.");
+    if(!(beta >= 0. && beta <= 1.))
+      throw error_msg("confluent-wet: beta must lie in [0,1] (g is normalised to g(1) = 1, "
+                      "so beta > 1 would push chi out of [0,1]), got ", beta, ".");
+    // n = 1 gives g'(0) > 0: at beta > chic/(1+chic) the unswitched state is unstable even
+    // without a signal, a transcritical rather than a saddle-node structure.
+    if(!(g_n >= 2.) || !isfinite(g_n))
+      throw error_msg("confluent-wet: g-n must be finite and >= 2, got ", g_n, ".");
+    if(!(g_chic > 0. && g_chic <= 1.))
+      throw error_msg("confluent-wet: g-chic must lie in (0,1], got ", g_chic, ".");
+    if(g_lock != "active" && g_lock != "passive")
+      throw error_msg("confluent-wet: g-lock must be 'active' or 'passive', got '",
+                      g_lock, "'.");
+    lock_passive = (g_lock == "passive");
+    g_norm = 1. + pow(g_chic, g_n);
+  }
+  else if(wp != 0. || h_n != 0. || beta != 0. || g_lock != "active")
+    throw error_msg("confluent-wet: wp, h-n, beta and g-lock belong to switch-model=hill "
+                    "and would be ignored under the legacy law.");
+
   if(ntracer > 0 && tracer_count == 0)
     throw error_msg("confluent-wet: ntracer > 0 needs tracer-count > 0.");
   if(tracer_count > 0 && ntracer == 0)
@@ -165,11 +206,18 @@ void ConfluentWet::Initialize()
                     "sampling interval in steps.");
   if(Dbio < 0.)
     throw error_msg("confluent-wet: Dbio must be non-negative.");
+  // Dm/Dchi override Dbio field by field; a card that sets Dbio AND a different Dm or Dchi
+  // would read as two diffusivities for one field, so it is rejected.
+  if((Dm >= 0. && Dbio != 0. && Dm != Dbio) || (Dchi >= 0. && Dbio != 0. && Dchi != Dbio))
+    throw error_msg("confluent-wet: set either Dbio (one diffusivity for both fields) or "
+                    "Dm/Dchi, not a Dbio that disagrees with them.");
+  Dm_eff   = Dm   >= 0. ? Dm   : Dbio;
+  Dchi_eff = Dchi >= 0. ? Dchi : Dbio;
   // Explicit five-point Laplacian with dt = dx = 1 is stable only for D <= 1/4 in 2D.
   // Rejected rather than warned about: an unstable Dbio corrupts chi and m silently,
   // because the [0,1] clamp hides the blow-up and leaves a plausible-looking binary field.
-  if(Dbio > 0.2)
-    throw error_msg("confluent-wet: Dbio=", Dbio, " exceeds the explicit-diffusion "
+  if(max(Dm_eff, Dchi_eff) > 0.2)
+    throw error_msg("confluent-wet: Dm/Dchi/Dbio=", max(Dm_eff, Dchi_eff), " exceeds the explicit-diffusion "
                     "stability limit (D <= 1/4 in 2D at dt = dx = 1; 0.2 leaves margin "
                     "for the advection term). If the flow needs more than this to keep "
                     "chi and m resolved -- the requirement is Dbio ~ 9*u_rms/l_a for a "
@@ -484,6 +532,8 @@ double ConfluentWet::Activity(unsigned k) const
   // weakly active, so it still stirs, still generates pressure fluctuations, and can still
   // be driven back -- without it chi = 1 is an absorbing state and coexistence is
   // impossible by construction rather than by physics.
+  // The hill law flips the convention: chi = 1 is active, zeta [z0 + (1 - z0) chi].
+  if(hill) return zeta*(zeta0_frac + (1. - zeta0_frac)*chi[k]);
   return zeta*(zeta0_frac + (1. - zeta0_frac)*(1. - chi[k]));
 }
 
@@ -498,13 +548,43 @@ double ConfluentWet::ChiStar(double mm) const
     : (switch_sign*(mm - mc) > 0. ? 1. : 0.);
 }
 
-double ConfluentWet::MemoryTarget(unsigned k) const
+double ConfluentWet::HillH(double mm) const
 {
-  const double P = pressure[k];
-  const double threshold = EffectivePmem(nstep_done);
+  // h-n = 0 stands for n1 -> infinity. The tie m == mc resolves to 1, so that this step is
+  // the exact mirror of the legacy s = -1 step (chi* = 1 iff m < mc there).
+  if(h_n == 0.) return mm >= mc ? 1. : 0.;
+  // 1/(1 + (mc/m)^n1) rather than m^n1/(mc^n1 + m^n1): no overflow at large n1, and m -> 0
+  // gives pow -> inf -> h = 0 cleanly.
+  return mm > 0. ? 1./(1. + pow(mc/mm, h_n)) : 0.;
+}
+
+double ConfluentWet::LockG(double x) const
+{
+  return x > 0. ? g_norm/(1. + pow(g_chic/x, g_n)) : 0.;
+}
+
+double ConfluentWet::ChiTarget(double mm, double cc) const
+{
+  if(!hill) return ChiStar(mm);
+  const double H = HillH(mm);
+  // active lock : chi* = h + beta g(chi)(1 - h)
+  // passive lock: chi* = h [1 - beta g(1 - chi)], the mirror under chi -> 1-chi, h -> 1-h
+  return lock_passive ? H*(1. - beta*LockG(1. - cc))
+                      : H + beta*LockG(cc)*(1. - H);
+}
+
+double ConfluentWet::MemorySource(double P, double threshold) const
+{
+  if(hill)
+    return wp > 0. ? 1./(1. + exp(-(P - threshold)/wp)) : (P > threshold ? 1. : 0.);
   return pmem_width > 0
     ? .5*(1. + tanh((P - threshold)/pmem_width))
     : (P > threshold ? 1. : 0.);
+}
+
+double ConfluentWet::MemoryTarget(unsigned k) const
+{
+  return MemorySource(pressure[k], EffectivePmem(nstep_done));
 }
 
 bool ConfluentWet::PmemPulseActive(unsigned step) const
@@ -680,8 +760,8 @@ void ConfluentWet::UpdateNodeFields(unsigned k, bool first)
     + xi*(Qyx*(expansion - traceQL) + 2*shear);
 
   // ---- phenotype and memory: intensive scalars, material derivative -------
-  // D_t chi = (chi*(m) - chi)/tau_chi + Dbio lap chi
-  // D_t m   = (g(P)    - m)/tau_m     + Dbio lap m
+  // D_t chi = (chi*(m) - chi)/tau_chi + Dbio lap chi     (hill: chi*(m, chi), Dchi)
+  // D_t m   = (g(P)    - m)/tau_m     + Dbio lap m       (hill: s(P), Dm)
   // Centred differences: CFL ~ 4e-3 makes the weak instability of centred advection under
   // Heun stepping (growth ~ CFL^4/8) irrelevant, while upwinding would inject a numerical
   // diffusivity |u|dx/2 that would swamp Dbio. The [0,1] clamp below catches any
@@ -691,12 +771,13 @@ void ConfluentWet::UpdateNodeFields(unsigned k, bool first)
 
   // Dbio is the SAME for both: diffusion here is cell motility, and a cell carries its
   // phenotype and its memory together. The two transport operators are therefore identical
-  // by construction and the fields differ only through their sources.
+  // by construction and the fields differ only through their sources. Dm/Dchi, when set,
+  // split them; unset, Dchi_eff = Dm_eff = Dbio and the arithmetic is the historical one.
   const double chi_rhs =
     - ax*derivX(chi, d, sB) - ay*derivY(chi, d, sB)
-    + Dbio*laplacian(chi, d, sD)
+    + Dchi_eff*laplacian(chi, d, sD)
     + (use_switching && nstep_done >= chi_freeze_steps
-       ? (ChiStar(m_k) - chi_k)/tau_chi : 0.);
+       ? (ChiTarget(m_k, chi_k) - chi_k)/tau_chi : 0.);
 
   // The memory source is held off for mem_freeze_steps while the flow spins up. Without
   // it m decays from rest -- g(P) = 0 until there is turbulence -- and an active start
@@ -704,7 +785,7 @@ void ConfluentWet::UpdateNodeFields(unsigned k, bool first)
   // the spin-up time at the campaign's tau_m. Transport and diffusion stay on.
   const double m_rhs =
     - ax*derivX(m, d, sB) - ay*derivY(m, d, sB)
-    + Dbio*laplacian(m, d, sD)
+    + Dm_eff*laplacian(m, d, sD)
     + (nstep_done >= mem_freeze_steps ? (MemoryTarget(k) - m_k)/tau_m : 0.);
 
   // ---- lattice Boltzmann ---------------------------------------------------
@@ -1102,9 +1183,9 @@ void ConfluentWet::WriteResponse(const string& dir, unsigned t)
     cm += chi[k]; c2 += chi[k]*chi[k]; mm += m[k]; m2 += m[k]*m[k];
     u2 += ux_mat[k]*ux_mat[k] + uy_mat[k]*uy_mat[k];
     pm += P; p2 += P*P;
-    gm += pmem_width > 0 ? .5*(1.+tanh((P-effective)/pmem_width)) : (P>effective ? 1. : 0.);
-    gb += pmem_width > 0 ? .5*(1.+tanh((P-pmem)/pmem_width)) : (P>pmem ? 1. : 0.);
-    qm += ChiStar(m[k]);
+    gm += MemorySource(P, effective);
+    gb += MemorySource(P, pmem);
+    qm += ChiTarget(m[k], chi[k]);
   }
   const double N = DomainSize;
   cm /= N; mm /= N; pm /= N;
@@ -1191,6 +1272,26 @@ option_list ConfluentWet::GetOptions()
   options[0].add_options()
     ("Dbio", opt::value<double>(&Dbio),
      "biomass (cell-motility) diffusivity; applied identically to chi and m")
+    ("Dm", opt::value<double>(&Dm),
+     "diffusivity of m alone; negative (default) = Dbio")
+    ("Dchi", opt::value<double>(&Dchi),
+     "diffusivity of chi alone; negative (default) = Dbio")
+    ("switch-model", opt::value<std::string>(&switch_model),
+     "response law: legacy (tanh/step chi*(m), chi=1 passive) or hill (logistic s(P), Hill "
+     "h(m), phenotype lock beta g; chi=1 ACTIVE)")
+    ("wp", opt::value<double>(&wp),
+     "hill: width of s(P) = 1/(1+exp(-(P-pmem)/wp)); 0 = step Theta(P-pmem)")
+    ("h-n", opt::value<double>(&h_n),
+     "hill: exponent n1 of h(m) = m^n1/(mc^n1+m^n1); 0 = step Theta(m-mc)")
+    ("beta", opt::value<double>(&beta),
+     "hill: phenotype-lock strength in [0,1]")
+    ("g-n", opt::value<double>(&g_n),
+     "hill: exponent of the lock g(x) = (1+chic^n) x^n/(chic^n+x^n); >= 2")
+    ("g-chic", opt::value<double>(&g_chic),
+     "hill: half-point chic of the lock g, in (0,1]")
+    ("g-lock", opt::value<std::string>(&g_lock),
+     "hill: phenotype held by the lock: active (chi* = h + beta g(chi)(1-h)) or passive "
+     "(chi* = h [1 - beta g(1-chi)])")
     ("tau-chi", opt::value<double>(&tau_chi),
      "phenotype relaxation time (<= 0 freezes chi)")
     ("chi-width", opt::value<double>(&chi_width),
