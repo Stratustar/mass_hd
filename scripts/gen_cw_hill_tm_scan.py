@@ -11,7 +11,8 @@ same tau_m grid coordinate, so every point has a legacy step-law partner run. Ch
                 scripts/check_cw_hill.py)
   video         native 256x256 (video-stride 8 -> 1), as in 20260915 fullres
 
-Everything else -- seeds, preparation, observation, clocks, pmem, mc, tau_chi -- is retained.
+Everything else -- seeds, preparation, observation, clocks, pmem, mc, tau_chi -- is retained,
+except that --tchi-over-tm R sets tau_chi = R tau_m point by point.
 """
 import argparse
 import hashlib
@@ -49,7 +50,9 @@ def replace(text, key, value):
     return body
 
 
-def generate(out):
+def generate(out, tchi_over_tm=None):
+    """tchi_over_tm: None keeps the source tau_chi (202.3 steps = 0.3 tau_c) at every tau_m;
+    a number R sets tau_chi = R tau_m point by point (the value tau-m carries in the card)."""
     repo = Path(__file__).resolve().parents[1]
     out = out.resolve()
     campaign = out.relative_to(repo/'cases').as_posix()
@@ -78,6 +81,12 @@ def generate(out):
             for key, value in (('video-stride', 1), ('switch-sign', 1), ('chi0', start),
                                ('Dbio', 0)):
                 text = replace(text, key, value)
+            if tchi_over_tm is not None:
+                tau_chi = f'{tchi_over_tm*float(before["tau-m"]):.13g}'
+                text = replace(text, 'tau-chi', tau_chi)
+            tchi_note = (f'tau_chi = {tchi_over_tm:g} tau_m = {tau_chi} steps'
+                         if tchi_over_tm is not None else
+                         f'tau_chi = {before["tau-chi"]} steps (source value)')
             text += ''.join(f'{k:<21}= {v}\n' for k, v in
                             [('switch-model', 'hill'), ('Dm', DBIO), ('Dchi', DBIO)]
                             + list(HILL.items()))
@@ -88,20 +97,24 @@ def generate(out):
                 '# chi=1 is ACTIVE here (zeta[z0+(1-z0)chi]); the legacy start '
                 f'chi={legacy_start} is chi={start}, same m0.\n'
                 f'# Copied from {src["case"]} of {SOURCE}; Dm=Dchi=old Dbio; '
-                'native 256x256 video. Seeds, clocks, preparation retained.\n')
+                'native 256x256 video. Seeds, clocks, preparation retained.\n'
+                + (f'# {tchi_note}.\n' if tchi_over_tm is not None else ''))
             text = header + text
             after = parameters(text)
             changed = {k for k in before.keys() | after.keys() if before.get(k) != after.get(k)}
             assert changed == {'video-stride', 'switch-sign', 'chi0', 'Dbio', 'switch-model',
-                               'Dm', 'Dchi'} | set(HILL), changed
-            case = f'L256/mc0p2287_{variant}_tm{tm_tok}_chi{start}_rep1'
+                               'Dm', 'Dchi'} | set(HILL) | (
+                               {'tau-chi'} if tchi_over_tm is not None else set()), changed
+            tc_tok = f'_tchi{token(tchi_over_tm)}tm' if tchi_over_tm is not None else ''
+            case = f'L256/mc0p2287_{variant}{tc_tok}_tm{tm_tok}_chi{start}_rep1'
             rows.append({'case': case, 'L': 256, 'mc': 0.2287, 'tm_over_tc': tm,
                          'initialization': start, 'chi0': float(start),
                          'legacy_initialization': legacy_start, 'replicate': 1,
                          'seed': int(after['seed']), 'chi_seed': int(after['chi-seed']),
                          'm0': float(after['m0']),
                          'preparation_steps': int(after['chi-freeze-steps']),
-                         'nsteps': int(after['nsteps']), 'run_dat_sha256': digest(text.encode()),
+                         'nsteps': int(after['nsteps']), 'tau_chi_steps': float(after['tau-chi']),
+                         'run_dat_sha256': digest(text.encode()),
                          'source_case': str(source.relative_to(repo)),
                          'source_run_dat_sha256': digest(old)})
             pending.append((out/case/'run.dat', text))
@@ -120,9 +133,12 @@ def generate(out):
     manifest = {
         'campaign': campaign, 'tau_c_reference': TC, 'source_campaign': SOURCE,
         'source_manifest_sha256': digest(source_manifest.read_bytes()),
-        'generator_base_commit': commit, 'simulator_source_sha256': hashes,
+        'generator_base_commit': commit, 'source_base_commit': commit,
+        'simulator_source_sha256': hashes,
         'fixed': {'L': 256, 'mc': 0.2287, 'pmem': 0.016838, 'zeta0_frac': 0.3,
-                  'tau_chi_steps': 202.3, 'Dm': float(DBIO), 'Dchi': float(DBIO), **HILL},
+                  **({'tau_chi_over_tm': tchi_over_tm} if tchi_over_tm is not None
+                     else {'tau_chi_steps': 202.3}),
+                  'Dm': float(DBIO), 'Dchi': float(DBIO), **HILL},
         'tm_grid': list(TM), 'initializations': ['0', '1'], 'replicates': [1],
         'convention': 'switch-model=hill: chi=1 ACTIVE. chi0=1 is the legacy all-0 start.',
         'changed_parameters': ['video-stride 8->1', 'switch-sign -1->1', 'chi0 flipped',
@@ -136,7 +152,9 @@ def generate(out):
     pending += [(out/'manifest.json', json.dumps(manifest, indent=2)+'\n'),
                 (out/'README.md',
                  '# Hill response law, beta = 0: tau_m scan at mc = 0.2287\n\n'
-                 f'{len(rows)} runs: tau_m/tau_c = {", ".join(f"{x:g}" for x in TM)}; uniform '
+                 f'{len(rows)} runs: tau_m/tau_c = {", ".join(f"{x:g}" for x in TM)}; '
+                 + (f'tau_chi = {tchi_over_tm:g} tau_m at every point; ' if tchi_over_tm is not None
+                    else 'tau_chi = 202.3 steps (0.3 tau_c); ') + 'uniform '
                  'chi=1 (active, m0=.3301) and chi=0 (passive, m0=.0559); one seed '
                  '(190901/200901).\n\n'
                  f'h-n={HILL["h-n"]} (tanh-equivalent width 2mc/n = {2*.2287/HILL["h-n"]:.4f}), '
@@ -159,4 +177,7 @@ def generate(out):
 if __name__ == '__main__':
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('out', type=Path)
-    generate(p.parse_args().out)
+    p.add_argument('--tchi-over-tm', type=float, default=None,
+                   help='set tau_chi = R tau_m at every point (default: keep 202.3 steps)')
+    a = p.parse_args()
+    generate(a.out, a.tchi_over_tm)

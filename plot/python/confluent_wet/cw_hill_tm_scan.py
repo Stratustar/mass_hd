@@ -5,6 +5,8 @@
   cw_hill_tm_scan.py <results_root> <out> --summary --manifest M [--reference R]
                                                                  campaign summary
   cw_hill_tm_scan.py <case_in> <movie_out> --render --summary S  native u/P/m/chi movie
+  cw_hill_tm_scan.py <fetched_root> <page_dir> --board --summary S [--reference R]
+                                                                 offline video board
 
 The reduction is the four-start reducer (terminal <chi>, drift flags, release state). The
 hill law FLIPS the phenotype convention -- chi = 1 is active -- so <chi> here is the ACTIVE
@@ -49,6 +51,15 @@ def reduce_case(root, out):
     (out/'phase_case.json').write_text(json.dumps(row, indent=2, allow_nan=False)+'\n')
 
 
+def tchi_text(fixed, tex=False):
+    """The phenotype clock of a campaign: a fixed number of steps, or a multiple of tau_m."""
+    if 'tau_chi_over_tm' in fixed:
+        r = fixed['tau_chi_over_tm']
+        return rf'$\tau_\chi={r:g}\,\tau_m$' if tex else f'{r:g} τm'
+    x = fixed.get('tau_chi_steps', 202.3)/TC
+    return rf'$\tau_\chi={x:.2g}\,\tau_c$' if tex else f'{x:.2g} τc'
+
+
 def classify(rr):
     """One seed per start: dependent if the active start ends > 0.2 above the passive one."""
     if set(rr) != {'0', '1'}:
@@ -70,7 +81,7 @@ def legacy_rows(path):
              'case': r['case']} for r in rows]
 
 
-def aggregate(root, out, manifest_path, reference=None):
+def aggregate(root, out, manifest_path, reference=None, compare=None):
     manifest = json.loads(manifest_path.read_text())
     rows, missing, invalid = [], [], []
     for item in manifest['cases']:
@@ -93,6 +104,8 @@ def aggregate(root, out, manifest_path, reference=None):
         except (KeyError, ValueError) as exc:
             invalid.append({'case': item['case'], 'error': str(exc)})
     legacy = legacy_rows(reference)
+    # Another hill campaign drawn for comparison (e.g. a different tau_chi), as its own rows.
+    other = json.loads(Path(compare).read_text()) if compare else None
     groups = []
     for tm in manifest['tm_grid']:
         rr = {r['initialization']: r for r in rows if np.isclose(r['tm_over_tc'], tm, rtol=1e-10)}
@@ -110,11 +123,12 @@ def aggregate(root, out, manifest_path, reference=None):
                'available_cases': len(rows), 'missing': missing, 'invalid': invalid,
                'convention': manifest['convention'], 'fixed': manifest['fixed'],
                'legacy_reference': str(reference) if reference else None,
+               'compare': str(compare) if compare else None,
                'groups': groups, 'cases': rows, 'protocol': manifest['protocol']}
     out.mkdir(parents=True, exist_ok=True)
     (out/'hill_tm_summary.json').write_text(json.dumps(summary, indent=2, allow_nan=False)+'\n')
     if rows:
-        make_figure(rows, legacy, manifest, root, out)
+        make_figure(rows, legacy, manifest, root, out, other)
     (out/'README.md').write_text(
         '# Hill law (beta = 0) tau_m scan at mc = 0.2287\n\n'
         f'Available {len(rows)}/{len(manifest["cases"])}; missing {len(missing)}, '
@@ -127,7 +141,7 @@ def aggregate(root, out, manifest_path, reference=None):
                       'missing': len(missing), 'invalid': len(invalid)}))
 
 
-def make_figure(rows, legacy, manifest, root, out):
+def make_figure(rows, legacy, manifest, root, out, other=None):
     import matplotlib
     matplotlib.use('Agg')
     import matplotlib.pyplot as plt
@@ -143,6 +157,12 @@ def make_figure(rows, legacy, manifest, root, out):
                 a.plot([r['tm_over_tc'] for r in lg], [r[lkey] for r in lg], color='#9AA3AB',
                        marker=marker, ms=3.5, lw=1, ls='--', zorder=1,
                        label='legacy step law' if start == '1' else None)
+            if other:
+                oo = sorted((r for r in other['cases'] if r['initialization'] == start),
+                            key=lambda r: r['tm_over_tc'])
+                a.plot([r['tm_over_tc'] for r in oo], [r[key] for r in oo], color=COLORS[start],
+                       marker=marker, ms=3.5, lw=1, ls=':', alpha=.55, zorder=2,
+                       label=f'hill, τχ = {tchi_text(other["fixed"])}' if start == '1' else None)
             rr = sorted((r for r in rows if r['initialization'] == start),
                         key=lambda r: r['tm_over_tc'])
             a.plot([r['tm_over_tc'] for r in rr], [r[key] for r in rr], color=COLORS[start],
@@ -171,8 +191,8 @@ def make_figure(rows, legacy, manifest, root, out):
     cb.ax.set_yticklabels([f'{g:.3g}' for g in grid])
     cb.set_label(r'$\tau_m/\tau_c$ (solid: $\chi_0=1$, dashed: $\chi_0=0$)')
     f = manifest['fixed']
-    fig.suptitle(rf'hill law: $n_1={f["h-n"]:g}$, $w_p={f["wp"]:g}$, $\beta={f["beta"]:g}$; '
-                 r'$m_c=0.2287$, $L=256$, one seed', fontsize=11)
+    fig.suptitle(rf'hill law: $n_1={f["h-n"]:g}$, $w_p={f["wp"]:g}$, $\beta={f["beta"]:g}$, '
+                 + tchi_text(f, tex=True) + r'; $m_c=0.2287$, $L=256$, one seed', fontsize=11)
     fig.tight_layout()
     for ext in ('png', 'pdf'):
         fig.savefig(out/f'hill_tm_scan.{ext}', dpi=220, facecolor='white')
@@ -191,6 +211,58 @@ def render(src, out, summary_path):
     (out/'video.json').write_text(json.dumps(info, allow_nan=False))
 
 
+def board(data_root, out, summary_path, reference=None):
+    """Offline page over fetched <data_root>/<case>/dashboard/{fields.mp4,poster.png,video.json}.
+
+    The memory times have different preparation lengths (max(100 tau_c, 10 tau_m)), so the
+    movies are synchronised on time after release, not on frame index; the page maps that
+    clock into each movie separately. reference: the legacy 20260911 four_init_summary,
+    drawn on the summary panels as 1 - <chi_legacy> with its starts relabelled.
+    """
+    import os
+    summary = json.loads(Path(summary_path).read_text())
+    if summary['missing'] or summary['invalid']:
+        raise ValueError('Board needs a complete summary')
+    runs = []
+    for row in summary['cases']:
+        meta = Path(data_root)/row['case']/'dashboard/video.json'
+        r = json.loads(meta.read_text())
+        for key in ('case', 'initialization', 'tm_over_tc', 'preparation_steps', 'tail_mean'):
+            if r[key] != row[key]:
+                raise ValueError(f'Wrong {key}: {meta}')
+        movie, poster = meta.with_name('fields.mp4'), meta.with_name('poster.png')
+        if movie.stat().st_size != r['video_bytes'] or \
+                hashlib.sha256(movie.read_bytes()).hexdigest() != r['video_sha256']:
+            raise ValueError(f'Movie does not match metadata: {movie}')
+        if r['frames'] != row['nsteps']//337+1 or len(r['chi']) != r['frames'] or \
+                len(r['memory']) != r['frames'] or r['native_shape'] != [256, 256]:
+            raise ValueError(f'Frame count or shape mismatch: {meta}')
+        runs.append({k: r[k] for k in ('case', 'initialization', 'tm_over_tc', 'tail_mean',
+                                       'frames', 'frame_steps', 'fps', 'duration', 'width',
+                                       'height', 'preparation_steps', 'chi', 'memory')}
+                    | {k: row[k] for k in ('tail_m', 'tail_binariness', 'observation_tc',
+                                           'diagnostic_flags')}
+                    | {'url': os.path.relpath(movie, out), 'poster': os.path.relpath(poster, out)})
+    if len({(r['tm_over_tc'], r['initialization']) for r in runs}) != len(runs) or \
+            len({(r['frame_steps'], r['fps'], r['width'], r['height']) for r in runs}) != 1:
+        raise ValueError('Duplicate runs or movies that cannot share one clock')
+    payload = {'runs': runs, 'legacy': legacy_rows(reference), 'tau_c': TC,
+               'mc': summary['fixed']['mc'], 'shape': [256, 256],
+               'law': {k: summary['fixed'][k] for k in ('h-n', 'wp', 'beta')}
+                      | {'tau_chi': tchi_text(summary['fixed'])},
+               'tc_per_second': runs[0]['frame_steps']*runs[0]['fps']/TC,
+               # Geometry of the native four-panel composite written by cw_four_init_board.
+               'panel': {'size': 256, 'header': 32, 'chi_x': 3*(256+12)}}
+    template = Path(__file__).with_name('cw_hill_board.html.in').read_text()
+    if template.count('__DATA__') != 1:
+        raise ValueError('Invalid template marker')
+    text = template.replace('__DATA__', json.dumps(payload).replace('</', '<\\/'))
+    out.mkdir(parents=True, exist_ok=True)
+    (out/'index.html').write_text(text)
+    print(json.dumps({'board': str(out/'index.html'), 'videos': len(runs),
+                      'html_MB': len(text.encode())/1e6}))
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('input', type=Path)
@@ -198,17 +270,26 @@ if __name__ == '__main__':
     parser.add_argument('--summary', nargs='?', const=True, default=None,
                         help='campaign summary (no value), or the summary JSON for --render')
     parser.add_argument('--manifest', type=Path)
+    parser.add_argument('--compare', type=Path,
+                        help='another hill_tm_summary.json drawn dotted on the summary figure')
     parser.add_argument('--reference', type=Path,
                         help='legacy 20260911 four_init_summary.json drawn for comparison')
     parser.add_argument('--render', action='store_true')
+    parser.add_argument('--board', action='store_true',
+                        help='<fetched results root> <page dir> --board --summary <json> '
+                             '[--reference <legacy json>]')
     args = parser.parse_args()
-    if args.render:
+    if args.board:
+        if not isinstance(args.summary, str):
+            parser.error('--board requires --summary <hill_tm_summary.json>')
+        board(args.input.resolve(), args.out.resolve(), Path(args.summary), args.reference)
+    elif args.render:
         if not isinstance(args.summary, str):
             parser.error('--render requires --summary <hill_tm_summary.json>')
         render(args.input, args.out, Path(args.summary))
     elif args.summary:
         if args.manifest is None:
             parser.error('--summary requires --manifest')
-        aggregate(args.input, args.out, args.manifest, args.reference)
+        aggregate(args.input, args.out, args.manifest, args.reference, args.compare)
     else:
         reduce_case(args.input, args.out)
