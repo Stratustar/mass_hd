@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Hill law at two tau_chi</title>
+<style>
+:root{color-scheme:light;--ink:#26343d;--muted:#718089;--line:#dfe5e7;--bg:#f7f8f8}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+main{max-width:1240px;margin:auto;padding:18px 20px 30px}
+h1{font-size:18px;font-weight:600;margin:0 0 2px}.sub{color:var(--muted);font-size:13px;margin-bottom:10px;font-variant-numeric:tabular-nums}
+header{position:sticky;top:0;z-index:5;padding:10px 12px;background:#fafcfbf5;border:1px solid var(--line);border-radius:9px;backdrop-filter:blur(12px)}
+.row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.row+.row{margin-top:8px}.label{color:var(--muted)}.choices{display:inline-flex;gap:5px;flex-wrap:wrap}
+button,select{font:inherit;color:var(--ink);background:white;border:1px solid var(--line);border-radius:6px;padding:4px 10px;cursor:pointer}button:hover,select:hover{border-color:#9bb8bf}button[aria-pressed=true]{border-color:#86b9c2;background:#e8f2f4}button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid #8C6BB1;outline-offset:2px}
+#play{min-width:63px;color:white;background:#304851;border-color:#304851}#seek{flex:1;min-width:160px;accent-color:#557f8c}#clock{min-width:120px;text-align:right;font-variant-numeric:tabular-nums}#notice{color:#9b4248;font-size:12px;margin-top:6px}#notice:empty{display:none}
+#cards{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:12px}#cards.stack{grid-template-columns:1fr}
+article{overflow:hidden;border:1px solid var(--line);border-top:3px solid var(--g);border-radius:7px;background:white}
+.caption{padding:4px 10px;font-size:12.5px;display:flex;gap:10px;flex-wrap:wrap}.caption b{font-weight:600;color:var(--g)}.caption .stat{color:var(--muted);font-variant-numeric:tabular-nums}
+video{display:block;width:100%;background:#101318}
+#trace{display:block;width:100%;height:auto;margin-top:12px;background:white;border-radius:7px;border:1px solid var(--line);cursor:crosshair}
+@media(max-width:760px){main{padding:12px 10px 24px}#cards{grid-template-columns:1fr}#clock{min-width:96px;font-size:12px}}
+</style>
+</head>
+<body><main>
+<h1>Hill law: τ<sub>m</sub> scan at two τ<sub>χ</sub></h1>
+<div class="sub" id="sub"></div>
+<header>
+<div class="row"><span class="label">τ<sub>m</sub>/τ<sub>c</sub></span><div id="tms" class="choices" role="group" aria-label="Memory time"></div></div>
+<div class="row"><button id="play">Play</button><button id="reset" aria-label="Restart">↺</button><input id="seek" type="range" min="0" max="1" step="any" value="0" aria-label="Time after release"><span id="clock">t / τc = —</span><select id="speed" aria-label="Playback speed"><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option><option value="4">4×</option><option value="8">8×</option></select><button id="layout" aria-pressed="false" title="One movie per row">Large</button><button id="fullscreen" aria-label="Full screen">⛶</button></div>
+<div id="notice" role="status"></div>
+</header>
+<div id="cards"></div>
+<svg id="trace" viewBox="0 0 1100 250" role="img" aria-label="Mean chi versus time after release"></svg>
+</main>
+<script type="application/json" id="data">__DATA__</script>
+<script>
+(()=>{'use strict';
+const $=id=>document.getElementById(id);
+try {
+  const data=JSON.parse($('data').textContent), tc=data.tau_c;
+  const groups=data.groups, STARTS=['1','0'], SNAME={'1':'active start','0':'passive start'};
+  const grid=[...new Set(data.runs.map(r=>r.tm_over_tc))].sort((a,b)=>a-b);
+  const fmt=x=>String(Number(x.toFixed(3)));
+  const run=(g,gi,st)=>data.runs.find(r=>r.tm_over_tc===g&&r.group===gi&&r.initialization===st);
+  let ti=grid.findIndex(g=>Math.abs(g-7.753)<.01); if(ti<0)ti=0;
+  let entries=[], playing=false, rate=1, position=0, startTime=0, endTime=0, timer, wall0=0, pos0=0;
+  const timeOf=(r,i)=>(i*r.frame_steps-r.preparation_steps)/tc;
+  const mediaAt=(r,t)=>(r.preparation_steps+t*tc)/(r.frame_steps*r.fps);
+  const report=m=>{$('notice').textContent=m;};
+  const now=()=>playing?pos0+(performance.now()-wall0)/1000*rate*data.tc_per_second:position;
+  const tx=t=>60+1020*(t-startTime)/(endTime-startTime);
+  function stamp(){$('seek').value=position;$('clock').textContent=`t / τc = ${position.toFixed(1)}`;const c=$('cursor');if(c){const x=tx(position);c.setAttribute('x1',x);c.setAttribute('x2',x);}}
+  function seekVideo(e,t){e.v.currentTime=t;e.seekAt=performance.now();}
+  // One JS clock; every movie chases it (rate nudges for small drift, seeks for large drift,
+  // a stalled seek is re-issued). All four movies of one tau_m share the preparation length.
+  function sync(){
+    for(const e of entries){
+      const v=e.v;if(v.readyState<1)continue;
+      const target=Math.min(v.duration-.02,mediaAt(e.r,position));
+      if(v.seeking){if(performance.now()-(e.seekAt||0)>1500)seekVideo(e,target);continue;}
+      const drift=v.currentTime-target;
+      if(!playing){if(!v.paused)v.pause();if(Math.abs(drift)>.02)seekVideo(e,target);continue;}
+      if(Math.abs(drift)>.35){seekVideo(e,target);continue;}
+      v.playbackRate=rate*(1-Math.max(-.25,Math.min(.25,drift)));
+      if(v.paused&&v.readyState>=2&&!v.ended)v.play().catch(()=>{});
+    }
+  }
+  function stop(){position=Math.max(startTime,Math.min(endTime,now()));playing=false;$('play').textContent='Play';for(const e of entries)e.v.pause();sync();stamp();}
+  function seekTo(t){position=Math.max(startTime,Math.min(endTime,t));if(playing){pos0=position;wall0=performance.now();}sync();stamp();}
+  function play(){if(!entries.length)return;if(position>=endTime-1e-6)position=startTime;pos0=position;wall0=performance.now();playing=true;$('play').textContent='Pause';report('');sync();}
+  function trace(){
+    const shown=entries.map(e=>e.r);
+    let s='<path d="M60 14V206H1080" fill="none" stroke="#a5b0b6"/>';
+    for(const y of [0,.25,.5,.75,1]){const yy=206-y*192;s+=`<path d="M55 ${yy}H60" stroke="#a5b0b6"/><text x="49" y="${yy+4}" text-anchor="end" fill="#677781" font-size="12">${y}</text>`;}
+    for(let k=0;k<=4;k++){const t=startTime+k*(endTime-startTime)/4,x=tx(t);s+=`<path d="M${x} 206V211" stroke="#a5b0b6"/><text x="${x}" y="226" text-anchor="middle" fill="#677781" font-size="12">${Math.round(t)}</text>`;}
+    for(const r of shown){
+      const g=groups[r.group], pts=[];
+      for(let i=0;i<r.frames;i++){const t=timeOf(r,i);if(t<startTime-1e-9)continue;pts.push(`${tx(t).toFixed(1)},${(206-r.chi[i]*192).toFixed(1)}`);}
+      s+=`<polyline points="${pts.join(' ')}" fill="none" stroke="${g.color}" stroke-width="${r.initialization==='1'?1.6:1.1}" stroke-opacity="${r.initialization==='1'?1:.55}"/>`;
+    }
+    let lx=640;
+    groups.forEach(g=>{s+=`<path d="M${lx} 8H${lx+22}" stroke="${g.color}" stroke-width="2.5"/><text x="${lx+28}" y="12" font-size="12" fill="#45565f">${g.label}</text>`;lx+=150;});
+    s+=`<path d="M${lx} 8H${lx+22}" stroke="#52636d" stroke-width="1.6"/><text x="${lx+28}" y="12" font-size="12" fill="#45565f">active</text><path d="M${lx+80} 8H${lx+102}" stroke="#52636d" stroke-width="1.1" stroke-opacity=".55"/><text x="${lx+108}" y="12" font-size="12" fill="#45565f">passive</text>`;
+    s+=`<text x="570" y="245" text-anchor="middle" fill="#45565f" font-size="13">t / τc after release</text><text x="16" y="110" text-anchor="middle" transform="rotate(-90 16 110)" fill="#45565f" font-size="14">⟨χ⟩</text><line id="cursor" x1="60" x2="60" y1="14" y2="206" stroke="#52636d" stroke-dasharray="4 4"/>`;
+    $('trace').innerHTML=s;stamp();
+  }
+  function addVideo(r,parent){
+    const v=document.createElement('video');v.muted=true;v.playsInline=true;v.preload='auto';v.poster=r.poster;v.src=r.url;
+    v.style.aspectRatio=`${r.width}/${r.height}`;parent.append(v);
+    const e={r,v};entries.push(e);
+    v.addEventListener('loadedmetadata',()=>{if(!entries.includes(e))return;
+      if(v.videoWidth!==r.width||v.videoHeight!==r.height||Math.abs(v.duration-r.duration)>.1){stop();report('Video metadata mismatch: '+r.url);return;}
+      sync();});
+    v.addEventListener('error',()=>{if(entries.includes(e))report('Unable to load video: '+r.url);});
+  }
+  function render(){
+    const old=position;stop();
+    for(const e of entries){e.v.removeAttribute('src');e.v.load();}
+    entries=[];const cards=$('cards');cards.replaceChildren();report('');
+    groups.forEach((g,gi)=>{for(const st of STARTS){
+      const r=run(grid[ti],gi,st);if(!r)continue;
+      const card=document.createElement('article');card.style.setProperty('--g',g.color);
+      card.innerHTML=`<div class="caption"><b>${g.label}</b><span>${SNAME[st]}</span><span class="stat">late ⟨χ⟩ = ${r.tail_mean.toFixed(3)}</span></div>`;
+      addVideo(r,card);cards.append(card);
+    }});
+    const r0=entries[0].r;startTime=0;endTime=Math.min(...entries.map(e=>timeOf(e.r,e.r.frames-1)));
+    $('seek').min=startTime;$('seek').max=endTime;seekTo(old);
+    document.querySelectorAll('#tms button').forEach(b=>b.setAttribute('aria-pressed',+b.dataset.i===ti));
+    trace();
+  }
+  const law=data.law;
+  $('sub').textContent=`n₁ = ${law['h-n']}, w_p = ${law.wp}, β = ${law.beta}, m_c = ${data.mc}, L = ${data.shape.join(' × ')}, one seed · χ = 1 active (red in the χ panel)`;
+  grid.forEach((g,i)=>{const b=document.createElement('button');b.dataset.i=i;b.textContent=fmt(g);b.onclick=()=>{ti=i;render();};$('tms').append(b);});
+  $('play').onclick=()=>playing?stop():play();$('reset').onclick=()=>seekTo(startTime);$('seek').oninput=()=>seekTo(+$('seek').value);
+  $('speed').onchange=()=>{if(playing){position=now();pos0=position;wall0=performance.now();}rate=+$('speed').value;sync();};
+  $('layout').onclick=()=>{const on=$('cards').classList.toggle('stack');$('layout').setAttribute('aria-pressed',on);};
+  $('fullscreen').hidden=!document.documentElement.requestFullscreen;
+  $('fullscreen').onclick=()=>{const a=document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen();a.catch(err=>report('Full screen unavailable: '+err.message));};
+  $('trace').onclick=ev=>{const b=$('trace').getBoundingClientRect(),x=(ev.clientX-b.left)/b.width*1100;seekTo(startTime+(endTime-startTime)*(x-60)/1020);};
+  timer=setInterval(()=>{if(!entries.length)return;if(playing){position=Math.min(endTime,now());if(position>=endTime){stop();return;}}sync();stamp();},150);
+  window.addEventListener('pagehide',()=>{stop();clearInterval(timer);});render();
+}catch(error){$('notice').textContent='Unable to initialize: '+error.message;console.error(error);}
+})();
+</script>
+</body></html>

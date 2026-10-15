@@ -1,0 +1,135 @@
+#!/usr/bin/env python3
+"""Hill-law tau_m scans in two families, 3 seeds, at mc = 0.2287 (L256).
+
+  nscan     Hill exponent n = 4, 8, 16, 32, 64 (wp = 0.002, tau_chi = 0.3 tau_c), plus the step
+            limit h-n = 0, wp = 0 as the same-grid reference: does the bifurcation curve approach
+            the step-law result as n grows?
+  tchiscan  tau_chi = 1, 3, 10, 30 tau_c at n = 16 (tau_chi = 0.3 tau_c is the nscan n = 16
+            member and is not duplicated): does it approach the single-cell curve as tau_chi grows?
+
+Every card is the 20261013/cw_hill_tm_scan card (hill law, beta = 0, Dm = Dchi = .00166667,
+z0 = .3, pmem = .016838) with only these set: tau-m, the preparation (chi reaction frozen for
+max(100, 10 tau_m) tau_c) and nsteps (+ 2000 tau_c observation), the start, the seeds, h-n, wp,
+tau-chi, and the OUTPUT (video-stride 8, a full frame every ~500 tau_c) -- output settings do not
+touch the dynamics. Exact full-field means are still written every 337 steps (0.5 tau_c).
+
+  gen_cw_hill_family_scan.py nscan    cases/20261015/cw_hill_nscan
+  gen_cw_hill_family_scan.py tchiscan cases/20261015/cw_hill_tchiscan
+"""
+import argparse
+import hashlib
+import json
+import math
+from pathlib import Path
+import re
+import subprocess
+
+TC = 674.3290333006435
+TM = (0.3, 1, 2, 3.5, 5, 6, 7, 7.5, 8, 8.5, 9, 9.5, 10, 10.5, 11, 11.5, 12, 13, 14.5, 16, 18)
+OBS = 1348658                          # round(2000 tau_c), as every previous L256 scan
+NINFO = 337165                         # full frame every ~500 tau_c (was 67400)
+REPS = (1, 2, 3)                       # seed 190900+k, chi-seed 200900+k (rep1 = earlier scans)
+STARTS = {'1': '0.3301', '0': '0.0559'}   # chi0 -> m0 (active / passive uniform start)
+BASE = 'cases/20261013/cw_hill_tm_scan/L256/mc0p2287_hn16_wp0p002_b0_tm8p684210526_chi1_rep1/run.dat'
+FAMILIES = {
+    'nscan': [dict(hn=n, wp=.002, tc=.3) for n in (4, 8, 16, 32, 64)] + [dict(hn=0, wp=0, tc=.3)],
+    'tchiscan': [dict(hn=16, wp=.002, tc=tc) for tc in (1, 3, 10, 30)],
+}
+
+
+def digest(data):
+    return hashlib.sha256(data).hexdigest()
+
+
+def parameters(text):
+    return dict(tuple(x.strip() for x in line.split('=', 1))
+                for line in text.splitlines() if line.strip() and not line.lstrip().startswith('#'))
+
+
+def token(x):
+    return f'{x:g}'.replace('.', 'p')
+
+
+def replace(text, key, value):
+    body, n = re.subn(rf'(?m)^{re.escape(key)}\s*=.*$', f'{key:<21}= {value}', text)
+    assert n == 1, key
+    return body
+
+
+def generate(family, out):
+    repo = Path(__file__).resolve().parents[1]
+    out = out.resolve()
+    campaign = out.relative_to(repo/'cases').as_posix()
+    base = (repo/BASE).read_text()
+    base_body = 'model' + base.split('\nmodel', 1)[1]
+    b = parameters(base_body)
+    assert b['switch-model'] == 'hill' and b['beta'] == '0' and b['Dm'] == b['Dchi'] == '0.00166667'
+    rows, pending = [], []
+    for mem in FAMILIES[family]:
+        member = f'hn{token(mem["hn"])}_wp{token(mem["wp"])}_tc{token(mem["tc"])}'
+        tau_chi = '202.3' if mem['tc'] == .3 else f'{mem["tc"]*TC:.13g}'
+        for g in TM:
+            prep = round(max(100., 10*g)*TC)
+            for start, m0 in STARTS.items():
+                for k in REPS:
+                    text = base_body
+                    for key, value in (('tau-m', f'{g*TC:.13g}'), ('chi-freeze-steps', prep),
+                                       ('nsteps', prep + OBS), ('chi0', start), ('m0', m0),
+                                       ('seed', 190900 + k), ('chi-seed', 200900 + k),
+                                       ('h-n', mem['hn']), ('wp', mem['wp']), ('tau-chi', tau_chi),
+                                       ('video-stride', 8), ('ninfo', NINFO)):
+                        text = replace(text, key, value)
+                    header = (f'# {campaign}: hill law, {member}, tau_m/tau_c={g!r}, start chi={start}, rep{k}.\n'
+                              f'# h-n={mem["hn"]} (0 = step), wp={mem["wp"]} (0 = step), tau_chi={tau_chi} steps; '
+                              'beta=0, Dm=Dchi=.00166667, mc=.2287, pmem=.016838, z0=.3.\n'
+                              f'# Prepare {prep} steps (max(100,10 tau_m) tau_c, chi reaction frozen), observe {OBS} '
+                              'steps (2000 tau_c). Video stride 8, full frame every ~500 tau_c.\n')
+                    text = header + text
+                    a = parameters(text)
+                    changed = {key for key in a if a[key] != b.get(key)}
+                    assert changed <= {'tau-m', 'chi-freeze-steps', 'nsteps', 'chi0', 'm0', 'seed',
+                                       'chi-seed', 'h-n', 'wp', 'tau-chi', 'video-stride', 'ninfo'}, changed
+                    assert math.isclose(float(a['tau-m'])/TC, g, rel_tol=1e-11)
+                    case = f'L256/{member}_tm{token(g)}_chi{start}_rep{k}'
+                    rows.append({'case': case, 'member': member, 'h_n': mem['hn'], 'wp': mem['wp'],
+                                 'tau_chi_over_tc': mem['tc'], 'tau_chi_steps': float(tau_chi),
+                                 'L': 256, 'mc': 0.2287, 'tm_over_tc': g, 'initialization': start,
+                                 'chi0': float(start), 'replicate': k, 'seed': 190900 + k,
+                                 'chi_seed': 200900 + k, 'preparation_steps': prep, 'nsteps': prep + OBS,
+                                 'run_dat_sha256': digest(text.encode())})
+                    pending.append((out/case/'run.dat', text))
+    commit = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=repo, text=True).strip()
+    names = subprocess.check_output(['git', 'ls-files', 'src', 'Makefile'], cwd=repo, text=True).splitlines()
+    hashes = {n: digest(subprocess.check_output(['git', 'show', f':{n}'], cwd=repo)) for n in names}
+    manifest = {
+        'campaign': campaign, 'family': family, 'tau_c_reference': TC, 'base_card': BASE,
+        'base_card_sha256': digest((repo/BASE).read_bytes()), 'source_base_commit': commit,
+        'simulator_source_sha256': hashes, 'tm_grid': list(TM), 'replicates': list(REPS),
+        'members': FAMILIES[family], 'initializations': list(STARTS),
+        'fixed': {'L': 256, 'mc': 0.2287, 'pmem': 0.016838, 'zeta0_frac': 0.3, 'beta': 0,
+                  'Dm': 0.00166667, 'Dchi': 0.00166667},
+        'convention': 'switch-model=hill: chi=1 ACTIVE; chi0=1 active start (m0=.3301), chi0=0 passive (m0=.0559).',
+        'protocol': 'Preparation max(100,10 tau_m) tau_c with chi reaction frozen; observe 2000 tau_c; '
+                    'terminal window max(500, 20 tau_m) tau_c (reducer).',
+        'shared_member_note': ('tau_chi = 0.3 tau_c at n = 16 is the nscan member hn16_wp0p002_tc0p3'
+                               if family == 'tchiscan' else ''),
+        'output': {'video_stride': 8, 'nvideo': 337, 'ninfo': NINFO, 'frame_light': 1},
+        'cases': rows}
+    pending.append((out/'manifest.json', json.dumps(manifest, indent=1) + '\n'))
+    for path, body in pending:
+        if path.exists() and path.read_text() != body:
+            raise FileExistsError(f'Refusing to replace differing file: {path}')
+    for path, body in pending:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(body)
+    assert {p.resolve() for p in out.rglob('*.dat')} == {(out/r['case']/'run.dat').resolve() for r in rows}
+    print(json.dumps({'campaign': campaign, 'cases': len(rows),
+                      'members': [r for r in sorted({r['member'] for r in rows})]}))
+
+
+if __name__ == '__main__':
+    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument('family', choices=tuple(FAMILIES))
+    p.add_argument('out', type=Path)
+    a = p.parse_args()
+    generate(a.family, a.out)

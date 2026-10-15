@@ -55,7 +55,8 @@ def tchi_text(fixed, tex=False):
     """The phenotype clock of a campaign: a fixed number of steps, or a multiple of tau_m."""
     if 'tau_chi_over_tm' in fixed:
         r = fixed['tau_chi_over_tm']
-        return rf'$\tau_\chi={r:g}\,\tau_m$' if tex else f'{r:g} τm'
+        k = '' if r == 1 else f'{r:g}'
+        return rf'$\tau_\chi={k}\,\tau_m$' if tex else f'{k} τm'.strip()
     x = fixed.get('tau_chi_steps', 202.3)/TC
     return rf'$\tau_\chi={x:.2g}\,\tau_c$' if tex else f'{x:.2g} τc'
 
@@ -263,6 +264,55 @@ def board(data_root, out, summary_path, reference=None):
                       'html_MB': len(text.encode())/1e6}))
 
 
+def board_tchi(scans, out):
+    """One page over several hill scans that differ only in tau_chi: per tau_m, every
+    (scan, start) movie in a grid and <chi>(t) below. scans: [(data_root, summary_json)].
+
+    All movies of one tau_m must share the preparation length and frame count (it depends
+    on tau_m alone), so one release clock drives them frame for frame."""
+    import os
+    colours = ('#E07A5F', '#8C6BB1', '#21918c', '#596879')
+    groups, runs, fixed = [], [], None
+    for gi, (data_root, summary_path) in enumerate(scans):
+        summary = json.loads(Path(summary_path).read_text())
+        if summary['missing'] or summary['invalid']:
+            raise ValueError(f'Board needs a complete summary: {summary_path}')
+        law = {k: summary['fixed'][k] for k in ('h-n', 'wp', 'beta', 'mc')}
+        if fixed is not None and law != fixed:
+            raise ValueError('Scans differ in more than tau_chi')
+        fixed = law
+        groups.append({'label': 'τχ = ' + tchi_text(summary['fixed']), 'color': colours[gi]})
+        for row in summary['cases']:
+            meta = Path(data_root)/row['case']/'dashboard/video.json'
+            r = json.loads(meta.read_text())
+            movie, poster = meta.with_name('fields.mp4'), meta.with_name('poster.png')
+            if r['case'] != row['case'] or movie.stat().st_size != r['video_bytes'] or \
+                    hashlib.sha256(movie.read_bytes()).hexdigest() != r['video_sha256']:
+                raise ValueError(f'Movie does not match metadata: {movie}')
+            if r['frames'] != row['nsteps']//337+1 or len(r['chi']) != r['frames']:
+                raise ValueError(f'Frame count mismatch: {meta}')
+            runs.append({k: r[k] for k in ('case', 'initialization', 'tm_over_tc', 'frames',
+                                           'frame_steps', 'fps', 'duration', 'width', 'height',
+                                           'preparation_steps', 'chi')}
+                        | {'group': gi, 'tail_mean': row['tail_mean'],
+                           'url': os.path.relpath(movie, out), 'poster': os.path.relpath(poster, out)})
+    for tm in {r['tm_over_tc'] for r in runs}:
+        rr = [r for r in runs if np.isclose(r['tm_over_tc'], tm)]
+        if len({(r['preparation_steps'], r['frames']) for r in rr}) != 1:
+            raise ValueError(f'tau_m={tm}: movies cannot share one clock')
+    payload = {'runs': runs, 'groups': groups, 'tau_c': TC, 'mc': fixed['mc'],
+               'law': {k: fixed[k] for k in ('h-n', 'wp', 'beta')}, 'shape': [256, 256],
+               'tc_per_second': runs[0]['frame_steps']*runs[0]['fps']/TC}
+    template = Path(__file__).with_name('cw_hill_tchi_board.html.in').read_text()
+    if template.count('__DATA__') != 1:
+        raise ValueError('Invalid template marker')
+    text = template.replace('__DATA__', json.dumps(payload).replace('</', '<\\/'))
+    out.mkdir(parents=True, exist_ok=True)
+    (out/'index.html').write_text(text)
+    print(json.dumps({'board': str(out/'index.html'), 'videos': len(runs),
+                      'html_MB': len(text.encode())/1e6}))
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('input', type=Path)
@@ -275,11 +325,19 @@ if __name__ == '__main__':
     parser.add_argument('--reference', type=Path,
                         help='legacy 20260911 four_init_summary.json drawn for comparison')
     parser.add_argument('--render', action='store_true')
+    parser.add_argument('--board-tchi', action='store_true',
+                        help='<root1> <page dir> --board-tchi --summary <json1> --scan <root2> <json2>: '
+                             'scans differing only in tau_chi on one page')
+    parser.add_argument('--scan', nargs=2, action='append', metavar=('DATA_ROOT', 'SUMMARY'))
     parser.add_argument('--board', action='store_true',
                         help='<fetched results root> <page dir> --board --summary <json> '
                              '[--reference <legacy json>]')
     args = parser.parse_args()
-    if args.board:
+    if args.board_tchi:
+        scans = [(args.input.resolve(), Path(args.summary))]
+        scans += [(Path(d).resolve(), Path(j)) for d, j in args.scan or []]
+        board_tchi(scans, args.out.resolve())
+    elif args.board:
         if not isinstance(args.summary, str):
             parser.error('--board requires --summary <hill_tm_summary.json>')
         board(args.input.resolve(), args.out.resolve(), Path(args.summary), args.reference)

@@ -82,7 +82,7 @@ def reduce_case(root, out):
             or abs(prep_u[1]-prep_u[0])/max(float(np.mean(prep_u)), 1e-12) > 0.15):
         flags.append('preparation_drift')
     if min(prep_u) <= 1e-8: flags.append('flow_not_developed')
-    suffix = re.search(r'_rep([12])$', root.name)
+    suffix = re.search(r'_rep([0-9]+)$', root.name)
     if suffix is None: raise ValueError('Missing replicate identifier in case name')
     row = {'case': f'L{int(p["LX"])}/{root.name}', 'L': int(p['LX']),
            'mc': float(p['mc']), 'tm_over_tc': tm, 'chi0': int(p['chi0']),
