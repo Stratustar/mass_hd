@@ -6,6 +6,11 @@
             the step-law result as n grows?
   tchiscan  tau_chi = 1, 3, 10, 30 tau_c at n = 16 (tau_chi = 0.3 tau_c is the nscan n = 16
             member and is not duplicated): does it approach the single-cell curve as tau_chi grows?
+  nwscan    n and wp together, wp = 0.032/n: (4, .008), (8, .004), (32, .001), (64, .0005).
+            With wp held at .002 the nscan converged in n (32 ~ 64) but its passive branch stayed
+            at tau_m ~ 10 against 8.5 for the step limit: a fixed wp is a fixed absolute width,
+            ~0.17 sigma_P in the passive phase, and it lifts the passive threshold statistic f by
+            ~12 %. (16, .002) and the step limit are the nscan members and are not duplicated.
 
 Every card is the 20261013/cw_hill_tm_scan card (hill law, beta = 0, Dm = Dchi = .00166667,
 z0 = .3, pmem = .016838) with only these set: tau-m, the preparation (chi reaction frozen for
@@ -15,6 +20,7 @@ touch the dynamics. Exact full-field means are still written every 337 steps (0.
 
   gen_cw_hill_family_scan.py nscan    cases/20261015/cw_hill_nscan
   gen_cw_hill_family_scan.py tchiscan cases/20261015/cw_hill_tchiscan
+  gen_cw_hill_family_scan.py nwscan   cases/20261016/cw_hill_nwscan
 """
 import argparse
 import hashlib
@@ -34,6 +40,7 @@ BASE = 'cases/20261013/cw_hill_tm_scan/L256/mc0p2287_hn16_wp0p002_b0_tm8p6842105
 FAMILIES = {
     'nscan': [dict(hn=n, wp=.002, tc=.3) for n in (4, 8, 16, 32, 64)] + [dict(hn=0, wp=0, tc=.3)],
     'tchiscan': [dict(hn=16, wp=.002, tc=tc) for tc in (1, 3, 10, 30)],
+    'nwscan': [dict(hn=n, wp=.032/n, tc=.3) for n in (4, 8, 32, 64)],
 }
 
 
@@ -111,8 +118,9 @@ def generate(family, out):
         'convention': 'switch-model=hill: chi=1 ACTIVE; chi0=1 active start (m0=.3301), chi0=0 passive (m0=.0559).',
         'protocol': 'Preparation max(100,10 tau_m) tau_c with chi reaction frozen; observe 2000 tau_c; '
                     'terminal window max(500, 20 tau_m) tau_c (reducer).',
-        'shared_member_note': ('tau_chi = 0.3 tau_c at n = 16 is the nscan member hn16_wp0p002_tc0p3'
-                               if family == 'tchiscan' else ''),
+        'shared_member_note': {'tchiscan': 'tau_chi = 0.3 tau_c at n = 16 is the nscan member hn16_wp0p002_tc0p3',
+                               'nwscan': '(n, wp) = (16, .002) and the step limit are the nscan members '
+                                         'hn16_wp0p002_tc0p3 and hn0_wp0_tc0p3'}.get(family, ''),
         'output': {'video_stride': 8, 'nvideo': 337, 'ninfo': NINFO, 'frame_light': 1},
         'cases': rows}
     pending.append((out/'manifest.json', json.dumps(manifest, indent=1) + '\n'))

@@ -2,13 +2,14 @@
 """Seed-averaged summary of the hill-law family scans (20261015 nscan and tchiscan).
 
   cw_hill_family_scan.py <out> --scan <results_root> <manifest> [--scan ...]
-                         [--legacy four_init_summary.json] [--cell cells_hill_*.json]
+                         [--members m1,m2,...] [--legacy four_init_summary.json]
+                         [--cell cells_hill_*.json]
 
 Per-run reduction is cw_hill_tm_scan.py (phase_case.json). Here each (member, tau_m, start)
 is averaged over its seeds: mean of the terminal <chi>, seed min/max, binariness, Var_t<chi>.
 Figures (hill convention, chi = 1 active; smooth = solid, step = dashed, single cell = points):
-  nscan_chi    one curve per Hill exponent n; the step limit (h-n = 0, wp = 0) dashed black and
-               the legacy step-law scan (rep 1-2, 1 - <chi>) dashed grey
+  nscan_chi    one curve per (n, wp) member at tau_chi = 0.3 tau_c; the step limit (h-n = 0,
+               wp = 0) dashed black and the legacy step-law scan (rep 1-2, 1 - <chi>) dashed grey
   tchiscan_chi one curve per tau_chi (0.3 tau_c taken from the nscan n = 16 member) and the
                single-cell model as points
 Missing runs are listed, never silently dropped; a group with fewer seeds says so.
@@ -22,11 +23,13 @@ import numpy as np
 STARTS = ('1', '0')
 
 
-def load(scans):
+def load(scans, keep=None):
     groups, missing, members = {}, [], {}
     for root, manifest_path in scans:
         manifest = json.loads(Path(manifest_path).read_text())
         for item in manifest['cases']:
+            if keep and item['member'] not in keep:
+                continue
             members[item['member']] = {k: item[k] for k in ('h_n', 'wp', 'tau_chi_over_tc')}
             path = Path(root)/item['case']/'phase_case.json'
             if not path.exists():
@@ -86,7 +89,7 @@ def cell_curve(path):
     return {s: np.array(sorted(v)) for s, v in out.items()}
 
 
-def figures(rows, out, legacy, cell):
+def figures(rows, members, out, legacy, cell):
     import matplotlib
     matplotlib.use('Agg')
     import matplotlib.pyplot as plt
@@ -110,11 +113,12 @@ def figures(rows, out, legacy, cell):
 
     # --- n scan
     fig, ax = plt.subplots(figsize=(4.6, 3.6))
-    ns = sorted({int(m.split('_')[0][2:]) for m in present if m.startswith('hn') and m.endswith('tc0p3')
-                 and not m.startswith('hn0_')})
+    nmem = sorted((m for m in present if m.endswith('_tc0p3') and members[m]['h_n'] > 0),
+                  key=lambda m: (members[m]['h_n'], -members[m]['wp']))
     cmap = plt.get_cmap('viridis')
-    for k, n in enumerate(ns):
-        draw(ax, f'hn{n}_wp0p002_tc0p3', cmap(.1 + .8*k/max(len(ns) - 1, 1)), f'n = {n}')
+    for k, m in enumerate(nmem):
+        draw(ax, m, cmap(.1 + .8*k/max(len(nmem) - 1, 1)),
+             f'n = {members[m]["h_n"]:g}, ' + rf'$w_p$ = {members[m]["wp"]:g}')
     for start in ('1', '0'):
         t, m, _, _ = curve(rows, 'hn0_wp0_tc0p3', start)
         if len(t):
@@ -151,10 +155,12 @@ def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument('out', type=Path)
     p.add_argument('--scan', nargs=2, action='append', required=True, metavar=('RESULTS_ROOT', 'MANIFEST'))
+    p.add_argument('--members', help='comma-separated member names to keep (default: all)')
     p.add_argument('--legacy', type=Path)
     p.add_argument('--cell', type=Path)
     a = p.parse_args()
-    groups, missing, members = load(a.scan)
+    keep = set(a.members.split(',')) if a.members else None
+    groups, missing, members = load(a.scan, keep)
     rows = summarise(groups, members)
     a.out.mkdir(parents=True, exist_ok=True)
     short = [r for r in rows if r['n_seeds'] < 3]
@@ -164,7 +170,7 @@ def main():
          'legacy_reference': str(a.legacy) if a.legacy else None,
          'cell_reference': str(a.cell) if a.cell else None, 'rows': rows}, indent=1))
     if rows:
-        figures(rows, a.out, legacy_curve(a.legacy), cell_curve(a.cell))
+        figures(rows, members, a.out, legacy_curve(a.legacy), cell_curve(a.cell))
     print(json.dumps({'groups': len(rows), 'missing_runs': len(missing), 'short_groups': len(short)}))
 
 
