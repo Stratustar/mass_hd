@@ -12,6 +12,7 @@ Figures (hill convention, chi = 1 active; smooth = solid, step = dashed, single 
                wp = 0) dashed black and the legacy step-law scan (rep 1-2, 1 - <chi>) dashed grey
   tchiscan_chi one curve per tau_chi (0.3 tau_c taken from the nscan n = 16 member) and the
                single-cell model as points
+  tchiscan_m   the same for the terminal <m> (tail_m), points only, with the threshold mc dashed
 Missing runs are listed, never silently dropped; a group with fewer seeds says so.
 """
 import argparse
@@ -48,20 +49,23 @@ def summarise(groups, members):
     out = []
     for (member, tm, start), rr in sorted(groups.items()):
         x = np.array([r['tail_mean'] for r in rr])
+        y = np.array([r['tail_m'] for r in rr])
         out.append({'member': member, **members[member], 'tm_over_tc': tm, 'initialization': start,
                     'n_seeds': len(rr), 'chi_mean': float(x.mean()), 'chi_min': float(x.min()),
                     'chi_max': float(x.max()), 'chi_seeds': x.tolist(),
+                    'm_mean': float(y.mean()), 'm_min': float(y.min()), 'm_max': float(y.max()),
+                    'm_seeds': y.tolist(),
                     'binariness_mean': float(np.mean([r['tail_binariness'] for r in rr])),
                     'var_t_mean': float(np.mean([r['tail_std_time']**2 for r in rr])),
                     'flags': {r['case']: r['diagnostic_flags'] for r in rr if r['diagnostic_flags']}})
     return out
 
 
-def curve(rows, member, start):
+def curve(rows, member, start, key='chi'):
     rr = sorted((r for r in rows if r['member'] == member and r['initialization'] == start),
                 key=lambda r: r['tm_over_tc'])
-    return (np.array([r['tm_over_tc'] for r in rr]), np.array([r['chi_mean'] for r in rr]),
-            np.array([r['chi_min'] for r in rr]), np.array([r['chi_max'] for r in rr]))
+    return (np.array([r['tm_over_tc'] for r in rr]), np.array([r[f'{key}_mean'] for r in rr]),
+            np.array([r[f'{key}_min'] for r in rr]), np.array([r[f'{key}_max'] for r in rr]))
 
 
 def legacy_curve(path):
@@ -85,11 +89,11 @@ def cell_curve(path):
         return {}
     out = {}
     for r in json.loads(Path(path).read_text())['runs']:
-        out.setdefault('1' if r['start'] == 'active' else '0', []).append((r['tau_m'], r['tail_mean']))
+        out.setdefault('1' if r['start'] == 'active' else '0', []).append((r['tau_m'], r['tail_mean'], r['tail_m']))
     return {s: np.array(sorted(v)) for s, v in out.items()}
 
 
-def figures(rows, members, out, legacy, cell):
+def figures(rows, members, out, legacy, cell, mc=None):
     import matplotlib
     matplotlib.use('Agg')
     import matplotlib.pyplot as plt
@@ -99,11 +103,11 @@ def figures(rows, members, out, legacy, cell):
                          'pdf.fonttype': 42, 'svg.fonttype': 'none', 'savefig.facecolor': 'white'})
     present = {r['member'] for r in rows}
 
-    def draw(ax, member, color, label):
+    def draw(ax, member, color, label, key='chi', line=True):
         for start, mk, mfc in (('1', 'o', color), ('0', 's', 'white')):
-            t, m, lo, hi = curve(rows, member, start)
+            t, m, lo, hi = curve(rows, member, start, key)
             if len(t):
-                ax.errorbar(t, m, yerr=[m - lo, hi - m], fmt='-' + mk, color=color, mfc=mfc,
+                ax.errorbar(t, m, yerr=[m - lo, hi - m], fmt=('-' if line else '') + mk, color=color, mfc=mfc,
                             mec=color, ms=4, lw=1.4, elinewidth=.8, capsize=0,
                             label=label if start == '1' else None)
 
@@ -132,23 +136,31 @@ def figures(rows, members, out, legacy, cell):
         fig.savefig(out/f'nscan_chi.{ext}', dpi=300)
     plt.close(fig)
 
-    # --- tau_chi scan (0.3 tau_c = the nscan n = 16 member)
-    fig, ax = plt.subplots(figsize=(4.6, 3.6))
+    # --- tau_chi scan (0.3 tau_c = the nscan n = 16 member): <chi>, then <m>
     tcs = sorted({m.split('_tc')[1] for m in present if m.startswith('hn16_wp0p002_tc')},
                  key=lambda s: float(s.replace('p', '.')))
     cmap = plt.get_cmap('plasma')
-    for k, tc in enumerate(tcs):
-        draw(ax, f'hn16_wp0p002_tc{tc}', cmap(.05 + .8*k/max(len(tcs) - 1, 1)),
-             rf'$\tau_\chi={tc.replace("p", ".")}\,\tau_c$')
-    for start, mfc in (('1', '#21918c'), ('0', 'white')):
-        if start in cell:
-            ax.plot(cell[start][:, 0], cell[start][:, 1], ls='none', marker='D', ms=4, color='#21918c',
-                    mfc=mfc, mew=1.1, label='single cell' if start == '1' else None, zorder=5)
-    axes(ax); ax.legend(loc='center right', bbox_to_anchor=(1, .5))
-    fig.tight_layout(pad=.3)
-    for ext in ('png', 'pdf', 'svg'):
-        fig.savefig(out/f'tchiscan_chi.{ext}', dpi=300)
-    plt.close(fig)
+    for key, col in (('chi', 1), ('m', 2)):
+        fig, ax = plt.subplots(figsize=(4.6, 3.6))
+        for k, tc in enumerate(tcs):
+            draw(ax, f'hn16_wp0p002_tc{tc}', cmap(.05 + .8*k/max(len(tcs) - 1, 1)),
+                 rf'$\tau_\chi={tc.replace("p", ".")}\,\tau_c$', key, line=key == 'chi')
+        for start, mfc in (('1', '#21918c'), ('0', 'white')):
+            if start in cell:
+                ax.plot(cell[start][:, 0], cell[start][:, col], ls='none', marker='D', ms=4, color='#21918c',
+                        mfc=mfc, mew=1.1, label='single cell' if start == '1' else None, zorder=5)
+        if key == 'chi':
+            axes(ax); ax.legend(loc='center right', bbox_to_anchor=(1, .5))
+        else:
+            ax.set_xlabel(r'$\tau_m/\tau_c$'); ax.set_ylabel(r'$\langle m\rangle$'); ax.set_xlim(-.3, 18.8)
+            if mc is not None:
+                ax.axhline(mc, color='#888', lw=.9, ls='--', zorder=0, label=r'$m_c$')
+            ax.legend(loc='center right', bbox_to_anchor=(1, .6), frameon=True, framealpha=1,
+                      edgecolor='none', facecolor='white')
+        fig.tight_layout(pad=.3)
+        for ext in ('png', 'pdf', 'svg'):
+            fig.savefig(out/f'tchiscan_{key}.{ext}', dpi=300)
+        plt.close(fig)
 
 
 def main():
@@ -170,7 +182,8 @@ def main():
          'legacy_reference': str(a.legacy) if a.legacy else None,
          'cell_reference': str(a.cell) if a.cell else None, 'rows': rows}, indent=1))
     if rows:
-        figures(rows, members, a.out, legacy_curve(a.legacy), cell_curve(a.cell))
+        mc = json.loads(Path(a.scan[0][1]).read_text()).get('fixed', {}).get('mc')
+        figures(rows, members, a.out, legacy_curve(a.legacy), cell_curve(a.cell), mc)
     print(json.dumps({'groups': len(rows), 'missing_runs': len(missing), 'short_groups': len(short)}))
 
 

@@ -21,12 +21,13 @@ COLORS = {'0': '#63B8C6', '1': '#E8A0A6', 'stripe01': '#8C6BB1', 'noise': '#5968
 
 
 def reduce_case(root, out):
-    match = re.search(r'_chi(0|1|stripe01|noise)_rep[0-9]+$', root.name)
+    match = re.search(r'_chi(0|1|stripe01|noise|patch)_rep[0-9]+$', root.name)
     if not match:
         raise ValueError('Missing four-start initialization label')
     start = match.group(1)
     p = base.parameters(root)
-    config = 'stripe' if start == 'stripe01' else 'noise' if start == 'noise' else 'uniform'
+    # 'patch' (hill family scans): binary-noise, half chi_hi/m_hi and half chi_lo/m_lo.
+    config = {'stripe01': 'stripe', 'noise': 'noise', 'patch': 'binary-noise'}.get(start, 'uniform')
     if p['chi_config'] != config:
         raise ValueError('Initialization label disagrees with serialized chi_config')
     expected_chi0 = float(start) if start in ('0', '1') else .5

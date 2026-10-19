@@ -18,6 +18,14 @@
             Small D cannot blow up (explicit diffusion has only an upper bound); the question is
             resolution -- the Taylor scale of chi and m is ~2 cells at den = 1 and scales as
             sqrt(D) -- and how the bifurcation moves, since Dm sets the memory width.
+  tchifill  (a) tau_chi = 1.5, 2, 2.5 tau_c at n = 16, full tau_m grid, both uniform starts, 3 seeds:
+            the bifurcation topology flips between tau_chi = 1 (passive branch emerges) and 3
+            (active branch emerges), and the onset is latest at the flip. (b) a third start,
+            'patch' (chi-config = binary-noise, correlation length 7.02, exactly half chi = 1 with
+            m = .3301 and half chi = 0 with m = .0559), for tau_chi = .3, 1, 1.5, 2, 2.5, 3, 10, 30
+            at tau_m = 9 ... 13, 3 seeds: is there a third attractor (a heterogeneous mixed state)
+            next to the two uniform branches? The patch pattern is stirred during the preparation
+            (only the chi reaction is frozen), so at release it is an intermediate, mixed start.
 
 Every card is the 20261013/cw_hill_tm_scan card (hill law, beta = 0, Dm = Dchi = .00166667,
 z0 = .3, pmem = .016838) with only these set: tau-m, the preparation (chi reaction frozen for
@@ -29,6 +37,7 @@ touch the dynamics. Exact full-field means are still written every 337 steps (0.
   gen_cw_hill_family_scan.py tchiscan cases/20261015/cw_hill_tchiscan
   gen_cw_hill_family_scan.py nwscan   cases/20261016/cw_hill_nwscan
   gen_cw_hill_family_scan.py dscan    cases/20261016/cw_hill_dscan
+  gen_cw_hill_family_scan.py tchifill cases/20261019/cw_hill_tchifill
 """
 import argparse
 import hashlib
@@ -44,6 +53,10 @@ OBS = 1348658                          # round(2000 tau_c), as every previous L2
 NINFO = 337165                         # full frame every ~500 tau_c (was 67400)
 REPS = (1, 2, 3)                       # seed 190900+k, chi-seed 200900+k (rep1 = earlier scans)
 STARTS = {'1': '0.3301', '0': '0.0559'}   # chi0 -> m0 (active / passive uniform start)
+TM_PATCH = (9, 9.5, 10, 10.5, 11, 11.5, 12, 13)
+# 'patch': the binary-noise start of 20260913/cw_pmem_pulse in the hill convention (chi = 1 active).
+PATCH = (('chi-config', 'binary-noise'), ('chi0', '0.5'), ('m0', '0.193'), ('chi-length', '7.02'))
+PATCH_PHASES = (('chi-lo', '0'), ('chi-hi', '1'), ('m-lo', '0.0559'), ('m-hi', '0.3301'))
 BASE = 'cases/20261013/cw_hill_tm_scan/L256/mc0p2287_hn16_wp0p002_b0_tm8p684210526_chi1_rep1/run.dat'
 FAMILIES = {
     'nscan': [dict(hn=n, wp=.002, tc=.3) for n in (4, 8, 16, 32, 64)] + [dict(hn=0, wp=0, tc=.3)],
@@ -52,6 +65,9 @@ FAMILIES = {
     'dscan': [dict(hn=16, wp=.002, tc=.3, den=1, tm=(30,), reps=(1, 2), ninfo=168582)] +
              [dict(hn=16, wp=.002, tc=.3, den=d, tm=(2, 8, 12, 18, 30), reps=(1, 2), ninfo=168582)
               for d in (3, 10, 30, 100)],
+    'tchifill': [dict(hn=16, wp=.002, tc=tc) for tc in (1.5, 2, 2.5)] +
+                [dict(hn=16, wp=.002, tc=tc, tm=TM_PATCH, starts=('patch',))
+                 for tc in (.3, 1, 1.5, 2, 2.5, 3, 10, 30)],
 }
 DBIO = 0.00166667
 
@@ -93,17 +109,24 @@ def generate(family, out):
         tau_chi = '202.3' if mem['tc'] == .3 else f'{mem["tc"]*TC:.13g}'
         for g in mem.get('tm', TM):
             prep = round(max(100., 10*g)*TC)
-            for start, m0 in STARTS.items():
+            for start in mem.get('starts', tuple(STARTS)):
+                init = PATCH if start == 'patch' else (('chi0', start), ('m0', STARTS[start]))
                 for k in mem.get('reps', REPS):
                     text = base_body
+                    if start == 'patch':
+                        text, n = re.subn(r'(?m)^(chi-length\s*=.*\n)', lambda m: m.group(1) + ''.join(
+                            f'{key:<21}= {value}\n' for key, value in PATCH_PHASES), text)
+                        assert n == 1
                     for key, value in (('tau-m', f'{g*TC:.13g}'), ('chi-freeze-steps', prep),
-                                       ('nsteps', prep + OBS), ('chi0', start), ('m0', m0),
+                                       ('nsteps', prep + OBS)) + init + (
                                        ('seed', 190900 + k), ('chi-seed', 200900 + k),
                                        ('h-n', mem['hn']), ('wp', mem['wp']), ('tau-chi', tau_chi),
                                        ('video-stride', 8), ('ninfo', ninfo)) + (
                                        (('Dm', dval), ('Dchi', dval)) if den is not None else ()):
                         text = replace(text, key, value)
-                    header = (f'# {campaign}: hill law, {member}, tau_m/tau_c={g!r}, start chi={start}, rep{k}.\n'
+                    label = ('patch (binary-noise, chi-length 7.02, half chi=1/m=.3301, half chi=0/m=.0559)'
+                             if start == 'patch' else f'chi={start}')
+                    header = (f'# {campaign}: hill law, {member}, tau_m/tau_c={g!r}, start {label}, rep{k}.\n'
                               f'# h-n={mem["hn"]} (0 = step), wp={mem["wp"]} (0 = step), tau_chi={tau_chi} steps; '
                               + (f'beta=0, Dm=Dchi={dval} (= .00166667/{den}), mc=.2287, pmem=.016838, z0=.3.\n'
                                  if den is not None else 'beta=0, Dm=Dchi=.00166667, mc=.2287, pmem=.016838, z0=.3.\n')
@@ -114,14 +137,15 @@ def generate(family, out):
                     changed = {key for key in a if a[key] != b.get(key)}
                     assert changed <= {'tau-m', 'chi-freeze-steps', 'nsteps', 'chi0', 'm0', 'seed',
                                        'chi-seed', 'h-n', 'wp', 'tau-chi', 'video-stride', 'ninfo',
-                                       'Dm', 'Dchi'}, changed
+                                       'Dm', 'Dchi'} | ({'chi-config', 'chi-length', 'chi-lo', 'chi-hi',
+                                                         'm-lo', 'm-hi'} if start == 'patch' else set()), changed
                     assert math.isclose(float(a['tau-m'])/TC, g, rel_tol=1e-11)
                     case = f'L256/{member}_tm{token(g)}_chi{start}_rep{k}'
                     rows.append({'case': case, 'member': member, 'h_n': mem['hn'], 'wp': mem['wp'],
                                  'tau_chi_over_tc': mem['tc'], 'tau_chi_steps': float(tau_chi),
                                  **({'D_divisor': den, 'Dm': float(dval), 'Dchi': float(dval)} if den is not None else {}),
                                  'L': 256, 'mc': 0.2287, 'tm_over_tc': g, 'initialization': start,
-                                 'chi0': float(start), 'replicate': k, 'seed': 190900 + k,
+                                 'chi0': .5 if start == 'patch' else float(start), 'replicate': k, 'seed': 190900 + k,
                                  'chi_seed': 200900 + k, 'preparation_steps': prep, 'nsteps': prep + OBS,
                                  'run_dat_sha256': digest(text.encode())})
                     pending.append((out/case/'run.dat', text))
@@ -132,10 +156,13 @@ def generate(family, out):
         'campaign': campaign, 'family': family, 'tau_c_reference': TC, 'base_card': BASE,
         'base_card_sha256': digest((repo/BASE).read_bytes()), 'source_base_commit': commit,
         'simulator_source_sha256': hashes, 'tm_grid': list(TM), 'replicates': list(REPS),
-        'members': FAMILIES[family], 'initializations': list(STARTS),
+        'members': FAMILIES[family],
+        'initializations': list(dict.fromkeys(s for mem in FAMILIES[family] for s in mem.get('starts', tuple(STARTS)))),
         'fixed': {'L': 256, 'mc': 0.2287, 'pmem': 0.016838, 'zeta0_frac': 0.3, 'beta': 0,
                   'Dm': 0.00166667, 'Dchi': 0.00166667},
-        'convention': 'switch-model=hill: chi=1 ACTIVE; chi0=1 active start (m0=.3301), chi0=0 passive (m0=.0559).',
+        'convention': 'switch-model=hill: chi=1 ACTIVE; chi0=1 active start (m0=.3301), chi0=0 passive (m0=.0559)'
+                      + ('; patch = chi-config binary-noise, chi-length 7.02, chi-lo/hi 0/1, m-lo/hi .0559/.3301.'
+                         if family == 'tchifill' else '.'),
         'protocol': 'Preparation max(100,10 tau_m) tau_c with chi reaction frozen; observe 2000 tau_c; '
                     'terminal window max(500, 20 tau_m) tau_c (reducer).',
         'shared_member_note': {'tchiscan': 'tau_chi = 0.3 tau_c at n = 16 is the nscan member hn16_wp0p002_tc0p3',
