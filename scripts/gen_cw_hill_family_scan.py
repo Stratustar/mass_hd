@@ -26,6 +26,11 @@
             at tau_m = 9 ... 13, 3 seeds: is there a third attractor (a heterogeneous mixed state)
             next to the two uniform branches? The patch pattern is stirred during the preparation
             (only the chi reaction is frozen), so at release it is an intermediate, mixed start.
+  dense     defect dynamics: four rep1 cases of the scans re-run with the same seeds and cards,
+            only the output changed -- a full frame every 135 steps (0.2 tau_c) in the last 60 tau_c
+            (nstart), nothing before (nstart also gates response.csv and the video, so these runs
+            have no reducer). tau_chi = .3, 3, 30 at tau_m = 8 (active start) and tau_chi = .3 at
+            tau_m = 10.5 (passive start, the textured passive branch).
 
 Every card is the 20261013/cw_hill_tm_scan card (hill law, beta = 0, Dm = Dchi = .00166667,
 z0 = .3, pmem = .016838) with only these set: tau-m, the preparation (chi reaction frozen for
@@ -38,6 +43,7 @@ touch the dynamics. Exact full-field means are still written every 337 steps (0.
   gen_cw_hill_family_scan.py nwscan   cases/20261016/cw_hill_nwscan
   gen_cw_hill_family_scan.py dscan    cases/20261016/cw_hill_dscan
   gen_cw_hill_family_scan.py tchifill cases/20261019/cw_hill_tchifill
+  gen_cw_hill_family_scan.py dense    cases/20261022/cw_hill_defect_dense
 """
 import argparse
 import hashlib
@@ -65,6 +71,8 @@ FAMILIES = {
     'dscan': [dict(hn=16, wp=.002, tc=.3, den=1, tm=(30,), reps=(1, 2), ninfo=168582)] +
              [dict(hn=16, wp=.002, tc=.3, den=d, tm=(2, 8, 12, 18, 30), reps=(1, 2), ninfo=168582)
               for d in (3, 10, 30, 100)],
+    'dense': [dict(hn=16, wp=.002, tc=tc, tm=(tm,), starts=(st,), reps=(1,), ninfo=135, window_tc=60)
+              for tc, tm, st in ((.3, 8, '1'), (3, 8, '1'), (30, 8, '1'), (.3, 10.5, '0'))],
     'tchifill': [dict(hn=16, wp=.002, tc=tc) for tc in (1.5, 2, 2.5)] +
                 [dict(hn=16, wp=.002, tc=tc, tm=TM_PATCH, starts=('patch',))
                  for tc in (.3, 1, 1.5, 2, 2.5, 3, 10, 30)],
@@ -122,7 +130,9 @@ def generate(family, out):
                                        ('seed', 190900 + k), ('chi-seed', 200900 + k),
                                        ('h-n', mem['hn']), ('wp', mem['wp']), ('tau-chi', tau_chi),
                                        ('video-stride', 8), ('ninfo', ninfo)) + (
-                                       (('Dm', dval), ('Dchi', dval)) if den is not None else ()):
+                                       (('Dm', dval), ('Dchi', dval)) if den is not None else ()) + (
+                                       (('nstart', prep + OBS - round(mem['window_tc']*TC)),)
+                                       if 'window_tc' in mem else ()):
                         text = replace(text, key, value)
                     label = ('patch (binary-noise, chi-length 7.02, half chi=1/m=.3301, half chi=0/m=.0559)'
                              if start == 'patch' else f'chi={start}')
@@ -131,13 +141,16 @@ def generate(family, out):
                               + (f'beta=0, Dm=Dchi={dval} (= .00166667/{den}), mc=.2287, pmem=.016838, z0=.3.\n'
                                  if den is not None else 'beta=0, Dm=Dchi=.00166667, mc=.2287, pmem=.016838, z0=.3.\n')
                               + f'# Prepare {prep} steps (max(100,10 tau_m) tau_c, chi reaction frozen), observe {OBS} '
-                              + f'steps (2000 tau_c). Video stride 8, full frame every ~{round(ninfo/TC)} tau_c.\n')
+                              + (f'steps (2000 tau_c). Video stride 8, full frame every ~{round(ninfo/TC)} tau_c.\n'
+                                 if 'window_tc' not in mem else
+                                 f'steps (2000 tau_c). Output only from nstart = nsteps - {round(mem["window_tc"]*TC)} '
+                                 f'({mem["window_tc"]} tau_c): full frame every {ninfo} steps; no video/response before.\n'))
                     text = header + text
                     a = parameters(text)
                     changed = {key for key in a if a[key] != b.get(key)}
                     assert changed <= {'tau-m', 'chi-freeze-steps', 'nsteps', 'chi0', 'm0', 'seed',
                                        'chi-seed', 'h-n', 'wp', 'tau-chi', 'video-stride', 'ninfo',
-                                       'Dm', 'Dchi'} | ({'chi-config', 'chi-length', 'chi-lo', 'chi-hi',
+                                       'Dm', 'Dchi', 'nstart'} | ({'chi-config', 'chi-length', 'chi-lo', 'chi-hi',
                                                          'm-lo', 'm-hi'} if start == 'patch' else set()), changed
                     assert math.isclose(float(a['tau-m'])/TC, g, rel_tol=1e-11)
                     case = f'L256/{member}_tm{token(g)}_chi{start}_rep{k}'
