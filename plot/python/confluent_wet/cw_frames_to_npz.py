@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Pack the dense full frames of a confluent-wet run into one compressed npz (for defect tracking).
 
-  cw_frames_to_npz.py <run_dir> <out.npz> [--compare <original_run_dir>]
+  cw_frames_to_npz.py <run_dir> <out.npz> [--compare <original_run_dir>] [--fields chi m ...]
 
 All frame*.json in <run_dir>, sorted by step, are stored as float16 arrays of shape (T, LX, LY)
 (axis 0 = x, as plot_hd reshapes (LX, LY)) under the frame field names, plus `t` (steps).
@@ -28,6 +28,7 @@ def main():
     ap.add_argument('run', type=Path)
     ap.add_argument('out', type=Path)
     ap.add_argument('--compare', type=Path)
+    ap.add_argument('--fields', nargs='*', help='keep only these frame fields (default: all)')
     a = ap.parse_args()
     p = json.loads((a.run/'parameters.json').read_text()); p = p.get('data', p)
     get = lambda k: p[k]['value'] if isinstance(p.get(k), dict) else p.get(k)
@@ -35,11 +36,13 @@ def main():
     files = sorted(a.run.glob('frame*.json'), key=lambda f: int(re.search(r'frame(\d+)', f.name).group(1)))
     steps = np.array([int(re.search(r'frame(\d+)', f.name).group(1)) for f in files])
     first = load(files[0])
+    if a.fields:
+        first = {k: first[k] for k in a.fields}
     data = {k: np.empty((len(files), LX, LY), np.float16) for k in first}
     for i, f in enumerate(files):
         fr = first if i == 0 else load(f)
-        for k, v in fr.items():
-            data[k][i] = v.reshape(LX, LY).astype(np.float16)
+        for k in data:
+            data[k][i] = fr[k].reshape(LX, LY).astype(np.float16)
     out = dict(data, t=steps)
     if a.compare:
         ref = a.compare/files[-1].name

@@ -31,6 +31,11 @@
             (nstart), nothing before (nstart also gates response.csv and the video, so these runs
             have no reducer). tau_chi = .3, 3, 30 at tau_m = 8 (active start) and tau_chi = .3 at
             tau_m = 10.5 (passive start, the textured passive branch).
+  bifvideo  bifurcation videos for the step model (h-n = 0, wp = 0, tau_chi = 0.3 tau_c): the rep1
+            cases tau_m = 7, 7.5 (one state) and 9 (two states), both uniform starts, re-run with
+            the same seeds and cards, only the output changed -- a full frame every 674 steps
+            (1 tau_c) from the START of the observation (nstart = preparation) for 400 tau_c, and
+            nsteps cut to preparation + 400 tau_c. The trajectory up to that step is the scan's.
 
 Every card is the 20261013/cw_hill_tm_scan card (hill law, beta = 0, Dm = Dchi = .00166667,
 z0 = .3, pmem = .016838) with only these set: tau-m, the preparation (chi reaction frozen for
@@ -44,6 +49,7 @@ touch the dynamics. Exact full-field means are still written every 337 steps (0.
   gen_cw_hill_family_scan.py dscan    cases/20261016/cw_hill_dscan
   gen_cw_hill_family_scan.py tchifill cases/20261019/cw_hill_tchifill
   gen_cw_hill_family_scan.py dense    cases/20261022/cw_hill_defect_dense
+  gen_cw_hill_family_scan.py bifvideo cases/20261022/cw_hill_bifurcation_video
 """
 import argparse
 import hashlib
@@ -73,6 +79,8 @@ FAMILIES = {
               for d in (3, 10, 30, 100)],
     'dense': [dict(hn=16, wp=.002, tc=tc, tm=(tm,), starts=(st,), reps=(1,), ninfo=135, window_tc=60)
               for tc, tm, st in ((.3, 8, '1'), (3, 8, '1'), (30, 8, '1'), (.3, 10.5, '0'))],
+    'bifvideo': [dict(hn=0, wp=0, tc=.3, tm=(7, 7.5, 9), starts=('1', '0'), reps=(1,), ninfo=674,
+                      obs_tc=400, start_window=True)],
     'tchifill': [dict(hn=16, wp=.002, tc=tc) for tc in (1.5, 2, 2.5)] +
                 [dict(hn=16, wp=.002, tc=tc, tm=TM_PATCH, starts=('patch',))
                  for tc in (.3, 1, 1.5, 2, 2.5, 3, 10, 30)],
@@ -115,6 +123,7 @@ def generate(family, out):
             member += f'_D1o{den}'
             dval = f'{DBIO/den:.6g}'
         tau_chi = '202.3' if mem['tc'] == .3 else f'{mem["tc"]*TC:.13g}'
+        obs = round(mem['obs_tc']*TC) if 'obs_tc' in mem else OBS
         for g in mem.get('tm', TM):
             prep = round(max(100., 10*g)*TC)
             for start in mem.get('starts', tuple(STARTS)):
@@ -126,13 +135,14 @@ def generate(family, out):
                             f'{key:<21}= {value}\n' for key, value in PATCH_PHASES), text)
                         assert n == 1
                     for key, value in (('tau-m', f'{g*TC:.13g}'), ('chi-freeze-steps', prep),
-                                       ('nsteps', prep + OBS)) + init + (
+                                       ('nsteps', prep + obs)) + init + (
                                        ('seed', 190900 + k), ('chi-seed', 200900 + k),
                                        ('h-n', mem['hn']), ('wp', mem['wp']), ('tau-chi', tau_chi),
                                        ('video-stride', 8), ('ninfo', ninfo)) + (
                                        (('Dm', dval), ('Dchi', dval)) if den is not None else ()) + (
                                        (('nstart', prep + OBS - round(mem['window_tc']*TC)),)
-                                       if 'window_tc' in mem else ()):
+                                       if 'window_tc' in mem else
+                                       (('nstart', prep),) if mem.get('start_window') else ()):
                         text = replace(text, key, value)
                     label = ('patch (binary-noise, chi-length 7.02, half chi=1/m=.3301, half chi=0/m=.0559)'
                              if start == 'patch' else f'chi={start}')
@@ -140,8 +150,11 @@ def generate(family, out):
                               f'# h-n={mem["hn"]} (0 = step), wp={mem["wp"]} (0 = step), tau_chi={tau_chi} steps; '
                               + (f'beta=0, Dm=Dchi={dval} (= .00166667/{den}), mc=.2287, pmem=.016838, z0=.3.\n'
                                  if den is not None else 'beta=0, Dm=Dchi=.00166667, mc=.2287, pmem=.016838, z0=.3.\n')
-                              + f'# Prepare {prep} steps (max(100,10 tau_m) tau_c, chi reaction frozen), observe {OBS} '
-                              + (f'steps (2000 tau_c). Video stride 8, full frame every ~{round(ninfo/TC)} tau_c.\n'
+                              + f'# Prepare {prep} steps (max(100,10 tau_m) tau_c, chi reaction frozen), observe {obs} '
+                              + (f'steps ({mem["obs_tc"]} tau_c, cut short). Output from nstart = {prep} (observation start): '
+                                 f'full frame every {ninfo} steps; no video/response before.\n'
+                                 if mem.get('start_window') else
+                                 f'steps (2000 tau_c). Video stride 8, full frame every ~{round(ninfo/TC)} tau_c.\n'
                                  if 'window_tc' not in mem else
                                  f'steps (2000 tau_c). Output only from nstart = nsteps - {round(mem["window_tc"]*TC)} '
                                  f'({mem["window_tc"]} tau_c): full frame every {ninfo} steps; no video/response before.\n'))
@@ -159,7 +172,7 @@ def generate(family, out):
                                  **({'D_divisor': den, 'Dm': float(dval), 'Dchi': float(dval)} if den is not None else {}),
                                  'L': 256, 'mc': 0.2287, 'tm_over_tc': g, 'initialization': start,
                                  'chi0': .5 if start == 'patch' else float(start), 'replicate': k, 'seed': 190900 + k,
-                                 'chi_seed': 200900 + k, 'preparation_steps': prep, 'nsteps': prep + OBS,
+                                 'chi_seed': 200900 + k, 'preparation_steps': prep, 'nsteps': prep + obs,
                                  'run_dat_sha256': digest(text.encode())})
                     pending.append((out/case/'run.dat', text))
     commit = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=repo, text=True).strip()
