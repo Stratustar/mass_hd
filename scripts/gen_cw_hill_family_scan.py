@@ -36,6 +36,9 @@
             the same seeds and cards, only the output changed -- a full frame every 674 steps
             (1 tau_c) from the START of the observation (nstart = preparation) for 400 tau_c, and
             nsteps cut to preparation + 400 tau_c. The trajectory up to that step is the scan's.
+  bifvideo_tc10  the same for tau_chi = 10 tau_c (n = 16, wp = .002, the tchiscan member): tau_m = 7, 7.5
+            (one state; the active start decays over ~300-400 tau_c because tau_chi is slow) and
+            9.5, 10 (two states), both starts, rep1, 400 tau_c of frames every tau_c.
 
 Every card is the 20261013/cw_hill_tm_scan card (hill law, beta = 0, Dm = Dchi = .00166667,
 z0 = .3, pmem = .016838) with only these set: tau-m, the preparation (chi reaction frozen for
@@ -50,6 +53,7 @@ touch the dynamics. Exact full-field means are still written every 337 steps (0.
   gen_cw_hill_family_scan.py tchifill cases/20261019/cw_hill_tchifill
   gen_cw_hill_family_scan.py dense    cases/20261022/cw_hill_defect_dense
   gen_cw_hill_family_scan.py bifvideo cases/20261022/cw_hill_bifurcation_video
+  gen_cw_hill_family_scan.py bifvideo_tc10 cases/20261022/cw_hill_bifurcation_video_tc10
 """
 import argparse
 import hashlib
@@ -81,6 +85,8 @@ FAMILIES = {
               for tc, tm, st in ((.3, 8, '1'), (3, 8, '1'), (30, 8, '1'), (.3, 10.5, '0'))],
     'bifvideo': [dict(hn=0, wp=0, tc=.3, tm=(7, 7.5, 9), starts=('1', '0'), reps=(1,), ninfo=674,
                       obs_tc=400, start_window=True)],
+    'bifvideo_tc10': [dict(hn=16, wp=.002, tc=10, tm=(7, 7.5, 9.5, 10), starts=('1', '0'), reps=(1,), ninfo=674,
+                           obs_tc=400, start_window=True)],
     'tchifill': [dict(hn=16, wp=.002, tc=tc) for tc in (1.5, 2, 2.5)] +
                 [dict(hn=16, wp=.002, tc=tc, tm=TM_PATCH, starts=('patch',))
                  for tc in (.3, 1, 1.5, 2, 2.5, 3, 10, 30)],
