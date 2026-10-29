@@ -46,6 +46,12 @@
             defects. chi_bar = the closed-loop tail mean (3 seeds): .550 (tau_chi .3), .391 (tau_chi 3).
             500 tau_c observation, a full frame every 0.2 tau_c in the last 60 tau_c; tau_chi = .3 at
             rep 1, 2 and tau_chi = 3 at rep 1.
+  mc022     the mirror of the working point: mc = 0.22, .007 BELOW the single-cell switch line
+            mc* = .227 (the working point .2287 sits .002 above it), so the mean field's near-critical
+            monostable state rises into ACTIVE (.80 at tau_m = 8, .92 at 10) and the passive branch
+            emerges (bistable from tau_m = 11). tau_chi = .3, 1, 2, 3, 10, 30 tau_c, tau_m = 4 ... 16,
+            both uniform starts, 2 seeds. Does texture still push active (texture = active bias) or
+            now towards passive (texture = pull towards coexistence, away from the mean-field branch)?
 
 Every card is the 20261013/cw_hill_tm_scan card (hill law, beta = 0, Dm = Dchi = .00166667,
 z0 = .3, pmem = .016838) with only these set: tau-m, the preparation (chi reaction frozen for
@@ -61,6 +67,7 @@ touch the dynamics. Exact full-field means are still written every 337 steps (0.
   gen_cw_hill_family_scan.py dense    cases/20261022/cw_hill_defect_dense
   gen_cw_hill_family_scan.py bifvideo cases/20261022/cw_hill_bifurcation_video
   gen_cw_hill_family_scan.py openloop cases/20261029/cw_hill_defect_openloop
+  gen_cw_hill_family_scan.py mc022    cases/20261029/cw_hill_mc022
   gen_cw_hill_family_scan.py bifvideo_tc10 cases/20261022/cw_hill_bifurcation_video_tc10
 """
 import argparse
@@ -78,6 +85,7 @@ NINFO = 337165                         # full frame every ~500 tau_c (was 67400)
 REPS = (1, 2, 3)                       # seed 190900+k, chi-seed 200900+k (rep1 = earlier scans)
 STARTS = {'1': '0.3301', '0': '0.0559'}   # chi0 -> m0 (active / passive uniform start)
 TM_PATCH = (9, 9.5, 10, 10.5, 11, 11.5, 12, 13)
+TM_MC022 = (4, 6, 7, 8, 9, 10, 10.5, 11, 11.5, 12, 13, 14, 16)
 # 'patch': the binary-noise start of 20260913/cw_pmem_pulse in the hill convention (chi = 1 active).
 PATCH = (('chi-config', 'binary-noise'), ('chi0', '0.5'), ('m0', '0.193'), ('chi-length', '7.02'))
 PATCH_PHASES = (('chi-lo', '0'), ('chi-hi', '1'), ('m-lo', '0.0559'), ('m-hi', '0.3301'))
@@ -97,6 +105,7 @@ FAMILIES = {
                            obs_tc=400, start_window=True)],
     'openloop': [dict(hn=16, wp=.002, tc=tc, tm=(8,), starts=('1',), reps=reps, ninfo=135, window_tc=60, obs_tc=500,
                       zopen=z) for tc, reps, z in ((.3, (1, 2), '0.0456667'), (3, (1,), '0.0382467'))],
+    'mc022': [dict(hn=16, wp=.002, tc=tc, mc=.22, tm=TM_MC022, reps=(1, 2)) for tc in (.3, 1, 2, 3, 10, 30)],
     'tchifill': [dict(hn=16, wp=.002, tc=tc) for tc in (1.5, 2, 2.5)] +
                 [dict(hn=16, wp=.002, tc=tc, tm=TM_PATCH, starts=('patch',))
                  for tc in (.3, 1, 1.5, 2, 2.5, 3, 10, 30)],
@@ -134,6 +143,9 @@ def generate(family, out):
     rows, pending = [], []
     for mem in FAMILIES[family]:
         member = f'hn{token(mem["hn"])}_wp{token(mem["wp"])}_tc{token(mem["tc"])}'
+        mc = mem.get('mc', .2287)
+        if 'mc' in mem:
+            member = f'mc{token(mc)}_' + member
         den, ninfo = mem.get('den'), mem.get('ninfo', NINFO)
         if den is not None:
             member += f'_D1o{den}'
@@ -161,6 +173,7 @@ def generate(family, out):
                                        ('seed', 190900 + k), ('chi-seed', 200900 + k),
                                        ('h-n', mem['hn']), ('wp', mem['wp']), ('tau-chi', tau_chi),
                                        ('video-stride', 8), ('ninfo', ninfo)) + (
+                                       (('mc', mc),) if 'mc' in mem else ()) + (
                                        (('Dm', dval), ('Dchi', dval)) if den is not None else ()) + (
                                        (('nstart', prep + obs - round(mem['window_tc']*TC)),)
                                        if 'window_tc' in mem else
@@ -171,7 +184,7 @@ def generate(family, out):
                     header = (f'# {campaign}: hill law, {member}, tau_m/tau_c={g!r}, start {label}, rep{k}.\n'
                               f'# h-n={mem["hn"]} (0 = step), wp={mem["wp"]} (0 = step), tau_chi={tau_chi} steps; '
                               + (f'beta=0, Dm=Dchi={dval} (= .00166667/{den}), mc=.2287, pmem=.016838, z0=.3.\n'
-                                 if den is not None else 'beta=0, Dm=Dchi=.00166667, mc=.2287, pmem=.016838, z0=.3.\n')
+                                 if den is not None else f'beta=0, Dm=Dchi=.00166667, mc={mc:g}, pmem=.016838, z0=.3.\n'.replace('mc=0.', 'mc=.'))
                               + f'# Prepare {prep} steps (max(100,10 tau_m) tau_c, chi reaction frozen), observe {obs} '
                               + (f'steps ({mem["obs_tc"]} tau_c, cut short). Output from nstart = {prep} (observation start): '
                                  f'full frame every {ninfo} steps; no video/response before.\n'
@@ -188,14 +201,14 @@ def generate(family, out):
                     changed = {key for key in a if a[key] != b.get(key)}
                     assert changed <= {'tau-m', 'chi-freeze-steps', 'nsteps', 'chi0', 'm0', 'seed',
                                        'chi-seed', 'h-n', 'wp', 'tau-chi', 'video-stride', 'ninfo',
-                                       'Dm', 'Dchi', 'nstart', 'open-loop', 'zeta-open'} | ({'chi-config', 'chi-length', 'chi-lo', 'chi-hi',
+                                       'Dm', 'Dchi', 'nstart', 'open-loop', 'zeta-open', 'mc'} | ({'chi-config', 'chi-length', 'chi-lo', 'chi-hi',
                                                          'm-lo', 'm-hi'} if start == 'patch' else set()), changed
                     assert math.isclose(float(a['tau-m'])/TC, g, rel_tol=1e-11)
                     case = f'L256/{member}_tm{token(g)}_chi{start}_rep{k}'
                     rows.append({'case': case, 'member': member, 'h_n': mem['hn'], 'wp': mem['wp'],
                                  'tau_chi_over_tc': mem['tc'], 'tau_chi_steps': float(tau_chi),
                                  **({'D_divisor': den, 'Dm': float(dval), 'Dchi': float(dval)} if den is not None else {}),
-                                 'L': 256, 'mc': 0.2287, 'tm_over_tc': g, 'initialization': start,
+                                 'L': 256, 'mc': mc, 'tm_over_tc': g, 'initialization': start,
                                  'chi0': .5 if start == 'patch' else float(start), 'replicate': k, 'seed': 190900 + k,
                                  'chi_seed': 200900 + k, 'preparation_steps': prep, 'nsteps': prep + obs,
                                  **({'open_loop': 1, 'zeta_open': float(mem['zopen'])} if 'zopen' in mem else {}),
@@ -210,7 +223,7 @@ def generate(family, out):
         'simulator_source_sha256': hashes, 'tm_grid': list(TM), 'replicates': list(REPS),
         'members': FAMILIES[family],
         'initializations': list(dict.fromkeys(s for mem in FAMILIES[family] for s in mem.get('starts', tuple(STARTS)))),
-        'fixed': {'L': 256, 'mc': 0.2287, 'pmem': 0.016838, 'zeta0_frac': 0.3, 'beta': 0,
+        'fixed': {'L': 256, 'mc': FAMILIES[family][0].get('mc', 0.2287), 'pmem': 0.016838, 'zeta0_frac': 0.3, 'beta': 0,
                   'Dm': 0.00166667, 'Dchi': 0.00166667},
         'convention': 'switch-model=hill: chi=1 ACTIVE; chi0=1 active start (m0=.3301), chi0=0 passive (m0=.0559)'
                       + ('; patch = chi-config binary-noise, chi-length 7.02, chi-lo/hi 0/1, m-lo/hi .0559/.3301.'
