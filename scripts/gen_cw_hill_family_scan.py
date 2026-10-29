@@ -39,6 +39,13 @@
   bifvideo_tc10  the same for tau_chi = 10 tau_c (n = 16, wp = .002, the tchiscan member): tau_m = 7, 7.5
             (one state; the active start decays over ~300-400 tau_c because tau_chi is slow) and
             9.5, 10 (two states), both starts, rep1, 400 tau_c of frames every tau_c.
+  openloop  causality control for the defect / interface coupling: the dense cases tau_chi = .3 and 3
+            at tau_m = 8 (active start) with OPEN LOOP -- m and chi evolve as usual but the activity
+            is held at zeta-open = zeta (z0 + (1 - z0) chi_bar) and chi is not fed back, so defects
+            cannot be steered by the chi pattern and any defect-chi correlation is painted by the
+            defects. chi_bar = the closed-loop tail mean (3 seeds): .550 (tau_chi .3), .391 (tau_chi 3).
+            500 tau_c observation, a full frame every 0.2 tau_c in the last 60 tau_c; tau_chi = .3 at
+            rep 1, 2 and tau_chi = 3 at rep 1.
 
 Every card is the 20261013/cw_hill_tm_scan card (hill law, beta = 0, Dm = Dchi = .00166667,
 z0 = .3, pmem = .016838) with only these set: tau-m, the preparation (chi reaction frozen for
@@ -53,6 +60,7 @@ touch the dynamics. Exact full-field means are still written every 337 steps (0.
   gen_cw_hill_family_scan.py tchifill cases/20261019/cw_hill_tchifill
   gen_cw_hill_family_scan.py dense    cases/20261022/cw_hill_defect_dense
   gen_cw_hill_family_scan.py bifvideo cases/20261022/cw_hill_bifurcation_video
+  gen_cw_hill_family_scan.py openloop cases/20261029/cw_hill_defect_openloop
   gen_cw_hill_family_scan.py bifvideo_tc10 cases/20261022/cw_hill_bifurcation_video_tc10
 """
 import argparse
@@ -87,6 +95,8 @@ FAMILIES = {
                       obs_tc=400, start_window=True)],
     'bifvideo_tc10': [dict(hn=16, wp=.002, tc=10, tm=(7, 7.5, 9.5, 10), starts=('1', '0'), reps=(1,), ninfo=674,
                            obs_tc=400, start_window=True)],
+    'openloop': [dict(hn=16, wp=.002, tc=tc, tm=(8,), starts=('1',), reps=reps, ninfo=135, window_tc=60, obs_tc=500,
+                      zopen=z) for tc, reps, z in ((.3, (1, 2), '0.0456667'), (3, (1,), '0.0382467'))],
     'tchifill': [dict(hn=16, wp=.002, tc=tc) for tc in (1.5, 2, 2.5)] +
                 [dict(hn=16, wp=.002, tc=tc, tm=TM_PATCH, starts=('patch',))
                  for tc in (.3, 1, 1.5, 2, 2.5, 3, 10, 30)],
@@ -128,6 +138,8 @@ def generate(family, out):
         if den is not None:
             member += f'_D1o{den}'
             dval = f'{DBIO/den:.6g}'
+        if 'zopen' in mem:
+            member += f'_open{token(float(mem["zopen"]))}'
         tau_chi = '202.3' if mem['tc'] == .3 else f'{mem["tc"]*TC:.13g}'
         obs = round(mem['obs_tc']*TC) if 'obs_tc' in mem else OBS
         for g in mem.get('tm', TM):
@@ -140,13 +152,17 @@ def generate(family, out):
                         text, n = re.subn(r'(?m)^(chi-length\s*=.*\n)', lambda m: m.group(1) + ''.join(
                             f'{key:<21}= {value}\n' for key, value in PATCH_PHASES), text)
                         assert n == 1
+                    if 'zopen' in mem:
+                        text, n = re.subn(r'(?m)^(zeta0-frac\s*=.*\n)', lambda m: m.group(1) + ''.join(
+                            f'{key:<21}= {value}\n' for key, value in (('open-loop', 1), ('zeta-open', mem['zopen']))), text)
+                        assert n == 1
                     for key, value in (('tau-m', f'{g*TC:.13g}'), ('chi-freeze-steps', prep),
                                        ('nsteps', prep + obs)) + init + (
                                        ('seed', 190900 + k), ('chi-seed', 200900 + k),
                                        ('h-n', mem['hn']), ('wp', mem['wp']), ('tau-chi', tau_chi),
                                        ('video-stride', 8), ('ninfo', ninfo)) + (
                                        (('Dm', dval), ('Dchi', dval)) if den is not None else ()) + (
-                                       (('nstart', prep + OBS - round(mem['window_tc']*TC)),)
+                                       (('nstart', prep + obs - round(mem['window_tc']*TC)),)
                                        if 'window_tc' in mem else
                                        (('nstart', prep),) if mem.get('start_window') else ()):
                         text = replace(text, key, value)
@@ -162,14 +178,17 @@ def generate(family, out):
                                  if mem.get('start_window') else
                                  f'steps (2000 tau_c). Video stride 8, full frame every ~{round(ninfo/TC)} tau_c.\n'
                                  if 'window_tc' not in mem else
-                                 f'steps (2000 tau_c). Output only from nstart = nsteps - {round(mem["window_tc"]*TC)} '
+                                 f'steps ({round(obs/TC)} tau_c). Output only from nstart = nsteps - {round(mem["window_tc"]*TC)} '
                                  f'({mem["window_tc"]} tau_c): full frame every {ninfo} steps; no video/response before.\n'))
+                    if 'zopen' in mem:
+                        header += (f'# OPEN LOOP: activity held at zeta-open = {mem["zopen"]} = zeta (z0 + (1 - z0) chi_bar), '
+                                   'chi not fed back into the stress.\n')
                     text = header + text
                     a = parameters(text)
                     changed = {key for key in a if a[key] != b.get(key)}
                     assert changed <= {'tau-m', 'chi-freeze-steps', 'nsteps', 'chi0', 'm0', 'seed',
                                        'chi-seed', 'h-n', 'wp', 'tau-chi', 'video-stride', 'ninfo',
-                                       'Dm', 'Dchi', 'nstart'} | ({'chi-config', 'chi-length', 'chi-lo', 'chi-hi',
+                                       'Dm', 'Dchi', 'nstart', 'open-loop', 'zeta-open'} | ({'chi-config', 'chi-length', 'chi-lo', 'chi-hi',
                                                          'm-lo', 'm-hi'} if start == 'patch' else set()), changed
                     assert math.isclose(float(a['tau-m'])/TC, g, rel_tol=1e-11)
                     case = f'L256/{member}_tm{token(g)}_chi{start}_rep{k}'
@@ -179,6 +198,7 @@ def generate(family, out):
                                  'L': 256, 'mc': 0.2287, 'tm_over_tc': g, 'initialization': start,
                                  'chi0': .5 if start == 'patch' else float(start), 'replicate': k, 'seed': 190900 + k,
                                  'chi_seed': 200900 + k, 'preparation_steps': prep, 'nsteps': prep + obs,
+                                 **({'open_loop': 1, 'zeta_open': float(mem['zopen'])} if 'zopen' in mem else {}),
                                  'run_dat_sha256': digest(text.encode())})
                     pending.append((out/case/'run.dat', text))
     commit = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=repo, text=True).strip()
