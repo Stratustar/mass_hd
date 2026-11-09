@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Per-run +1/2 defect-centred polar sums of chi and P (steady frames), for scan-wide maps.
+"""Per-run +1/2 defect-centred polar sums of chi, P and the non-LB isotropic stress (steady frames).
 
   cw_defect_polar.py <run_dir> <out_dir> [--min-tc 1000] [--only hn16_wp0p002]
 
@@ -13,6 +13,10 @@ Output <out_dir>/polar_case.npz: sums S_chi, S_P, S_chi2, S_P2, S_chiP with shap
 classes (all, passive, intermediate, active), counts N (4,), frame list, frame means of chi and P,
 +1/2 count per frame, and the run's tau_m, tau_chi, chi0, seed. Runs whose name does not contain
 --only are skipped with exit 0 (the analysis array runs over a whole campaign list).
+
+Also S_sb, S_sb2 and frame means sb_mean of the isotropic stress that is not the LB pressure,
+sigma_bulk = CC (1 - Qxx^2 - Qyx^2)^2 / 2 -- every other stress in confluent-wet is traceless, so this
+is the whole non-LB trace, and P = p_LB - sigma_bulk. Computed from Q exactly as the code does.
 """
 import argparse
 import json
@@ -58,15 +62,15 @@ def main():
         print(f'skip {a.run.name}')
         return
     p = {k: v['value'] for k, v in json.loads((a.run/'parameters.json').read_text())['data'].items()}
-    L, prep = int(p['LX']), int(p['chi_freeze_steps'])
+    L, prep, CC = int(p['LX']), int(p['chi_freeze_steps']), float(p['CC'])
     steps = sorted(int(re.search(r'frame(\d+)\.json', f.name).group(1)) for f in a.run.glob('frame*.json'))
     steps = [s for s in steps if (s - prep)/TC >= a.min_tc]
     if not steps:
         sys.exit(f'no frames >= {a.min_tc} tau_c after release in {a.run}')
     e_r = np.stack([np.cos(TH), np.sin(TH)], -1)
-    S = {k: np.zeros((4, len(R), len(TH))) for k in ('chi', 'P', 'chi2', 'P2', 'chiP')}
+    S = {k: np.zeros((4, len(R), len(TH))) for k in ('chi', 'P', 'chi2', 'P2', 'chiP', 'sb', 'sb2')}
     N = np.zeros(4, int)
-    chi_means, P_means, nplus = [], [], []
+    chi_means, P_means, sb_means, nplus = [], [], [], []
     for s in steps:
         d = json.loads((a.run/f'frame{s}.json').read_text())['data']
         F = {k: np.asarray(d[k]['value'], float).reshape(L, L) for k in ('QQxx', 'QQyx', 'chi', 'pressure')}
@@ -77,7 +81,8 @@ def main():
         e = np.c_[h[:, 1], -h[:, 0]]
         xy = plus[:, None, None, :] + R[None, :, None, None]*(e_r[None, None, :, 0, None]*e[:, None, None, :]
                                                               + e_r[None, None, :, 1, None]*h[:, None, None, :])
-        c, P = at(F['chi'], xy), at(F['pressure'], xy)
+        sbf = .5*CC*(1. - F['QQxx']**2 - F['QQyx']**2)**2
+        c, P, sb = at(F['chi'], xy), at(F['pressure'], xy), at(sbf, xy)
         cs = at(gaussian_filter(F['chi'], 2, mode='wrap'), plus)
         cls = np.where(cs < CLASS_EDGES[0], 1, np.where(cs > CLASS_EDGES[1], 3, 2))
         for k in range(4):
@@ -85,10 +90,11 @@ def main():
             S['chi'][k] += c[sel].sum(0); S['P'][k] += P[sel].sum(0)
             S['chi2'][k] += (c[sel]**2).sum(0); S['P2'][k] += (P[sel]**2).sum(0)
             S['chiP'][k] += (c[sel]*P[sel]).sum(0); N[k] += int(sel.sum())
-        chi_means.append(float(F['chi'].mean())); P_means.append(float(F['pressure'].mean())); nplus.append(len(plus))
+            S['sb'][k] += sb[sel].sum(0); S['sb2'][k] += (sb[sel]**2).sum(0)
+        chi_means.append(float(F['chi'].mean())); P_means.append(float(F['pressure'].mean())); sb_means.append(float(sbf.mean())); nplus.append(len(plus))
     a.out.mkdir(parents=True, exist_ok=True)
     np.savez_compressed(a.out/'polar_case.npz', r=R, theta_deg=np.degrees(TH), classes=np.array(['all', 'passive', 'intermediate', 'active']),
-                        N=N, steps=np.array(steps), chi_mean=np.array(chi_means), P_mean=np.array(P_means), n_plus=np.array(nplus),
+                        N=N, steps=np.array(steps), chi_mean=np.array(chi_means), P_mean=np.array(P_means), sb_mean=np.array(sb_means), n_plus=np.array(nplus),
                         tau_m_over_tc=float(p['tau_m'])/TC, tau_chi_over_tc=float(p['tau_chi'])/TC, chi0=float(p['chi0']),
                         seed=int(p['seed']), case=a.run.name, **{f'S_{k}': v for k, v in S.items()})
     print(json.dumps({'case': a.run.name, 'frames': len(steps), 'N': N.tolist(), 'chi_mean': chi_means}))
