@@ -12,6 +12,10 @@ y along the head h = -div Q/|div Q|, |x|, |y| <= 12, step 0.5):
   sigma_bulk                           the non-LB isotropic stress ('sigma_bulk'); every other stress is traceless
   p_inc    Poisson pressure of the non-LB stress, lap p = d_i d_j sigma_ij (FFT, periodic): the pressure an
            incompressible fluid would need to balance div sigma (sigma = sigmaXX, XY, YX, YY of the frame)
+  p_act    the same for the active stress alone, -zeta_eff Q ('sigma_active_xx', 'sigma_active_yx'; traceless)
+  p_el     p_inc - p_act: the passive (elastic) remainder
+In an incompressible fluid the total isotropic stress (sigma_xx + sigma_yy)/2 = -p_inc + sigma_bulk ~ -P, and
+for an ideal +1/2 with the active stress alone it is zeta cos(phi): compressive at the head, tensile at the tail.
 Q is rotated into the head frame and averaged (director = half the angle of the mean). Output: maps,
 the kept frame times, the +1/2 track and its head-projected speed.
 """
@@ -62,13 +66,14 @@ def main():
     L = int(par['LX'])
     steps = sorted(int(re.search(r'frame(\d+)\.json', f.name).group(1)) for f in a.run.glob('frame*.json'))
     XX, YY = np.meshgrid(X, X, indexing='xy')
-    S = {k: 0. for k in ('P', 'p_LB', 'sigma_bulk', 'p_inc', 'Qxx', 'Qxy')}
+    S = {k: 0. for k in ('P', 'p_LB', 'sigma_bulk', 'p_inc', 'p_act', 'p_el', 'Qxx', 'Qxy')}
     kept, track, counts = [], [], []
     for s in steps:
         t = s/TC
         d = json.loads((a.run/f'frame{s}.json').read_text())['data']
         F = {k: np.asarray(d[k]['value'], float).reshape(L, L) for k in
-             ('QQxx', 'QQyx', 'pressure', 'pressure_lb', 'sigma_bulk', 'sigmaXX', 'sigmaXY', 'sigmaYX', 'sigmaYY')}
+             ('QQxx', 'QQyx', 'pressure', 'pressure_lb', 'sigma_bulk', 'sigmaXX', 'sigmaXY', 'sigmaYX', 'sigmaYY',
+              'sigma_active_xx', 'sigma_active_yx')}
         pl, mi = cores(F['QQxx'], F['QQyx']); counts.append((t, len(pl), len(mi)))
         if len(pl) != 1:
             continue
@@ -80,8 +85,10 @@ def main():
         if t < a.t_min or sep < a.min_sep:
             continue
         xy = pl[0][None, None, :] + XX[..., None]*e + YY[..., None]*h
+        p_inc = poisson(F['sigmaXX'], F['sigmaXY'], F['sigmaYX'], F['sigmaYY'])
+        p_act = poisson(F['sigma_active_xx'], F['sigma_active_yx'], F['sigma_active_yx'], -F['sigma_active_xx'])
         fields = {'P': F['pressure'], 'p_LB': F['pressure_lb'], 'sigma_bulk': F['sigma_bulk'],
-                  'p_inc': poisson(F['sigmaXX'], F['sigmaXY'], F['sigmaYX'], F['sigmaYY'])}
+                  'p_inc': p_inc, 'p_act': p_act, 'p_el': p_inc - p_act}
         for k, f in fields.items():
             S[k] = S[k] + at(f - f.mean(), xy)
         psi = np.arctan2(e[1], e[0]); qa, qb = at(F['QQxx'], xy), at(F['QQyx'], xy)
