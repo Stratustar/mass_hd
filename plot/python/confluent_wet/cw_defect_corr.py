@@ -16,6 +16,8 @@ Each window is referred to a zero in three ways (variants):
   win     minus the mean of that window over the disk r <= 12        (the per-defect normalisation)
   z       'win' divided by that window's standard deviation over the disk (windows with zero spread are dropped)
 Sums over windows, per frame: S[frame, kind, variant, q, row, col], q = (P, chi, P^2, chi^2, P chi), and counts N.
+Also SQ[frame, kind, (xx, xy), row, col]: the sum of Q turned into the window frame, Q'xx + i Q'xy = (Qxx + i Qxy) exp(-2 i alpha),
+alpha = the lab angle of the across direction; its average gives the mean director around the defect (angle from the across axis).
 From these, per pixel: mean maps <P>, <chi>, and the Pearson correlation over defects
     r(x, y) = <dP dchi> / (sigma_P sigma_chi),  dP_n = P_n(x, y) - <P>(x, y)
 Output <out_dir>/corr_case.npz. `accumulate` and `maps` are imported by analysis/defect_pchi_corr.py.
@@ -74,6 +76,22 @@ def windows(f, pts, h):
     return at(f, pts[:, None, None, :] + UU[None, :, :, None]*e[:, None, None, :] + VV[None, :, :, None]*h[:, None, None, :])
 
 
+def qsum(qxx, qxy, pts, h):
+    """sum over windows of Q in the window frame (across, along), shape (2, 25, 25)."""
+    if not len(pts):
+        return np.zeros((2,) + UU.shape)
+    q = (windows(qxx, pts, h) + 1j*windows(qxy, pts, h))*np.exp(-2j*np.arctan2(-h[:, 0], h[:, 1]))[:, None, None]
+    return np.stack([q.real.sum(0), q.imag.sum(0)])
+
+
+def director(SQ, N, step=2):
+    """mean director from summed Q: positions (u, v), unit components (du, dv) and the order |<Q>| on every step-th pixel."""
+    q = (SQ[0] + 1j*SQ[1])/max(float(N), 1.)
+    sl = slice(H % step, None, step)
+    th = .5*np.angle(q[sl, sl])
+    return UU[sl, sl], VV[sl, sl], np.cos(th), np.sin(th), np.abs(q[sl, sl])
+
+
 def sums(Pw, Cw, Pm, Cm):
     """Pw, Cw: (n, 25, 25) windows; Pm, Cm: frame means. Returns S (3 variants, 5, 25, 25), N (3,)."""
     S = np.zeros((len(VARIANTS), NQ) + UU.shape)
@@ -91,22 +109,26 @@ def sums(Pw, Cw, Pm, Cm):
 
 
 def accumulate(qxx, qxy, chi, P, rng):
-    """one frame -> S (3 kinds, 3 variants, 5, 25, 25), N (3 kinds, 3 variants), (n_plus, n_minus)."""
+    """one frame -> S (3 kinds, 3 variants, 5, 25, 25), N (3 kinds, 3 variants), (n_plus, n_minus), SQ (3 kinds, 2, 25, 25)."""
     L = chi.shape[0]
     plus, minus = cores(qxx, qxy)
     Pm, Cm = P.mean(), chi.mean()
     S = np.zeros((len(KINDS), len(VARIANTS), NQ) + UU.shape)
     N = np.zeros((len(KINDS), len(VARIANTS)))
+    SQ = np.zeros((len(KINDS), 2) + UU.shape)
     h = heads(qxx, qxy, plus)
     S[0], N[0] = sums(windows(P, plus, h), windows(chi, plus, h), Pm, Cm)
+    SQ[0] = qsum(qxx, qxy, plus, h)
     for a in arms(qxx, qxy, minus):
         s, n = sums(windows(P, minus, a), windows(chi, minus, a), Pm, Cm)
         S[1] += s; N[1] += n
+        SQ[1] += qsum(qxx, qxy, minus, a)
     pts = rng.uniform(0, L, (len(plus), 2))
     ang = rng.uniform(0, 2*np.pi, len(plus))
     a = np.c_[np.cos(ang), np.sin(ang)]
     S[2], N[2] = sums(windows(P, pts, a), windows(chi, pts, a), Pm, Cm)
-    return S, N, (len(plus), len(minus))
+    SQ[2] = qsum(qxx, qxy, pts, a)
+    return S, N, (len(plus), len(minus)), SQ
 
 
 def maps(S, N):
@@ -136,15 +158,15 @@ def main():
     if not steps:
         sys.exit(f'no frames >= {a.min_tc} tau_c after release in {a.run}')
     rng = np.random.default_rng(int(p['seed']))
-    S, N, cnt, chi_mean, P_mean = [], [], [], [], []
+    S, N, cnt, SQ, chi_mean, P_mean = [], [], [], [], [], []
     for s in steps:
         d = json.loads((a.run/f'frame{s}.json').read_text())['data']
         F = {k: np.asarray(d[k]['value'], float).reshape(L, L) for k in ('QQxx', 'QQyx', 'chi', 'pressure')}
-        s_, n_, c_ = accumulate(F['QQxx'], F['QQyx'], F['chi'], F['pressure'], rng)
-        S.append(s_); N.append(n_); cnt.append(c_)
+        s_, n_, c_, q_ = accumulate(F['QQxx'], F['QQyx'], F['chi'], F['pressure'], rng)
+        S.append(s_); N.append(n_); cnt.append(c_); SQ.append(q_)
         chi_mean.append(float(F['chi'].mean())); P_mean.append(float(F['pressure'].mean()))
     a.out.mkdir(parents=True, exist_ok=True)
-    np.savez_compressed(a.out/'corr_case.npz', S=np.array(S), N=np.array(N), u=U, kinds=np.array(KINDS), variants=np.array(VARIANTS),
+    np.savez_compressed(a.out/'corr_case.npz', S=np.array(S), N=np.array(N), SQ=np.array(SQ), u=U, kinds=np.array(KINDS), variants=np.array(VARIANTS),
                         quantities=np.array(['P', 'chi', 'P2', 'chi2', 'Pchi']), steps=np.array(steps), n_plus_minus=np.array(cnt),
                         chi_mean=np.array(chi_mean), P_mean=np.array(P_mean), tau_m_over_tc=float(p['tau_m'])/TC,
                         tau_chi_over_tc=float(p['tau_chi'])/TC, chi0=float(p['chi0']), seed=int(p['seed']), case=a.run.name)
