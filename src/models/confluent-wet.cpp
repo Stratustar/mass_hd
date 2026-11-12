@@ -65,9 +65,9 @@ void ConfluentWet::Initialize()
     throw error_msg("confluent-wet: initial-order must be non-negative.");
   if(chi_config != "uniform" && chi_config != "noise" &&
      chi_config != "stripe"  && chi_config != "blocks" &&
-     chi_config != "binary-noise")
+     chi_config != "binary-noise" && chi_config != "gradient")
     throw error_msg("confluent-wet: chi-config must be 'uniform', 'noise', 'stripe', "
-                    "'blocks' or 'binary-noise', got '", chi_config, "'.");
+                    "'blocks', 'binary-noise' or 'gradient', got '", chi_config, "'.");
   if(chi_config == "binary-noise")
   {
     if(chi_length <= 0.)
@@ -117,6 +117,9 @@ void ConfluentWet::Initialize()
   if(chi_freeze_steps && nsubsteps != 1)
     throw error_msg("confluent-wet: chi-freeze-steps counts Step() calls and is only equal "
                     "to runcard time at nsubsteps=1, got nsubsteps=", nsubsteps, ".");
+  if(q_freeze_steps && nsubsteps != 1)
+    throw error_msg("confluent-wet: q-freeze-start/q-freeze-steps count Step() calls and are "
+                    "only equal to runcard time at nsubsteps=1, got nsubsteps=", nsubsteps, ".");
   if(mem_freeze_steps && nsubsteps != 1)
     throw error_msg("confluent-wet: mem-freeze-steps counts Step() calls and is only equal "
                     "to runcard time at nsubsteps=1, got nsubsteps=", nsubsteps, ".");
@@ -433,6 +436,18 @@ void ConfluentWet::ConfigurePhenotype()
       const bool hi = GetXPosition(k) < LX/2;
       chi[k] = hi ? chi_hi : chi_lo;
       m[k]   = hi ? m_hi   : m_lo;
+    }
+    return;
+  }
+
+  if(chi_config == "gradient")
+  {
+    // Linear ramp along x, periodic as a triangle wave: LOW at x = 0, HIGH at x = LX/2.
+    for(unsigned k=0; k<DomainSize; ++k)
+    {
+      const double s = 1. - fabs(2.*GetXPosition(k)/LX - 1.);
+      chi[k] = chi_lo + (chi_hi - chi_lo)*s;
+      m[k]   = m_lo   + (m_hi   - m_lo)*s;
     }
     return;
   }
@@ -754,9 +769,14 @@ void ConfluentWet::UpdateNodeFields(unsigned k, bool first)
   const double traceQL   = Qxx*(dxux - dyuy) + 2*Qyx*shear;
 
   // ---- Beris-Edwards, advected with the MATERIAL velocity -----------------
-  const double Dxx = Gamma*Hxx - ax*dxQQxx[k] - ay*dyQQxx[k] - 2*vorticity*Qyx
+  // q-freeze: Q is held, the stress it produces still drives the flow.
+  const bool q_frozen = q_freeze_steps && nstep_done >= q_freeze_start
+                        && nstep_done - q_freeze_start < q_freeze_steps;
+  const double Dxx = q_frozen ? 0. :
+    Gamma*Hxx - ax*dxQQxx[k] - ay*dyQQxx[k] - 2*vorticity*Qyx
     + xi*((Qxx+1)*(2*dxux - traceQL) + 2*Qyx*shear - expansion);
-  const double Dyx = Gamma*Hyx - ax*dxQQyx[k] - ay*dyQQyx[k] + 2*vorticity*Qxx
+  const double Dyx = q_frozen ? 0. :
+    Gamma*Hyx - ax*dxQQyx[k] - ay*dyQQyx[k] + 2*vorticity*Qxx
     + xi*(Qyx*(expansion - traceQL) + 2*shear);
 
   // ---- phenotype and memory: intensive scalars, material derivative -------
@@ -798,7 +818,7 @@ void ConfluentWet::UpdateNodeFields(unsigned k, bool first)
     double Qxx_noise = 0., Qxy_noise = 0.;
     LBNode ff_noise = {{0.}};
 
-    if(Q_fluct)
+    if(Q_fluct && !q_frozen)
     {
       const double Q_stren = sqrt(Gamma*Q_kBT);
       Qxx_noise = Q_stren*random_real();
@@ -1323,6 +1343,11 @@ option_list ConfluentWet::GetOptions()
      "the prescribed activity in open-loop mode")
     ("chi-freeze-steps", opt::value<unsigned>(&chi_freeze_steps),
      "hold the phenotype switching source off for this many steps (transport stays on)")
+    ("q-freeze-start", opt::value<unsigned>(&q_freeze_start),
+     "first step at which Q is held fixed (q-freeze-steps > 0)")
+    ("q-freeze-steps", opt::value<unsigned>(&q_freeze_steps),
+     "hold Q fixed for this many steps from q-freeze-start: the stress of the held Q still "
+     "drives the flow, chi and m evolve; 0 disables")
     ("init-frame", opt::value<std::string>(&init_frame),
      "seed Q, the velocity and the pressure from this frame*.json; chi and m still come "
      "from chi-config, and the LB populations are rebuilt as f_eq(u_code, n)")
@@ -1360,7 +1385,8 @@ option_list ConfluentWet::GetOptions()
     ("initial-order", opt::value<double>(&init_order),
      "initial nematic order amplitude")
     ("chi-config", opt::value<string>(&chi_config),
-     "phenotype init: uniform, noise, binary-noise, stripe or blocks")
+     "phenotype init: uniform, noise, binary-noise, stripe, blocks or gradient (linear ramp "
+     "along x, chi-lo at x = 0 to chi-hi at x = LX/2 and back)")
     ("chi0", opt::value<double>(&chi0),
      "initial mean phenotype")
     ("chi-noise", opt::value<double>(&chi_noise),

@@ -296,7 +296,12 @@ protected:
    *              and (chi_lo, m_lo) cells, EXACTLY half of each (a shuffled assignment,
    *              not an independent coin per block -- with 1600 blocks an independent coin
    *              leaves a +/- 1.25% drift in the initial area fraction, and the whole point
-   *              of the mixed initial condition is that it starts on the 50/50 line). */
+   *              of the mixed initial condition is that it starts on the 50/50 line).
+   *    gradient  a linear ramp along x, periodic as a triangle wave: (chi_lo, m_lo) at x = 0,
+   *              (chi_hi, m_hi) at x = LX/2, back down to (chi_lo, m_lo) at x = LX. The
+   *              gradient is uniform, 2 (chi_hi - chi_lo)/LX, and changes sign at x = LX/2
+   *              and x = 0. With director-config = defect-pair the +1/2 (x = LX/2 - sep/2)
+   *              sits on the rising ramp and the -1/2 on the falling one. */
   std::string chi_config = "uniform";
   double chi0 = 0.5, chi_noise = 0., chi_length = 0.;
   /** SEED OF THE PHENOTYPE PATTERN ALONE, 0 = share the run's global generator.
@@ -321,6 +326,18 @@ protected:
    *  freezes is only the reaction, so the flow and the pressure field can equilibrate to
    *  the prescribed chi pattern before the pattern is allowed to answer back. */
   unsigned chi_freeze_steps = 0;
+
+  /** HOLD Q FIXED for q_freeze_steps steps, starting at step q_freeze_start.
+   *
+   *  While frozen the Beris-Edwards increment (and the Q noise) is dropped, so Q keeps the
+   *  value it had at q_freeze_start; everything else runs: the stress is still computed from
+   *  that Q, the flow relaxes to the steady state it drives, and chi and m are advected and
+   *  react as usual. A pinned +1/2 then has the material streaming through it at its
+   *  self-propulsion velocity -- the co-moving frame of a steadily moving defect, without
+   *  the instability of the surrounding director. The steps before q_freeze_start let the
+   *  cores of an analytic defect-pair relax first. After q_freeze_start + q_freeze_steps Q
+   *  evolves again and the defects move. q_freeze_steps = 0 (default) disables it. */
+  unsigned q_freeze_start = 0, q_freeze_steps = 0;
 
   /** START Q, THE VELOCITY AND THE PRESSURE FROM A SAVED FRAME, "" = cold start.
    *
@@ -620,7 +637,10 @@ public:
        & auto_name(g_chic)
        & auto_name(g_lock)
        & auto_name(Dm)
-       & auto_name(Dchi);
+       & auto_name(Dchi)
+       // appended 2026-11-12 (frozen defect pair)
+       & auto_name(q_freeze_start)
+       & auto_name(q_freeze_steps);
   }
 
   /** Serialization of the current frame (time snapshot)
