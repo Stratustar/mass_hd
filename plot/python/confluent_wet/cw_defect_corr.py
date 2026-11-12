@@ -18,6 +18,8 @@ Each window is referred to a zero in three ways (variants):
 Sums over windows, per frame: S[frame, kind, variant, q, row, col], q = (P, chi, P^2, chi^2, P chi), and counts N.
 Also SQ[frame, kind, (xx, xy), row, col]: the sum of Q turned into the window frame, Q'xx + i Q'xy = (Qxx + i Qxy) exp(-2 i alpha),
 alpha = the lab angle of the across direction; its average gives the mean director around the defect (angle from the across axis).
+Also SM[frame, kind, q, row, col] for the memory m (tau_m D_t m = g(P) - m), zero = frame mean:
+q = (dm, m, dm^2, dm dP, dm dchi), with dP and dchi also relative to the frame mean.
 From these, per pixel: mean maps <P>, <chi>, and the Pearson correlation over defects
     r(x, y) = <dP dchi> / (sigma_P sigma_chi),  dP_n = P_n(x, y) - <P>(x, y)
 Output <out_dir>/corr_case.npz. `accumulate` and `maps` are imported by analysis/defect_pchi_corr.py.
@@ -108,27 +110,36 @@ def sums(Pw, Cw, Pm, Cm):
     return S, N
 
 
-def accumulate(qxx, qxy, chi, P, rng):
-    """one frame -> S (3 kinds, 3 variants, 5, 25, 25), N (3 kinds, 3 variants), (n_plus, n_minus), SQ (3 kinds, 2, 25, 25)."""
+def msum(Mw, Pw, Cw, Mm, Pm, Cm):
+    """sums for the memory, zero = frame mean: (dm, m, dm^2, dm dP, dm dchi), shape (5, 25, 25)."""
+    if not len(Mw):
+        return np.zeros((NQ,) + UU.shape)
+    d = Mw - Mm
+    return np.stack([d.sum(0), Mw.sum(0), (d*d).sum(0), (d*(Pw - Pm)).sum(0), (d*(Cw - Cm)).sum(0)])
+
+
+def accumulate(qxx, qxy, chi, P, rng, m=None):
+    """one frame -> S (3 kinds, 3 variants, 5, 25, 25), N (3 kinds, 3 variants), (n_plus, n_minus), SQ (3 kinds, 2, 25, 25),
+    SM (3 kinds, 5, 25, 25) (zeros without m). The random points are drawn exactly as before m was added."""
     L = chi.shape[0]
     plus, minus = cores(qxx, qxy)
     Pm, Cm = P.mean(), chi.mean()
+    Mm = m.mean() if m is not None else 0.
     S = np.zeros((len(KINDS), len(VARIANTS), NQ) + UU.shape)
     N = np.zeros((len(KINDS), len(VARIANTS)))
     SQ = np.zeros((len(KINDS), 2) + UU.shape)
-    h = heads(qxx, qxy, plus)
-    S[0], N[0] = sums(windows(P, plus, h), windows(chi, plus, h), Pm, Cm)
-    SQ[0] = qsum(qxx, qxy, plus, h)
-    for a in arms(qxx, qxy, minus):
-        s, n = sums(windows(P, minus, a), windows(chi, minus, a), Pm, Cm)
-        S[1] += s; N[1] += n
-        SQ[1] += qsum(qxx, qxy, minus, a)
+    SM = np.zeros((len(KINDS), NQ) + UU.shape)
     pts = rng.uniform(0, L, (len(plus), 2))
     ang = rng.uniform(0, 2*np.pi, len(plus))
-    a = np.c_[np.cos(ang), np.sin(ang)]
-    S[2], N[2] = sums(windows(P, pts, a), windows(chi, pts, a), Pm, Cm)
-    SQ[2] = qsum(qxx, qxy, pts, a)
-    return S, N, (len(plus), len(minus)), SQ
+    groups = [(0, plus, heads(qxx, qxy, plus))] + [(1, minus, a) for a in arms(qxx, qxy, minus)] + [(2, pts, np.c_[np.cos(ang), np.sin(ang)])]
+    for k, p, h in groups:
+        Pw, Cw = windows(P, p, h), windows(chi, p, h)
+        s, n = sums(Pw, Cw, Pm, Cm)
+        S[k] += s; N[k] += n
+        SQ[k] += qsum(qxx, qxy, p, h)
+        if m is not None:
+            SM[k] += msum(windows(m, p, h), Pw, Cw, Mm, Pm, Cm)
+    return S, N, (len(plus), len(minus)), SQ, SM
 
 
 def maps(S, N):
@@ -158,15 +169,16 @@ def main():
     if not steps:
         sys.exit(f'no frames >= {a.min_tc} tau_c after release in {a.run}')
     rng = np.random.default_rng(int(p['seed']))
-    S, N, cnt, SQ, chi_mean, P_mean = [], [], [], [], [], []
+    S, N, cnt, SQ, SM, chi_mean, P_mean, m_mean = [], [], [], [], [], [], [], []
     for s in steps:
         d = json.loads((a.run/f'frame{s}.json').read_text())['data']
-        F = {k: np.asarray(d[k]['value'], float).reshape(L, L) for k in ('QQxx', 'QQyx', 'chi', 'pressure')}
-        s_, n_, c_, q_ = accumulate(F['QQxx'], F['QQyx'], F['chi'], F['pressure'], rng)
-        S.append(s_); N.append(n_); cnt.append(c_); SQ.append(q_)
-        chi_mean.append(float(F['chi'].mean())); P_mean.append(float(F['pressure'].mean()))
+        F = {k: np.asarray(d[k]['value'], float).reshape(L, L) for k in ('QQxx', 'QQyx', 'chi', 'pressure', 'm')}
+        s_, n_, c_, q_, m_ = accumulate(F['QQxx'], F['QQyx'], F['chi'], F['pressure'], rng, F['m'])
+        S.append(s_); N.append(n_); cnt.append(c_); SQ.append(q_); SM.append(m_)
+        chi_mean.append(float(F['chi'].mean())); P_mean.append(float(F['pressure'].mean())); m_mean.append(float(F['m'].mean()))
     a.out.mkdir(parents=True, exist_ok=True)
-    np.savez_compressed(a.out/'corr_case.npz', S=np.array(S), N=np.array(N), SQ=np.array(SQ), u=U, kinds=np.array(KINDS), variants=np.array(VARIANTS),
+    np.savez_compressed(a.out/'corr_case.npz', S=np.array(S), N=np.array(N), SQ=np.array(SQ), SM=np.array(SM), m_mean=np.array(m_mean),
+                        m_quantities=np.array(['dm', 'm', 'dm2', 'dmdP', 'dmdchi']), u=U, kinds=np.array(KINDS), variants=np.array(VARIANTS),
                         quantities=np.array(['P', 'chi', 'P2', 'chi2', 'Pchi']), steps=np.array(steps), n_plus_minus=np.array(cnt),
                         chi_mean=np.array(chi_mean), P_mean=np.array(P_mean), tau_m_over_tc=float(p['tau_m'])/TC,
                         tau_chi_over_tc=float(p['tau_chi'])/TC, chi0=float(p['chi0']), seed=int(p['seed']), case=a.run.name)
