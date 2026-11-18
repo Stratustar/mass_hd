@@ -57,6 +57,13 @@
             emerges (bistable from tau_m = 11). tau_chi = .3, 1, 2, 3, 10, 30 tau_c, tau_m = 4 ... 16,
             both uniform starts, 2 seeds. Does texture still push active (texture = active bias) or
             now towards passive (texture = pull towards coexistence, away from the mean-field branch)?
+  tracerscan  the tau_m scans again WITH the in-code Lagrangian tracers on (ntracer = 45 steps = 1/15 tau_c,
+            tracer-count = 1024 = a 32 x 32 start grid; tracer.f32 holds P, m, x, y along each path for the whole
+            run): mc = .2287 at tau_chi = .3, 1, 3, 10, 30 tau_c on the full tau_m grid, and mc = .22 at
+            tau_chi = .3, 3, 30 on the mc022 grid, both uniform starts, rep1 only. Cards and seeds are those of
+            nscan (n = 16) / tchiscan / mc022 rep1; only ntracer and tracer-count differ, and the tracers are
+            passive, so the fields follow the same trajectory. The pressure histories drive the single cell
+            (memory and phenotype integrated along the real P(t) instead of the OU pressure).
 
 Every card is the 20261013/cw_hill_tm_scan card (hill law, beta = 0, Dm = Dchi = .00166667,
 z0 = .3, pmem = .016838) with only these set: tau-m, the preparation (chi reaction frozen for
@@ -75,6 +82,7 @@ touch the dynamics. Exact full-field means are still written every 337 steps (0.
   gen_cw_hill_family_scan.py openloop cases/20261029/cw_hill_defect_openloop
   gen_cw_hill_family_scan.py mc022    cases/20261029/cw_hill_mc022
   gen_cw_hill_family_scan.py bifvideo_tc10 cases/20261022/cw_hill_bifurcation_video_tc10
+  gen_cw_hill_family_scan.py tracerscan cases/20261118/cw_hill_tracerscan
 """
 import argparse
 import hashlib
@@ -115,6 +123,8 @@ FAMILIES = {
     'openloop': [dict(hn=16, wp=.002, tc=tc, tm=(8,), starts=('1',), reps=reps, ninfo=135, window_tc=60, obs_tc=500,
                       zopen=z) for tc, reps, z in ((.3, (1, 2), '0.0456667'), (3, (1,), '0.0382467'))],
     'mc022': [dict(hn=16, wp=.002, tc=tc, mc=.22, tm=TM_MC022, reps=(1, 2)) for tc in (.3, 1, 2, 3, 10, 30)],
+    'tracerscan': [dict(hn=16, wp=.002, tc=tc, reps=(1,), tracer=(45, 1024)) for tc in (.3, 1, 3, 10, 30)] +
+                  [dict(hn=16, wp=.002, tc=tc, mc=.22, tm=TM_MC022, reps=(1,), tracer=(45, 1024)) for tc in (.3, 3, 30)],
     'tchifill': [dict(hn=16, wp=.002, tc=tc) for tc in (1.5, 2, 2.5)] +
                 [dict(hn=16, wp=.002, tc=tc, tm=TM_PATCH, starts=('patch',))
                  for tc in (.3, 1, 1.5, 2, 2.5, 3, 10, 30)],
@@ -183,6 +193,8 @@ def generate(family, out):
                                        ('h-n', mem['hn']), ('wp', mem['wp']), ('tau-chi', tau_chi),
                                        ('video-stride', 8), ('ninfo', ninfo)) + (
                                        (('mc', mc),) if 'mc' in mem else ()) + (
+                                       (('ntracer', mem['tracer'][0]), ('tracer-count', mem['tracer'][1]))
+                                       if 'tracer' in mem else ()) + (
                                        (('Dm', dval), ('Dchi', dval)) if den is not None else ()) + (
                                        (('nstart', prep + obs - round(mem['window_tc']*TC)),)
                                        if 'window_tc' in mem else
@@ -202,6 +214,9 @@ def generate(family, out):
                                  if 'window_tc' not in mem else
                                  f'steps ({round(obs/TC)} tau_c). Output only from nstart = nsteps - {round(mem["window_tc"]*TC)} '
                                  f'({mem["window_tc"]} tau_c): full frame every {ninfo} steps; no video/response before.\n'))
+                    if 'tracer' in mem:
+                        header += (f'# TRACERS: {mem["tracer"][1]} Lagrangian tracers sampled every {mem["tracer"][0]} steps '
+                                   f'({mem["tracer"][0]/TC:.4f} tau_c) -> tracer.f32 [P, m, x, y]; passive, the fields are unchanged.\n')
                     if 'zopen' in mem:
                         header += (f'# OPEN LOOP: activity held at zeta-open = {mem["zopen"]} = zeta (z0 + (1 - z0) chi_bar), '
                                    'chi not fed back into the stress.\n')
@@ -210,7 +225,7 @@ def generate(family, out):
                     changed = {key for key in a if a[key] != b.get(key)}
                     assert changed <= {'tau-m', 'chi-freeze-steps', 'nsteps', 'chi0', 'm0', 'seed',
                                        'chi-seed', 'h-n', 'wp', 'tau-chi', 'video-stride', 'ninfo',
-                                       'Dm', 'Dchi', 'nstart', 'open-loop', 'zeta-open', 'mc'} | ({'chi-config', 'chi-length', 'chi-lo', 'chi-hi',
+                                       'Dm', 'Dchi', 'nstart', 'open-loop', 'zeta-open', 'mc', 'ntracer', 'tracer-count'} | ({'chi-config', 'chi-length', 'chi-lo', 'chi-hi',
                                                          'm-lo', 'm-hi'} if start == 'patch' else set()), changed
                     assert math.isclose(float(a['tau-m'])/TC, g, rel_tol=1e-11)
                     case = f'L256/{member}_tm{token(g)}_chi{start}_rep{k}'
