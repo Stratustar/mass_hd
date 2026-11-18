@@ -31,6 +31,11 @@
             (nstart), nothing before (nstart also gates response.csv and the video, so these runs
             have no reducer). tau_chi = .3, 3, 30 at tau_m = 8 (active start) and tau_chi = .3 at
             tau_m = 10.5 (passive start, the textured passive branch).
+  dense12   the same dense re-run (same seeds and cards, a full frame every 135 steps in the last 60 tau_c) for a
+            representative 4 x 3 set: tau_chi = 1, 3, 30; tau_m = 1 (far from the transition), the critical
+            tau_m (9, 9, 8: the last tau_m where both starts still share one state) and tau_m = 11 on the
+            active branch (active start) and on the passive branch (passive start). tau_chi = 30, tau_m = 8
+            is already in `dense`, so this family has 11 cases.
   bifvideo  bifurcation videos for the step model (h-n = 0, wp = 0, tau_chi = 0.3 tau_c): the rep1
             cases tau_m = 7, 7.5 (one state) and 9 (two states), both uniform starts, re-run with
             the same seeds and cards, only the output changed -- a full frame every 674 steps
@@ -65,6 +70,7 @@ touch the dynamics. Exact full-field means are still written every 337 steps (0.
   gen_cw_hill_family_scan.py dscan    cases/20261016/cw_hill_dscan
   gen_cw_hill_family_scan.py tchifill cases/20261019/cw_hill_tchifill
   gen_cw_hill_family_scan.py dense    cases/20261022/cw_hill_defect_dense
+  gen_cw_hill_family_scan.py dense12  cases/20261118/cw_hill_defect_dense12
   gen_cw_hill_family_scan.py bifvideo cases/20261022/cw_hill_bifurcation_video
   gen_cw_hill_family_scan.py openloop cases/20261029/cw_hill_defect_openloop
   gen_cw_hill_family_scan.py mc022    cases/20261029/cw_hill_mc022
@@ -99,6 +105,9 @@ FAMILIES = {
               for d in (3, 10, 30, 100)],
     'dense': [dict(hn=16, wp=.002, tc=tc, tm=(tm,), starts=(st,), reps=(1,), ninfo=135, window_tc=60)
               for tc, tm, st in ((.3, 8, '1'), (3, 8, '1'), (30, 8, '1'), (.3, 10.5, '0'))],
+    'dense12': [dict(hn=16, wp=.002, tc=tc, tm=(tm,), starts=(st,), reps=(1,), ninfo=135, window_tc=60)
+                for tc, tm, st in ((1, 1, '1'), (1, 9, '1'), (1, 11, '1'), (1, 11, '0'), (3, 1, '1'), (3, 9, '1'), (3, 11, '1'),
+                                   (3, 11, '0'), (30, 1, '1'), (30, 11, '1'), (30, 11, '0'))],
     'bifvideo': [dict(hn=0, wp=0, tc=.3, tm=(7, 7.5, 9), starts=('1', '0'), reps=(1,), ninfo=674,
                       obs_tc=400, start_window=True)],
     'bifvideo_tc10': [dict(hn=16, wp=.002, tc=10, tm=(7, 7.5, 9.5, 10), starts=('1', '0'), reps=(1,), ninfo=674,
