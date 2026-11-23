@@ -31,7 +31,10 @@ for _p in (_PLOT_PYTHON, os.path.join(_PLOT_PYTHON, "confluent_memory")):
 from cm_common import Radial, strain_rate, n_defects, frame_count, ph   # noqa: E402
 from archive.archive import loadarchive                                  # noqa: E402
 
-SCRATCH = os.environ.get("MASS_SCRATCH", "/scratch/helu/mass_hd")
+# Cluster data root: raw output under cases/, figures and summaries under results/. The group's
+# /work project space is not purged; /scratch is. Data written before 2026-11-20 is still under
+# /scratch/helu/mass_hd -- set MASS_DATA_ROOT to read it.
+DATA_ROOT = os.environ.get("MASS_DATA_ROOT", "/work/upbitbol-fnsambizione/hengdong/mass_hd")
 
 # name in the analysis -> name in the frame
 FIELDS = {"ux": "ux_mat", "uy": "uy_mat", "P": "pressure",
@@ -39,11 +42,11 @@ FIELDS = {"ux": "ux_mat", "uy": "uy_mat", "P": "pressure",
 
 
 def case_root(*parts):
-    return os.path.join(SCRATCH, "cases", *parts)
+    return os.path.join(DATA_ROOT, "cases", *parts)
 
 
 def results_root(*parts):
-    return os.path.join(SCRATCH, "results", "cases", *parts)
+    return os.path.join(DATA_ROOT, "results", "cases", *parts)
 
 
 def read_params(root):

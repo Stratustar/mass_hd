@@ -18,7 +18,12 @@ OUTPUT_ARG="${3-}"
 # ----------------------------- cluster paths -----------------------------
 CONTAINER_DIR="/home/helu/containers"
 REPO_ROOT="/home/helu/mass_hd"
-SCRATCH_ROOT="/scratch/helu"
+# ONE data root for everything derived: raw output under cases/, figures and summaries under
+# results/, job lists and Slurm logs beside them. It is the group's /work project space, which is
+# NOT purged; /scratch is (it took the October scans on 2026-11-06 and 2026-11-13). Data written
+# before 2026-11-20 is still under /scratch/helu/mass_hd: MASS_DATA_ROOT=/scratch/helu/mass_hd
+# points every script back at it.
+DATA_ROOT="${MASS_DATA_ROOT:-/work/upbitbol-fnsambizione/hengdong/mass_hd}"
 CONDA_BIN="/home/helu/miniconda3/bin/conda"
 CONDA_ENV="env1"
 # Overridable so a model whose frames plot_hd.py cannot read (it needs phi and chi, which
@@ -27,15 +32,15 @@ CONDA_ENV="env1"
 #   PLOT_SCRIPT=/home/helu/mass_hd/plot/python/confluent_wet_plot.py
 PLOT_SCRIPT="${PLOT_SCRIPT:-${REPO_ROOT}/plot/python/plot_hd.py}"
 MASS_BINARY="/opt/mass_hd/mass"
-# Figures/videos live on SCRATCH, next to the raw output -- /home has a small per-user
-# quota that mp4 export blows through silently (corrupt videos, failed jobs).
-RESULTS_ROOT="${SCRATCH_ROOT}/mass_hd/results"
+# Figures/videos live under the data root, next to the raw output -- /home has a small
+# per-user quota that mp4 export blows through silently (corrupt videos, failed jobs).
+RESULTS_ROOT="${DATA_ROOT}/results"
 THREADS="${SLURM_CPUS_PER_TASK}"
 SKIP_PLOTS="${SKIP_PLOTS:-0}"
 PLOT_HD_ARGS="${PLOT_HD_ARGS:-}"
 # Optional read-only bind so the container can read an init-frame snapshot that
-# lives outside the input/output dirs (e.g. a frame from another case on scratch).
-# /scratch is NOT auto-bound inside apptainer here, so set this to the tree that
+# lives outside the input/output dirs (e.g. a frame from another case under the data root).
+# Neither /work nor /scratch is auto-bound inside apptainer here, so set this to the tree that
 # holds the init-frame path referenced in the run.dat. Empty = no extra bind.
 INIT_FRAME_ROOT="${INIT_FRAME_ROOT:-}"
 # ----------------------------------------------------------------------
@@ -60,10 +65,10 @@ if [[ -n "${OUTPUT_ARG}" ]]; then
   if [[ "${OUTPUT_ARG}" == /* ]]; then
     OUTPUT_PATH="${OUTPUT_ARG}"
   else
-    OUTPUT_PATH="${SCRATCH_ROOT}/${OUTPUT_ARG}"
+    OUTPUT_PATH="${DATA_ROOT}/${OUTPUT_ARG#mass_hd/}"
   fi
 else
-  OUTPUT_PATH="${SCRATCH_ROOT}/${INPUT_DIR#/home/helu/}"
+  OUTPUT_PATH="${DATA_ROOT}/${INPUT_DIR#${REPO_ROOT}/}"
 fi
 
 if [[ ! -f "${IMAGE_PATH}" ]]; then
@@ -78,10 +83,9 @@ fi
 
 mkdir -p "${OUTPUT_PATH}"
 
-# Plot folder mirrors the project-relative scratch output path.
-if [[ "${OUTPUT_PATH}" == ${SCRATCH_ROOT}/* ]]; then
-  REL_OUTPUT_DIR="${OUTPUT_PATH#${SCRATCH_ROOT}/}"
-  REL_OUTPUT_DIR="${REL_OUTPUT_DIR#mass_hd/}"
+# Plot folder mirrors the output path relative to the data root.
+if [[ "${OUTPUT_PATH}" == ${DATA_ROOT}/* ]]; then
+  REL_OUTPUT_DIR="${OUTPUT_PATH#${DATA_ROOT}/}"
 else
   REL_OUTPUT_DIR="$(basename "${OUTPUT_PATH}")"
 fi

@@ -25,7 +25,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.colors import LinearSegmentedColormap
-from cm_common import SCRATCH, frame_count, iter_frames, Radial, parse_variant, ph
+from cm_common import DATA_ROOT, frame_count, iter_frames, Radial, parse_variant, ph
 
 MP4_FPS = 10
 QUIVER_STRIDE = 12          # one arrow per 12 lattice sites; denser is unreadable at 400^2
@@ -146,8 +146,8 @@ def main():
     ap.add_argument("--steady", type=float, default=None)
     args = ap.parse_args()
 
-    base = os.path.join(SCRATCH, "cases", args.study)
-    results_base = os.path.join(SCRATCH, "results", "cases", args.study)
+    base = os.path.join(DATA_ROOT, "cases", args.study)
+    results_base = os.path.join(DATA_ROOT, "results", "cases", args.study)
     cases = args.cases or sorted(os.listdir(base))
     out = []
     for case in cases:

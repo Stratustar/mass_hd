@@ -22,8 +22,10 @@ CASES_DIR="${2:?Usage: $0 <sif_name> <cases_dir>}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="/home/helu/mass_hd"
-LIST_ROOT="/scratch/helu/mass_hd/joblists"
-LOG_ROOT="/scratch/helu/mass_hd/analysis_logs"
+# The data root of submit_case.sh (see there); the task list and the logs live beside the data.
+DATA_ROOT="${MASS_DATA_ROOT:-/work/upbitbol-fnsambizione/hengdong/mass_hd}"
+LIST_ROOT="${DATA_ROOT}/joblists"
+LOG_ROOT="${DATA_ROOT}/analysis_logs"
 CONCURRENCY="${CONCURRENCY:-20}"
 ARRAY_TIME="${ARRAY_TIME:-03:00:00}"
 ARRAY_CPUS="${ARRAY_CPUS:-32}"

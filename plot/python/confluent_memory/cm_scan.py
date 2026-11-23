@@ -10,7 +10,7 @@ Usage:  cm_scan.py <study> --out results.json [--steady 30000] [--L 400] [--tran
 """
 import argparse, json, os
 import numpy as np
-from cm_common import (SCRATCH, frame_count, iter_frames, Radial, parse_variant,
+from cm_common import (DATA_ROOT, frame_count, iter_frames, Radial, parse_variant,
                        strain_rate, n_defects, ph)
 
 
@@ -98,7 +98,7 @@ def main():
     radial = Radial(args.L)
     results = []
     for study in args.studies:
-        base = os.path.join(SCRATCH, "cases", study)
+        base = os.path.join(DATA_ROOT, "cases", study)
         for case in sorted(os.listdir(base)):
             root = os.path.join(base, case)
             if not os.path.isdir(root):

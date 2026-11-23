@@ -10,7 +10,7 @@
 #   bash scripts_cluster/submit_analysis.sh <script.py> [args...]
 # e.g.
 #   bash scripts_cluster/submit_analysis.sh cm_phase.py 20260822/cm_regime 20260823/cm_regime_sneg \
-#        --out /scratch/helu/mass_hd/results/cases/20260824/cm_phase.json
+#        --out /work/upbitbol-fnsambizione/hengdong/mass_hd/results/cases/20260824/cm_phase.json
 # or, for a script outside the default package, give it by path:
 #   bash scripts_cluster/submit_analysis.sh plot/python/confluent_wet/cw_calib.py 20260828/cw_pmem
 set -euo pipefail
@@ -20,7 +20,9 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 # Defaults to the dry line; the wet line passes its own path, and RUN_DIR below follows the
 # script rather than this default so both packages work unchanged.
 ANALYSIS_DIR="${ANALYSIS_DIR:-${REPO_ROOT}/plot/python/confluent_memory}"
-LOG_DIR="${MASS_SCRATCH:-/scratch/helu/mass_hd}/analysis_logs"
+# The data root of submit_case.sh (see there). MASS_DATA_ROOT is exported to the job, so the
+# analysis packages (cm_common / cw_common) resolve the same root.
+LOG_DIR="${MASS_DATA_ROOT:-/work/upbitbol-fnsambizione/hengdong/mass_hd}/analysis_logs"
 
 SCRIPT="${1:?Usage: $0 <script.py> [args...]}"
 shift || true

@@ -10,11 +10,11 @@ they are two coexisting phases. This computes the three quantities that do:
 plus the chi histogram over the steady window, since bimodality is the decisive signature.
 
 Usage:  cm_phase.py <study> [<study> ...] --out results.json [--steady 30000] [--L 400]
-where <study> is a path under $MASS_SCRATCH/cases, e.g. 20260822/cm_regime.
+where <study> is a path under $MASS_DATA_ROOT/cases, e.g. 20260822/cm_regime.
 """
 import argparse, json, os
 import numpy as np
-from cm_common import (SCRATCH, frame_count, iter_frames, Radial, parse_variant, ph)
+from cm_common import (DATA_ROOT, frame_count, iter_frames, Radial, parse_variant, ph)
 
 BINS = np.linspace(0, 1, 51)
 
@@ -70,7 +70,7 @@ def main():
     radial = Radial(args.L)
     results = []
     for study in args.studies:
-        base = os.path.join(SCRATCH, "cases", study)
+        base = os.path.join(DATA_ROOT, "cases", study)
         for case in sorted(os.listdir(base)):
             root = os.path.join(base, case)
             if not os.path.isdir(root):

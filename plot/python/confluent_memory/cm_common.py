@@ -14,15 +14,18 @@ from archive.archive import loadarchive          # noqa: E402
 import plot.plot_hd as ph                        # noqa: E402
 import plot.defects as pd                        # noqa: E402
 
-SCRATCH = os.environ.get("MASS_SCRATCH", "/scratch/helu/mass_hd")
+# Cluster data root: raw output under cases/, figures and summaries under results/. The group's
+# /work project space is not purged; /scratch is. Data written before 2026-11-20 is still under
+# /scratch/helu/mass_hd -- set MASS_DATA_ROOT to read it.
+DATA_ROOT = os.environ.get("MASS_DATA_ROOT", "/work/upbitbol-fnsambizione/hengdong/mass_hd")
 
 
 def case_root(study, case):
-    return os.path.join(SCRATCH, "cases", study, case)
+    return os.path.join(DATA_ROOT, "cases", study, case)
 
 
 def results_root(*parts):
-    return os.path.join(SCRATCH, "results", "cases", *parts)
+    return os.path.join(DATA_ROOT, "results", "cases", *parts)
 
 
 def frame_count(root):

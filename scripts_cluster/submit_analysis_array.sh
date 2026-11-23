@@ -22,8 +22,9 @@ shift 3
 EXTRA="$*"
 
 REPO_ROOT="/home/helu/mass_hd"
-SCRATCH="/scratch/helu/mass_hd"
-LOG_ROOT="${SCRATCH}/analysis_logs"
+# The data root of submit_case.sh (see there).
+DATA_ROOT="${MASS_DATA_ROOT:-/work/upbitbol-fnsambizione/hengdong/mass_hd}"
+LOG_ROOT="${DATA_ROOT}/analysis_logs"
 CONDA="/home/helu/miniconda3/bin/conda"
 CONCURRENCY="${CONCURRENCY:-20}"
 ARRAY_TIME="${ARRAY_TIME:-02:00:00}"
@@ -31,7 +32,7 @@ ARRAY_CPUS="${ARRAY_CPUS:-4}"
 NAME="${NAME:-$(basename "${SCRIPT_REL}" .py)}"
 
 TAG="$(echo "${CASES_DIR}" | tr '/' '_')"
-LIST="${SCRATCH}/joblists/${TAG}.txt"
+LIST="${DATA_ROOT}/joblists/${TAG}.txt"
 [[ -f "${LIST}" ]] || { echo "Error: no task list at ${LIST}; run submit_array.sh first" >&2; exit 1; }
 N="$(wc -l < "${LIST}")"
 mkdir -p "${LOG_ROOT}"
@@ -53,8 +54,8 @@ sbatch --parsable --export=ALL "${DEP_ARG[@]}" \
     DAT=\$(sed -n \"\$((SLURM_ARRAY_TASK_ID+1))p\" ${LIST}); \
     CASE=\$(basename \$(dirname \"\$DAT\")); \
     REL=\$(dirname \"\$DAT\"); REL=\${REL#${REPO_ROOT}/cases/}; \
-    IN=${SCRATCH}/cases/\${REL}; \
-    OUT=${SCRATCH}/results/cases/\${REL}/${OUT_SUBDIR}; \
+    IN=${DATA_ROOT}/cases/\${REL}; \
+    OUT=${DATA_ROOT}/results/cases/\${REL}/${OUT_SUBDIR}; \
     echo \"task \$SLURM_ARRAY_TASK_ID  case \$CASE\"; \
     mkdir -p \"\$OUT\"; \
     ${CONDA} run --no-capture-output -n env1 python ${REPO_ROOT}/${SCRIPT_REL} \"\$IN\" \"\$OUT\" ${EXTRA}"

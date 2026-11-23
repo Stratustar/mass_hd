@@ -19,13 +19,18 @@ INPUT_ARG="${1:?Usage: $0 <input_dat> [output_dir]}"
 OUTPUT_ARG="${2-}"
 
 REPO_ROOT="/home/helu/mass_hd"
-SCRATCH_ROOT="/scratch/helu"
+# ONE data root for everything derived: raw output under cases/, figures and summaries under
+# results/, job lists and Slurm logs beside them. It is the group's /work project space, which is
+# NOT purged; /scratch is (it took the October scans on 2026-11-06 and 2026-11-13). Data written
+# before 2026-11-20 is still under /scratch/helu/mass_hd: MASS_DATA_ROOT=/scratch/helu/mass_hd
+# points every script back at it.
+DATA_ROOT="${MASS_DATA_ROOT:-/work/upbitbol-fnsambizione/hengdong/mass_hd}"
 CONDA_BIN="/home/helu/miniconda3/bin/conda"
 CONDA_ENV="env1"
 PLOT_SCRIPT="${REPO_ROOT}/plot/python/plot_hd.py"
-# Figures/videos live on SCRATCH, next to the raw output -- /home has a small per-user
-# quota that mp4 export blows through silently (corrupt videos, failed jobs).
-RESULTS_ROOT="${SCRATCH_ROOT}/mass_hd/results"
+# Figures/videos live under the data root, next to the raw output -- /home has a small
+# per-user quota that mp4 export blows through silently (corrupt videos, failed jobs).
+RESULTS_ROOT="${DATA_ROOT}/results"
 THREADS="${SLURM_CPUS_PER_TASK}"
 PLOT_HD_ARGS="${PLOT_HD_ARGS:-}"
 
@@ -40,16 +45,15 @@ if [[ -n "${OUTPUT_ARG}" ]]; then
   if [[ "${OUTPUT_ARG}" == /* ]]; then
     OUTPUT_PATH="${OUTPUT_ARG}"
   else
-    OUTPUT_PATH="${SCRATCH_ROOT}/${OUTPUT_ARG}"
+    OUTPUT_PATH="${DATA_ROOT}/${OUTPUT_ARG#mass_hd/}"
   fi
 else
-  OUTPUT_PATH="${SCRATCH_ROOT}/${INPUT_DIR#/home/helu/}"
+  OUTPUT_PATH="${DATA_ROOT}/${INPUT_DIR#${REPO_ROOT}/}"
 fi
 
-# Plot folder mirrors the project-relative scratch output path.
-if [[ "${OUTPUT_PATH}" == ${SCRATCH_ROOT}/* ]]; then
-  REL_OUTPUT_DIR="${OUTPUT_PATH#${SCRATCH_ROOT}/}"
-  REL_OUTPUT_DIR="${REL_OUTPUT_DIR#mass_hd/}"
+# Plot folder mirrors the output path relative to the data root.
+if [[ "${OUTPUT_PATH}" == ${DATA_ROOT}/* ]]; then
+  REL_OUTPUT_DIR="${OUTPUT_PATH#${DATA_ROOT}/}"
 else
   REL_OUTPUT_DIR="$(basename "${OUTPUT_PATH}")"
 fi
