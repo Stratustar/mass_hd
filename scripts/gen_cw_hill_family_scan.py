@@ -64,6 +64,13 @@
             nscan (n = 16) / tchiscan / mc022 rep1; only ntracer and tracer-count differ, and the tracers are
             passive, so the fields follow the same trajectory. The pressure histories drive the single cell
             (memory and phenotype integrated along the real P(t) instead of the OU pressure).
+  tracer_open  the uniform-activity control of tracerscan: for tau_chi = .3, 3, 30 (mc = .2287, full tau_m grid, both
+            starts, rep1) the same card with OPEN LOOP -- the activity held at zeta-open = zeta (z0 + (1 - z0) chi_bar),
+            chi_bar = the closed-loop tail mean of the SAME tracerscan case (closed_loop_chi.json in the campaign
+            dir), m and chi evolving but not fed back -- and the same tracers. 1000 tau_c of observation (no
+            bistability or slow escape in open loop). Its P(t) is the real pressure of the turbulence at the same
+            mean activity WITHOUT the chi pattern acting on the flow: the middle rung between the OU pressure and
+            the adaptive run's pressure.
 
 Every card is the 20261013/cw_hill_tm_scan card (hill law, beta = 0, Dm = Dchi = .00166667,
 z0 = .3, pmem = .016838) with only these set: tau-m, the preparation (chi reaction frozen for
@@ -83,6 +90,7 @@ touch the dynamics. Exact full-field means are still written every 337 steps (0.
   gen_cw_hill_family_scan.py mc022    cases/20261029/cw_hill_mc022
   gen_cw_hill_family_scan.py bifvideo_tc10 cases/20261022/cw_hill_bifurcation_video_tc10
   gen_cw_hill_family_scan.py tracerscan cases/20261118/cw_hill_tracerscan
+  gen_cw_hill_family_scan.py tracer_open cases/20261124/cw_hill_tracer_open
 """
 import argparse
 import hashlib
@@ -125,11 +133,14 @@ FAMILIES = {
     'mc022': [dict(hn=16, wp=.002, tc=tc, mc=.22, tm=TM_MC022, reps=(1, 2)) for tc in (.3, 1, 2, 3, 10, 30)],
     'tracerscan': [dict(hn=16, wp=.002, tc=tc, reps=(1,), tracer=(45, 1024)) for tc in (.3, 1, 3, 10, 30)] +
                   [dict(hn=16, wp=.002, tc=tc, mc=.22, tm=TM_MC022, reps=(1,), tracer=(45, 1024)) for tc in (.3, 3, 30)],
+    'tracer_open': [dict(hn=16, wp=.002, tc=tc, reps=(1,), tracer=(45, 1024), obs_tc=1000, zopen_table='closed_loop_chi.json')
+                    for tc in (.3, 3, 30)],
     'tchifill': [dict(hn=16, wp=.002, tc=tc) for tc in (1.5, 2, 2.5)] +
                 [dict(hn=16, wp=.002, tc=tc, tm=TM_PATCH, starts=('patch',))
                  for tc in (.3, 1, 1.5, 2, 2.5, 3, 10, 30)],
 }
 DBIO = 0.00166667
+ZETA, Z0 = 0.06666667, 0.3             # the base card's zeta and zeta0-frac
 
 
 def digest(data):
@@ -169,8 +180,12 @@ def generate(family, out):
         if den is not None:
             member += f'_D1o{den}'
             dval = f'{DBIO/den:.6g}'
+        table = json.loads((out/mem['zopen_table']).read_text())['chi'] if 'zopen_table' in mem else None
+        closed = member                                  # the closed-loop case this open-loop member mirrors
         if 'zopen' in mem:
             member += f'_open{token(float(mem["zopen"]))}'
+        if table is not None:
+            member += '_open'
         tau_chi = '202.3' if mem['tc'] == .3 else f'{mem["tc"]*TC:.13g}'
         obs = round(mem['obs_tc']*TC) if 'obs_tc' in mem else OBS
         for g in mem.get('tm', TM):
@@ -179,13 +194,17 @@ def generate(family, out):
                 init = PATCH if start == 'patch' else (('chi0', start), ('m0', STARTS[start]))
                 for k in mem.get('reps', REPS):
                     text = base_body
+                    zopen = mem.get('zopen')
+                    if table is not None:
+                        chibar = table[f'{closed}_tm{token(g)}_chi{start}_rep{k}']
+                        zopen = f'{ZETA*(Z0 + (1 - Z0)*chibar):.7g}'
                     if start == 'patch':
                         text, n = re.subn(r'(?m)^(chi-length\s*=.*\n)', lambda m: m.group(1) + ''.join(
                             f'{key:<21}= {value}\n' for key, value in PATCH_PHASES), text)
                         assert n == 1
-                    if 'zopen' in mem:
+                    if zopen is not None:
                         text, n = re.subn(r'(?m)^(zeta0-frac\s*=.*\n)', lambda m: m.group(1) + ''.join(
-                            f'{key:<21}= {value}\n' for key, value in (('open-loop', 1), ('zeta-open', mem['zopen']))), text)
+                            f'{key:<21}= {value}\n' for key, value in (('open-loop', 1), ('zeta-open', zopen))), text)
                         assert n == 1
                     for key, value in (('tau-m', f'{g*TC:.13g}'), ('chi-freeze-steps', prep),
                                        ('nsteps', prep + obs)) + init + (
@@ -210,16 +229,17 @@ def generate(family, out):
                               + (f'steps ({mem["obs_tc"]} tau_c, cut short). Output from nstart = {prep} (observation start): '
                                  f'full frame every {ninfo} steps; no video/response before.\n'
                                  if mem.get('start_window') else
-                                 f'steps (2000 tau_c). Video stride 8, full frame every ~{round(ninfo/TC)} tau_c.\n'
+                                 f'steps ({round(obs/TC)} tau_c). Video stride 8, full frame every ~{round(ninfo/TC)} tau_c.\n'
                                  if 'window_tc' not in mem else
                                  f'steps ({round(obs/TC)} tau_c). Output only from nstart = nsteps - {round(mem["window_tc"]*TC)} '
                                  f'({mem["window_tc"]} tau_c): full frame every {ninfo} steps; no video/response before.\n'))
                     if 'tracer' in mem:
                         header += (f'# TRACERS: {mem["tracer"][1]} Lagrangian tracers sampled every {mem["tracer"][0]} steps '
                                    f'({mem["tracer"][0]/TC:.4f} tau_c) -> tracer.f32 [P, m, x, y]; passive, the fields are unchanged.\n')
-                    if 'zopen' in mem:
-                        header += (f'# OPEN LOOP: activity held at zeta-open = {mem["zopen"]} = zeta (z0 + (1 - z0) chi_bar), '
-                                   'chi not fed back into the stress.\n')
+                    if zopen is not None:
+                        header += (f'# OPEN LOOP: activity held at zeta-open = {zopen} = zeta (z0 + (1 - z0) chi_bar), '
+                                   + (f'chi_bar = {chibar} (closed-loop tail mean of the same tracerscan case), ' if table is not None else '')
+                                   + 'chi not fed back into the stress.\n')
                     text = header + text
                     a = parameters(text)
                     changed = {key for key in a if a[key] != b.get(key)}
@@ -235,7 +255,8 @@ def generate(family, out):
                                  'L': 256, 'mc': mc, 'tm_over_tc': g, 'initialization': start,
                                  'chi0': .5 if start == 'patch' else float(start), 'replicate': k, 'seed': 190900 + k,
                                  'chi_seed': 200900 + k, 'preparation_steps': prep, 'nsteps': prep + obs,
-                                 **({'open_loop': 1, 'zeta_open': float(mem['zopen'])} if 'zopen' in mem else {}),
+                                 **({'open_loop': 1, 'zeta_open': float(zopen)} if zopen is not None else {}),
+                                 **({'closed_loop_chi': chibar} if table is not None else {}),
                                  'run_dat_sha256': digest(text.encode())})
                     pending.append((out/case/'run.dat', text))
     commit = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=repo, text=True).strip()
