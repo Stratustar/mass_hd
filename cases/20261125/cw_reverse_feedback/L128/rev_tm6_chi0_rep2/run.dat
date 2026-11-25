@@ -1,0 +1,50 @@
+# 20261125/cw_reverse_feedback: rev, L=128, tau_m/tau_c=6, start chi=0 (active), rep2.
+# Legacy step law, chi = 1 PASSIVE; switch-sign = +1, chi* = Theta(m - mc): compression -> PASSIVE (reversed feedback).
+# mc=.2287, pmem=.016838, z0=.3, Dbio=.00166667, tau_chi=202.3 steps. The arms differ in switch-sign alone.
+# Prepare 67433 steps (max(100,10 tau_m) tau_c, chi reaction frozen), observe 1348658 steps (2000 tau_c).
+# Full-field means every 337 steps; video stride 2 (64 x 64); full frame every 100 tau_c.
+model                = confluent-wet
+nsteps               = 1416091
+nstart               = 0
+ninfo                = 67433
+LX                   = 128
+LY                   = 128
+bc                   = 0
+seed                 = 190902
+Gamma                = 0.05
+xi                   = 0.4
+CC                   = 0.00208333
+LL                   = 0.01666667
+tau                  = 2
+rho                  = 40
+friction             = 0
+zeta                 = 0.06666667
+zeta0-frac           = 0.3
+angle                = 0
+noise                = 0.05
+initial-order        = 1
+director-config      = uniform
+defect-sep           = 0
+Dbio                 = 0.00166667
+chi-config           = uniform
+chi0                 = 0
+chi-seed             = 200902
+tau-chi              = 202.3
+chi-width            = 0
+switch-sign          = 1
+mc                   = 0.2287
+m0                   = 0.3301
+chi-freeze-steps     = 67433
+mem-freeze-steps     = 0
+tau-m                = 4045.974199804
+pmem                 = 0.016838
+pmem-width           = 0
+ntracer              = 0
+tracer-count         = 0
+nvideo               = 337
+video-stride         = 2
+video-p-scale        = 0.20206
+video-u-scale        = 0.04538
+frame-light          = 1
+chi-noise            = 0
+chi-length           = 0
