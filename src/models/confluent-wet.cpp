@@ -117,6 +117,16 @@ void ConfluentWet::Initialize()
   if(chi_freeze_steps && nsubsteps != 1)
     throw error_msg("confluent-wet: chi-freeze-steps counts Step() calls and is only equal "
                     "to runcard time at nsubsteps=1, got nsubsteps=", nsubsteps, ".");
+  if(chi_static != 0 && chi_static != 1)
+    throw error_msg("confluent-wet: chi-static must be 0 or 1.");
+  if(chi_static && open_loop)
+    throw error_msg("confluent-wet: chi-static holds an activity pattern, but open-loop=1 "
+                    "does not feed chi into the activity, so the pattern would not act.");
+  if(init_frame_phenotype != 0 && init_frame_phenotype != 1)
+    throw error_msg("confluent-wet: init-frame-phenotype must be 0 or 1.");
+  if(init_frame_phenotype && init_frame.empty())
+    throw error_msg("confluent-wet: init-frame-phenotype=1 needs an init-frame to read chi "
+                    "and m from.");
   if(q_freeze_steps && nsubsteps != 1)
     throw error_msg("confluent-wet: q-freeze-start/q-freeze-steps count Step() calls and are "
                     "only equal to runcard time at nsubsteps=1, got nsubsteps=", nsubsteps, ".");
@@ -320,12 +330,24 @@ void ConfluentWet::ConfigureFromFrame()
     for(unsigned k=0; k<DomainSize; ++k) data[k] = vals[k];
   };
 
-  // The hydrodynamic state, and ONLY that: chi and m stay as ConfigurePhenotype left them.
+  // The hydrodynamic state; chi and m stay as ConfigurePhenotype left them unless
+  // init-frame-phenotype asks for the snapshot's own pattern (loaded below, before the
+  // populations are rebuilt, because the active stress they need reads chi).
   load_into("QQxx",     QQxx);
   load_into("QQyx",     QQyx);
   load_into("ux_mat",   ux_mat);
   load_into("uy_mat",   uy_mat);
   load_into("pressure", pressure);
+  if(init_frame_phenotype)
+  {
+    load_into("chi", chi);
+    load_into("m",   m);
+    for(unsigned k=0; k<DomainSize; ++k)
+    {
+      ClampUnit(chi, k);
+      ClampUnit(m,   k);
+    }
+  }
 
   // ---- pass 1: the density, and a first guess at the populations ----------
   // n follows from P algebraically, since sigma_bulk depends on Q alone.
@@ -793,7 +815,8 @@ void ConfluentWet::UpdateNodeFields(unsigned k, bool first)
   // phenotype and its memory together. The two transport operators are therefore identical
   // by construction and the fields differ only through their sources. Dm/Dchi, when set,
   // split them; unset, Dchi_eff = Dm_eff = Dbio and the arithmetic is the historical one.
-  const double chi_rhs =
+  // chi-static: the pattern is held in the laboratory frame -- no transport, no reaction.
+  const double chi_rhs = chi_static ? 0. :
     - ax*derivX(chi, d, sB) - ay*derivY(chi, d, sB)
     + Dchi_eff*laplacian(chi, d, sD)
     + (use_switching && nstep_done >= chi_freeze_steps
@@ -1350,7 +1373,12 @@ option_list ConfluentWet::GetOptions()
      "drives the flow, chi and m evolve; 0 disables")
     ("init-frame", opt::value<std::string>(&init_frame),
      "seed Q, the velocity and the pressure from this frame*.json; chi and m still come "
-     "from chi-config, and the LB populations are rebuilt as f_eq(u_code, n)")
+     "from chi-config (unless init-frame-phenotype), and the LB populations are rebuilt as "
+     "f_eq(u_code, n)")
+    ("init-frame-phenotype", opt::value<int>(&init_frame_phenotype),
+     "1: also read chi and m from init-frame instead of preparing them with chi-config")
+    ("chi-static", opt::value<int>(&chi_static),
+     "1: hold chi fixed in space (no advection, diffusion or switching); m still evolves")
     ("mem-freeze-steps", opt::value<unsigned>(&mem_freeze_steps),
      "hold the MEMORY source (g(P)-m)/tau_m off for this many steps while the flow spins "
      "up, so m does not decay from rest before there is turbulence to feed it (transport "

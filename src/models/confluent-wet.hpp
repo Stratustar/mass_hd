@@ -374,6 +374,24 @@ protected:
    *  relative rounding of the JSON writer. */
   std::string init_frame = "";
 
+  /** ALSO TAKE chi AND m FROM init_frame (1), instead of from chi-config (0, default).
+   *
+   *  With 0 the frame seeds the hydrodynamic state only and the phenotype is prepared by
+   *  chi-config, which is what the calibration runs want. With 1 the run continues the
+   *  phenotype pattern of the snapshot as well -- needed to put a pattern that an adaptive
+   *  run produced under a different dynamics (chi-static). Values are clamped to [0,1]. */
+  int init_frame_phenotype = 0;
+
+  /** HOLD chi FIXED IN SPACE (1): no advection, no diffusion, no switching.
+   *
+   *  chi-freeze-steps removes the reaction only, so the pattern is still carried and stirred
+   *  by the flow. chi-static removes the whole right-hand side: chi(x) keeps its initial
+   *  value at every node for the whole run, i.e. a prescribed activity landscape
+   *  zeta [z0 + (1 - z0) chi(x)] in the laboratory frame. m is untouched: it is still
+   *  transported and still relaxes to s(P), so it records what the pressure of this flow
+   *  would write without being able to act. */
+  int chi_static = 0;
+
   /** Steps during which the MEMORY SOURCE is held off: transport and diffusion of m keep
    *  running, but (g(P) - m)/tau_m is switched out, so m holds its initial value while the
    *  flow spins up.
@@ -518,7 +536,7 @@ protected:
   void ComputeMaterialVelocity();
   /** Set up the initial phenotype and memory */
   void ConfigurePhenotype();
-  /** Seed Q, u and P from init_frame and rebuild the LB populations */
+  /** Seed Q, u and P (and chi, m if init_frame_phenotype) from init_frame and rebuild the LB populations */
   void ConfigureFromFrame();
   /** Diffuse a field until its correlation length is `length` (the noise initialisers) */
   void SmoothToLength(ScalarField&, double length);
@@ -640,7 +658,10 @@ public:
        & auto_name(Dchi)
        // appended 2026-11-12 (frozen defect pair)
        & auto_name(q_freeze_start)
-       & auto_name(q_freeze_steps);
+       & auto_name(q_freeze_steps)
+       // appended 2026-11-12 (static activity pattern)
+       & auto_name(init_frame_phenotype)
+       & auto_name(chi_static);
   }
 
   /** Serialization of the current frame (time snapshot)
