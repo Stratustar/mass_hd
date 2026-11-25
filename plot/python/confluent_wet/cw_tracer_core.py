@@ -9,7 +9,7 @@ tracer, bilinear in space and linear in time between video frames; own = h(m_tra
   sig_env  sigma_P in ten bins of env (NaN where a bin holds fewer than 2000 samples), and the time share of each bin
   hist     histograms of P while env < .3 and while env > .7 (90 bins on [-0.09, 0.09]), with n, mean, sigma
   acf      Lagrangian autocorrelation of P, m (the model's memory at the tracer) and own, the instantaneous mean
-           over the tracers removed, every 3 samples up to 40 tau_c
+           over the tracers removed, every 3 samples up to 40 tau_c and every 15 up to 150 tau_c
 
   cw_tracer_core.py <case_in> <case_out>      -> core.npz
 """
@@ -23,7 +23,7 @@ from scipy.ndimage import map_coordinates
 from cw_mc_tm_scan import TC
 from cw_tracer_drive import chi_path, h_of, load
 
-WINDOW, SHOW, W_SLIDE, LAGMAX = 500., 150., 5., 40.      # tau_c
+WINDOW, SHOW, W_SLIDE, LAGMAX = 500., 150., 5., 150.     # tau_c
 EDGES = np.linspace(0, 1, 11)
 PBINS = np.linspace(-.09, .09, 91)
 LOW, HIGH = .3, .7
@@ -75,7 +75,8 @@ def reduce_case(root, out):
         hist[tag] = np.histogram(v, PBINS)[0]
         stats[tag] = dict(n=int(v.size), mean=float(v.mean()) if v.size else None, sigma=float(v.std()) if v.size else None,
                           share_above_pc=float((v > pmem).mean()) if v.size else None)
-    lags = np.arange(0, int(LAGMAX/dt), 3)
+    fine = int(40/dt)                                   # every 3 samples to 40 tau_c, every 15 beyond (slow chi at large tau_chi)
+    lags = np.concatenate([np.arange(0, fine, 3), np.arange(fine, int(LAGMAX/dt), 15)])
     ftt = (field['t'] - freeze)/TC; ftail = (ftt >= obs - WINDOW) & (ftt <= obs)
     open_loop = int(p.get('open_loop', 0)); z0 = float(p['zeta0_frac'])
     chi_field = float(field['chi_mean'][ftail].mean())
