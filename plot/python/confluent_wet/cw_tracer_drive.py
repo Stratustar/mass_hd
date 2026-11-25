@@ -167,6 +167,9 @@ def reduce_case(root, out):
         chi_R=dict(mean=float(chi_R[tail].mean()), std=float(chi_R[tail].std())),
         chi_T2_meas=dict(mean=float(chi_T2[-1][tail].mean()), std=float(std_T2[-1])),
         chi_T2m=dict(mean=float(chi_T2m[tail].mean()), std=float(chi_T2m[tail].std())),
+        # terminal-window mean of each path on its own, in the tracer order of the stream (the start grid is the
+        # same in every run), so that means over any subset of paths can be formed afterwards
+        chi_T1_per_tracer=np.round(chi_T1[tail].mean(0), 5).tolist(), chi_R_per_tracer=np.round(chi_R[tail].mean(0), 5).tolist(),
         c_grid=C_GRID.tolist(), chi_T2_grid=[float(x[tail].mean()) for x in chi_T2[:-1]],
         chi_T2_grid_std=std_T2[:-1].tolist())
     out.mkdir(parents=True, exist_ok=True)
