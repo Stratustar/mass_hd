@@ -6,7 +6,7 @@ At t = 0 the active band is LX/4 <= x < 3 LX/4 (chi = 1), the rest is passive (c
 d is the signed distance to the nearest initial boundary, d > 0 inside the initially active band; "deep" is |d| > LX/8.
 
 halfhalf.npz
-  t                      frame times in tau_c
+  t, t0                  frame times in tau_c counted from the first saved frame, and the time of that frame
   prof_{chi,m,P,speed}   averages over y at every frame, as functions of x (speed in lattice units per tau_c)
   chi_mean               the active share of the box
   {chi,m}_deep_{active,passive}, speed_deep_*, sdP_deep_*
@@ -62,6 +62,7 @@ def main():
     assert fr, f'no frames in {a.case_in}'
     a.case_out.mkdir(parents=True, exist_ok=True)
     t = np.array([int(f.stem[5:]) for f in fr])/TC
+    t0 = float(t[0]); t = t - t0                             # from the first saved frame (the release, for a run with nstart > 0)
     d = LX/4 - np.abs(np.arange(LX) - LX/2)
     A, Pz = d > LX/8, d < -LX/8
     prof = {k: np.zeros((len(fr), LX), np.float32) for k in ('chi', 'm', 'P', 'speed')}
@@ -123,7 +124,7 @@ def main():
             writer.grab_frame()
     if writer is not None:
         writer.finish()
-    np.savez_compressed(a.case_out/'halfhalf.npz', t=t, snap=np.array(snaps), snap_t=t[want], mc=mc, z0=z0, tau_m=tm, tau_chi=tchi,
+    np.savez_compressed(a.case_out/'halfhalf.npz', t=t, snap=np.array(snaps), snap_t=t[want], mc=mc, z0=z0, tau_m=tm, tau_chi=tchi, t0=t0,
                         **{f'prof_{k}': v for k, v in prof.items()}, **ser)
     print(f'{a.case_in.name}: {len(fr)} frames to {t[-1]:.1f} tau_c; <chi> {ser["chi_mean"][0]:.3f} -> {ser["chi_mean"][-1]:.3f}; '
           f'boundary {ser["boundary"][0]:.2f} -> {ser["boundary"][-1]:.2f}')
