@@ -27,6 +27,10 @@ varied instead, 3 x 3. Picked from the measured <chi>(tau_m, tau_chi) of 2026101
 The start is the same frame (--frame: reuse the init_frame.json already written by the mc scan instead of a new copy).
 --z0 0 (cases/20261126/cw_halfhalf_tm_tchi_z0): the same nine with zeta0-frac = 0, one band active and the other with no
 activity at all.
+--mc 0.17 with --z0 0 (cases/20261126/cw_halfhalf_tm_tchi_z0_mc0p17): mc moved onto the mean-field switch line of z0 = 0
+(analysis/meanfield_z0.py: the unstable fixed point is back at <chi> = 1/2 for mc = .169 - .179 at tau_m = 9 - 14.5).
+--start active (cases/20261126/cw_active_tm_tchi_z0_mc0p17): the same nine from the uniform active state instead of the
+half-half frame, to see whether the active state sustains itself.
 
 Base card: cases/20261022/cw_hill_defect_dense/L256/hn16_wp0p002_tc0p3_tm8_chi1_rep1 (hill law, chi = 1 active).
 Changed keys: nsteps, nstart, ninfo, chi-freeze-steps, nvideo, tau-m, init-frame, init-frame-phenotype, and mc, zeta0-frac
@@ -49,6 +53,7 @@ START = REPO.parent/'localtest/cases/20261124/cw_stripe_toy/L256/lam256_w1/frame
 TC = 674.3290333006435
 L, W = 256, 1.
 M_A, M_P = .308, .064
+MC = .2287                                                  # of the base card
 FLOW = ('QQxx', 'QQyx', 'ux_mat', 'uy_mat', 'pressure')
 POINTS = ((.16, 'active'), (.22, 'bistable'), (.28, 'passive'))
 Z0S = ((.3, 'z0p3'), (0., 'z0'))
@@ -71,11 +76,15 @@ def main():
     ap.add_argument('--container-root', default='/work/mass_hd', help='where the repo is mounted when the cards run')
     ap.add_argument('--scan', choices=('mc', 'tm_tchi'), default='mc')
     ap.add_argument('--z0', type=float, default=.3, help='zeta0-frac of the tm_tchi scan; 0 = the passive phenotype has no activity at all')
+    ap.add_argument('--mc', type=float, default=None, help='mc of the tm_tchi scan (default: the base card, .2287)')
+    ap.add_argument('--start', choices=('halfhalf', 'active'), default='halfhalf',
+                    help='tm_tchi scan: active = the scans\' uniform active start (chi = 1, m0 = .3301, chi reaction frozen for max(100, 10 tau_m) tau_c, then --tau-c of observation), no frame')
     ap.add_argument('--frame', type=Path, help='an init_frame.json already in the repo to start from (none is written)')
     a = ap.parse_args()
     root = (REPO/a.out if not a.out.is_absolute() else a.out)/'L256'
     root.mkdir(parents=True, exist_ok=True)
     nsteps = int(round(a.tau_c*TC/a.ninfo))*a.ninfo
+    mc_txt = '.2287' if a.mc is None else f'{a.mc:g}'
 
     src = json.loads(START.read_text())['data']
     x = np.arange(L)
@@ -111,15 +120,29 @@ def main():
                 body = replace(replace(base, 'tau-m', f'{tm*TC:.9f}'), 'tau-chi', tchi_steps)
                 if a.z0 != .3:
                     body = replace(body, 'zeta0-frac', f'{a.z0:g}')
+                if a.mc is not None:
+                    body = replace(body, 'mc', f'{a.mc:g}')
+                if a.start == 'active':
+                    prep = int(round(max(100., 10*tm)*TC/a.ninfo))*a.ninfo
+                    for k, v in (('nsteps', prep + nsteps), ('nstart', prep), ('chi-freeze-steps', prep)):
+                        body = replace(body, k, v)
+                    head = [f'# {"/".join(a.out.parts[-2:])}/{name}: uniform active start (chi = 1, m0 = .3301), released after {prep} steps ({prep/TC:.0f} tau_c) with the chi reaction frozen.',
+                            f'# tau_m = {tm:g} tau_c, tau_chi = {tchi:g} tau_c, mc = {MC if a.mc is None else a.mc:g}, zeta0-frac = {a.z0:g}.',
+                            f'# Base: {CARD.relative_to(REPO)}; changed: nsteps, nstart, ninfo, chi-freeze-steps, nvideo, tau-m, tau-chi' + ('' if a.z0 == .3 else ', zeta0-frac') + ('' if a.mc is None else ', mc') + '.',
+                            f'# {prep + nsteps} steps; output from the release on, {nsteps/TC:.1f} tau_c, a light frame every {a.ninfo} steps ({a.ninfo/TC:.2f} tau_c).']
+                    (d/'run.dat').write_text('\n'.join(head) + '\n' + body + '\n')
+                    manifest['cases'][name] = dict(tau_m=tm, tau_chi=tchi, regime=what, z0=a.z0, mc=MC if a.mc is None else a.mc, start='active', release_step=prep)
+                    print(f'{name:14s} tau_m {tm:g}, tau_chi {tchi:g}: uniform active start, release at {prep/TC:.0f} tau_c')
+                    continue
                 head = [f'# {"/".join(a.out.parts[-2:])}/{name}: half the box prescribed active (chi = 1, m = {M_A}), half passive (chi = 0, m = {M_P}), then released with adaptation on.',
                         (f'# tau_m = {tm:g} tau_c, tau_chi = {tchi:g} tau_c at the working point (mc = .2287, zeta0-frac = .3): {what} in the uniform-start scan 20261019/cw_hill_tchifill.'
                          if a.z0 == .3 else
-                         f'# tau_m = {tm:g} tau_c, tau_chi = {tchi:g} tau_c, mc = .2287, zeta0-frac = {a.z0:g}: chi = 0 has no activity at all. The uniform-start scan ({what} there) was at zeta0-frac = .3 and does not carry over; the start frame is the zeta0-frac = .3 one.'),
+                         f'# tau_m = {tm:g} tau_c, tau_chi = {tchi:g} tau_c, mc = {mc_txt}, zeta0-frac = {a.z0:g}: chi = 0 has no activity at all. The uniform-start scan ({what} there) was at zeta0-frac = .3 and does not carry over; the start frame is the zeta0-frac = .3 one.'),
                         common[0],
-                        f'# Base: {CARD.relative_to(REPO)}; changed: nsteps, nstart, ninfo, chi-freeze-steps, nvideo, tau-m, tau-chi, init-frame, init-frame-phenotype' + ('' if a.z0 == .3 else ', zeta0-frac') + '.',
+                        f'# Base: {CARD.relative_to(REPO)}; changed: nsteps, nstart, ninfo, chi-freeze-steps, nvideo, tau-m, tau-chi, init-frame, init-frame-phenotype' + ('' if a.z0 == .3 else ', zeta0-frac') + ('' if a.mc is None else ', mc') + '.',
                         common[1]]
                 (d/'run.dat').write_text('\n'.join(head) + '\n' + body + '\n' + '\n'.join(f'{k:<21}= {v}' for k, v in extra.items()) + '\n')
-                manifest['cases'][name] = dict(tau_m=tm, tau_chi=tchi, regime=what, z0=a.z0)
+                manifest['cases'][name] = dict(tau_m=tm, tau_chi=tchi, regime=what, z0=a.z0, **({} if a.mc is None else dict(mc=a.mc)))
                 print(f'{name:14s} tau_m {tm:g}, tau_chi {tchi:g}: {what}')
         (root/'manifest.json').write_text(json.dumps(manifest, indent=1))
         print(f'{len(manifest["cases"])} cases under {root}; {nsteps} steps = {nsteps/TC:.1f} tau_c each')
