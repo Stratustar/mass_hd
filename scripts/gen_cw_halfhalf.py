@@ -25,6 +25,8 @@ varied instead, 3 x 3. Picked from the measured <chi>(tau_m, tau_chi) of 2026101
             = 14.5  two states for every tau_chi (.96 / .03 - .06)
     tau_chi = .3, 3, 30 tau_c
 The start is the same frame (--frame: reuse the init_frame.json already written by the mc scan instead of a new copy).
+--z0 0 (cases/20261126/cw_halfhalf_tm_tchi_z0): the same nine with zeta0-frac = 0, one band active and the other with no
+activity at all.
 
 Base card: cases/20261022/cw_hill_defect_dense/L256/hn16_wp0p002_tc0p3_tm8_chi1_rep1 (hill law, chi = 1 active).
 Changed keys: nsteps, nstart, ninfo, chi-freeze-steps, nvideo, tau-m, init-frame, init-frame-phenotype, and mc, zeta0-frac
@@ -68,6 +70,7 @@ def main():
     ap.add_argument('--ninfo', type=int, default=337, help='steps between light frames (337 = 0.5 tau_c)')
     ap.add_argument('--container-root', default='/work/mass_hd', help='where the repo is mounted when the cards run')
     ap.add_argument('--scan', choices=('mc', 'tm_tchi'), default='mc')
+    ap.add_argument('--z0', type=float, default=.3, help='zeta0-frac of the tm_tchi scan; 0 = the passive phenotype has no activity at all')
     ap.add_argument('--frame', type=Path, help='an init_frame.json already in the repo to start from (none is written)')
     a = ap.parse_args()
     root = (REPO/a.out if not a.out.is_absolute() else a.out)/'L256'
@@ -106,13 +109,17 @@ def main():
                 d = root/name
                 d.mkdir(parents=True, exist_ok=True)
                 body = replace(replace(base, 'tau-m', f'{tm*TC:.9f}'), 'tau-chi', tchi_steps)
-                head = [f'# 20261126/cw_halfhalf_tm_tchi/{name}: half the box prescribed active (chi = 1, m = {M_A}), half passive (chi = 0, m = {M_P}), then released with adaptation on.',
-                        f'# tau_m = {tm:g} tau_c, tau_chi = {tchi:g} tau_c at the working point (mc = .2287, zeta0-frac = .3): {what} in the uniform-start scan 20261019/cw_hill_tchifill.',
+                if a.z0 != .3:
+                    body = replace(body, 'zeta0-frac', f'{a.z0:g}')
+                head = [f'# {"/".join(a.out.parts[-2:])}/{name}: half the box prescribed active (chi = 1, m = {M_A}), half passive (chi = 0, m = {M_P}), then released with adaptation on.',
+                        (f'# tau_m = {tm:g} tau_c, tau_chi = {tchi:g} tau_c at the working point (mc = .2287, zeta0-frac = .3): {what} in the uniform-start scan 20261019/cw_hill_tchifill.'
+                         if a.z0 == .3 else
+                         f'# tau_m = {tm:g} tau_c, tau_chi = {tchi:g} tau_c, mc = .2287, zeta0-frac = {a.z0:g}: chi = 0 has no activity at all. The uniform-start scan ({what} there) was at zeta0-frac = .3 and does not carry over; the start frame is the zeta0-frac = .3 one.'),
                         common[0],
-                        f'# Base: {CARD.relative_to(REPO)}; changed: nsteps, nstart, ninfo, chi-freeze-steps, nvideo, tau-m, tau-chi, init-frame, init-frame-phenotype.',
+                        f'# Base: {CARD.relative_to(REPO)}; changed: nsteps, nstart, ninfo, chi-freeze-steps, nvideo, tau-m, tau-chi, init-frame, init-frame-phenotype' + ('' if a.z0 == .3 else ', zeta0-frac') + '.',
                         common[1]]
                 (d/'run.dat').write_text('\n'.join(head) + '\n' + body + '\n' + '\n'.join(f'{k:<21}= {v}' for k, v in extra.items()) + '\n')
-                manifest['cases'][name] = dict(tau_m=tm, tau_chi=tchi, regime=what)
+                manifest['cases'][name] = dict(tau_m=tm, tau_chi=tchi, regime=what, z0=a.z0)
                 print(f'{name:14s} tau_m {tm:g}, tau_chi {tchi:g}: {what}')
         (root/'manifest.json').write_text(json.dumps(manifest, indent=1))
         print(f'{len(manifest["cases"])} cases under {root}; {nsteps} steps = {nsteps/TC:.1f} tau_c each')

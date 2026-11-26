@@ -271,47 +271,56 @@
   "tc0p3_tm5": {
    "tau_m": 5.0,
    "tau_chi": 0.3,
-   "regime": "one mixed state"
+   "regime": "one mixed state",
+   "z0": 0.3
   },
   "tc0p3_tm9": {
    "tau_m": 9.0,
    "tau_chi": 0.3,
-   "regime": "the onset of the two states"
+   "regime": "the onset of the two states",
+   "z0": 0.3
   },
   "tc0p3_tm14p5": {
    "tau_m": 14.5,
    "tau_chi": 0.3,
-   "regime": "two states"
+   "regime": "two states",
+   "z0": 0.3
   },
   "tc3_tm5": {
    "tau_m": 5.0,
    "tau_chi": 3.0,
-   "regime": "one mixed state"
+   "regime": "one mixed state",
+   "z0": 0.3
   },
   "tc3_tm9": {
    "tau_m": 9.0,
    "tau_chi": 3.0,
-   "regime": "the onset of the two states"
+   "regime": "the onset of the two states",
+   "z0": 0.3
   },
   "tc3_tm14p5": {
    "tau_m": 14.5,
    "tau_chi": 3.0,
-   "regime": "two states"
+   "regime": "two states",
+   "z0": 0.3
   },
   "tc30_tm5": {
    "tau_m": 5.0,
    "tau_chi": 30.0,
-   "regime": "one mixed state"
+   "regime": "one mixed state",
+   "z0": 0.3
   },
   "tc30_tm9": {
    "tau_m": 9.0,
    "tau_chi": 30.0,
-   "regime": "the onset of the two states"
+   "regime": "the onset of the two states",
+   "z0": 0.3
   },
   "tc30_tm14p5": {
    "tau_m": 14.5,
    "tau_chi": 30.0,
-   "regime": "two states"
+   "regime": "two states",
+   "z0": 0.3
   }
  }
 }
