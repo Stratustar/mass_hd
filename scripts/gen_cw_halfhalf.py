@@ -18,10 +18,21 @@ Two sets:
     z0p3_*   zeta0-frac = .3, the value the phase diagram was measured at (chi = 0 keeps 30 % of the activity)
     z0_*     zeta0-frac = 0: chi = 0 has no activity at all; the phase diagram does not carry over to this set
 
+--scan tm_tchi (cases/20261126/cw_halfhalf_tm_tchi): the working point mc = .2287, zeta0-frac = .3 kept, and the two times
+varied instead, 3 x 3. Picked from the measured <chi>(tau_m, tau_chi) of 20261019/cw_hill_tchifill (two uniform starts):
+    tau_m   = 5     one mixed state for every tau_chi (<chi> = .29 - .44, both starts agree)
+            = 9     the onset: one state at tau_chi = .3 (<chi> = .71) and 3 (.39), two at tau_chi = 30 (.81 / .13)
+            = 14.5  two states for every tau_chi (.96 / .03 - .06)
+    tau_chi = .3, 3, 30 tau_c
+The start is the same frame (--frame: reuse the init_frame.json already written by the mc scan instead of a new copy).
+
 Base card: cases/20261022/cw_hill_defect_dense/L256/hn16_wp0p002_tc0p3_tm8_chi1_rep1 (hill law, chi = 1 active).
-Changed keys: nsteps, nstart, ninfo, chi-freeze-steps, nvideo, tau-m, mc, zeta0-frac, init-frame, init-frame-phenotype.
+Changed keys: nsteps, nstart, ninfo, chi-freeze-steps, nvideo, tau-m, init-frame, init-frame-phenotype, and mc, zeta0-frac
+(--scan mc) or tau-chi (--scan tm_tchi).
 
   gen_cw_halfhalf.py localtest/20261125/cw_halfhalf [--tau-c 150] [--tau-m 20] [--container-root /work/mass_hd]
+  gen_cw_halfhalf.py cases/20261126/cw_halfhalf_tm_tchi --scan tm_tchi --tau-c 300 --container-root /home/helu/mass_hd \
+      --frame cases/20261125/cw_halfhalf/L256/init_frame.json
 """
 import argparse
 import json
@@ -39,6 +50,8 @@ M_A, M_P = .308, .064
 FLOW = ('QQxx', 'QQyx', 'ux_mat', 'uy_mat', 'pressure')
 POINTS = ((.16, 'active'), (.22, 'bistable'), (.28, 'passive'))
 Z0S = ((.3, 'z0p3'), (0., 'z0'))
+TMS = ((5., 'one mixed state'), (9., 'the onset of the two states'), (14.5, 'two states'))
+TCHIS = ((.3, '202.3'), (3., '2022.987099902'), (30., '20229.87099902'))       # tau_c, and steps as the earlier scans wrote them
 
 
 def replace(text, key, value):
@@ -54,6 +67,8 @@ def main():
     ap.add_argument('--tau-m', type=float, default=20., help='in units of tau_c')
     ap.add_argument('--ninfo', type=int, default=337, help='steps between light frames (337 = 0.5 tau_c)')
     ap.add_argument('--container-root', default='/work/mass_hd', help='where the repo is mounted when the cards run')
+    ap.add_argument('--scan', choices=('mc', 'tm_tchi'), default='mc')
+    ap.add_argument('--frame', type=Path, help='an init_frame.json already in the repo to start from (none is written)')
     a = ap.parse_args()
     root = (REPO/a.out if not a.out.is_absolute() else a.out)/'L256'
     root.mkdir(parents=True, exist_ok=True)
@@ -67,13 +82,42 @@ def main():
     data = {k: {'type': 'array(double)', 'value': src[k]['value']} for k in FLOW}
     data['chi'] = {'type': 'array(double)', 'value': chi.ravel().tolist()}
     data['m'] = {'type': 'array(double)', 'value': m.ravel().tolist()}
-    (root/'init_frame.json').write_text(json.dumps({'id': 'frame', 'version': 1, 'data': data}))
+    if a.frame is None:
+        (root/'init_frame.json').write_text(json.dumps({'id': 'frame', 'version': 1, 'data': data}))
+        frame = root/'init_frame.json'
+    else:
+        frame = REPO/a.frame
+        have = json.loads(frame.read_text())['data']
+        assert all(np.array_equal(np.asarray(have[k]['value']), np.asarray(data[k]['value'])) for k in data), 'frame differs'
 
     text = CARD.read_text()
     base = '\n'.join(ln for ln in text.splitlines() if ln.strip() and not ln.startswith('#'))
-    for k, v in (('nsteps', nsteps), ('nstart', 0), ('ninfo', a.ninfo), ('chi-freeze-steps', 0), ('nvideo', 0),
-                 ('tau-m', f'{a.tau_m*TC:.9f}')):
+    for k, v in (('nsteps', nsteps), ('nstart', 0), ('ninfo', a.ninfo), ('chi-freeze-steps', 0), ('nvideo', 0)):
         base = replace(base, k, v)
+    extra = {'init-frame': f'{a.container_root}/{frame.relative_to(REPO)}', 'init-frame-phenotype': 1}
+    common = [f'# Start: Q, u, P of the last frame of localtest/20261124/cw_stripe_toy/L256/lam256_w1 (turbulence over this same pattern held fixed); chi and m prescribed, boundaries at x = {L//4} and {3*L//4}, tanh scale {W:g}.',
+              f'# {nsteps} steps = {nsteps/TC:.1f} tau_c, a light frame every {a.ninfo} steps ({a.ninfo/TC:.2f} tau_c).']
+    if a.scan == 'tm_tchi':
+        manifest = dict(study=str(a.out), scan='tm_tchi', nsteps=nsteps, ninfo=a.ninfo, tau_c=TC, m_active=M_A, m_passive=M_P, tanh_scale=W,
+                        start=str(START.relative_to(REPO.parent)), frame=str(frame.relative_to(REPO)), chi_profile=prof.tolist(), cases={})
+        for tchi, tchi_steps in TCHIS:
+            for tm, what in TMS:
+                name = f'tc{tchi:g}_tm{tm:g}'.replace('.', 'p')
+                d = root/name
+                d.mkdir(parents=True, exist_ok=True)
+                body = replace(replace(base, 'tau-m', f'{tm*TC:.9f}'), 'tau-chi', tchi_steps)
+                head = [f'# 20261126/cw_halfhalf_tm_tchi/{name}: half the box prescribed active (chi = 1, m = {M_A}), half passive (chi = 0, m = {M_P}), then released with adaptation on.',
+                        f'# tau_m = {tm:g} tau_c, tau_chi = {tchi:g} tau_c at the working point (mc = .2287, zeta0-frac = .3): {what} in the uniform-start scan 20261019/cw_hill_tchifill.',
+                        common[0],
+                        f'# Base: {CARD.relative_to(REPO)}; changed: nsteps, nstart, ninfo, chi-freeze-steps, nvideo, tau-m, tau-chi, init-frame, init-frame-phenotype.',
+                        common[1]]
+                (d/'run.dat').write_text('\n'.join(head) + '\n' + body + '\n' + '\n'.join(f'{k:<21}= {v}' for k, v in extra.items()) + '\n')
+                manifest['cases'][name] = dict(tau_m=tm, tau_chi=tchi, regime=what)
+                print(f'{name:14s} tau_m {tm:g}, tau_chi {tchi:g}: {what}')
+        (root/'manifest.json').write_text(json.dumps(manifest, indent=1))
+        print(f'{len(manifest["cases"])} cases under {root}; {nsteps} steps = {nsteps/TC:.1f} tau_c each')
+        return
+    base = replace(base, 'tau-m', f'{a.tau_m*TC:.9f}')
     manifest = dict(study=str(a.out), nsteps=nsteps, ninfo=a.ninfo, tau_c=TC, tau_m_over_tc=a.tau_m, m_active=M_A, m_passive=M_P,
                     tanh_scale=W, start=str(START.relative_to(REPO.parent)), chi_profile=prof.tolist(), cases={})
     tm = f'{a.tau_m:g}'.replace('.', 'p')
@@ -83,7 +127,6 @@ def main():
             d = root/name
             d.mkdir(parents=True, exist_ok=True)
             body = replace(replace(base, 'mc', mc), 'zeta0-frac', f'{z0:g}')
-            extra = {'init-frame': f'{a.container_root}/{root.relative_to(REPO)}/init_frame.json', 'init-frame-phenotype': 1}
             where = (f'{phase} region of the (tau_m, mc) phase diagram' if z0 == .3 else
                      f'mc of the {phase} point; the phase diagram was measured at zeta0-frac = .3 and does not carry over')
             head = [f'# 20261125/cw_halfhalf/{name}: half the box prescribed active (chi = 1, m = {M_A}), half passive (chi = 0, m = {M_P}), then released with adaptation on.',

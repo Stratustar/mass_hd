@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""One run of the half active / half passive start (cases/20261125/cw_halfhalf, scripts/gen_cw_halfhalf.py): a small
+"""One run of the half active / half passive start (cases/20261125/cw_halfhalf, cases/20261126/cw_halfhalf_tm_tchi; scripts/gen_cw_halfhalf.py): a small
 file with the interface dynamics, and a video.
 
 At t = 0 the active band is LX/4 <= x < 3 LX/4 (chi = 1), the rest is passive (chi = 0); then everything evolves.
@@ -13,8 +13,8 @@ halfhalf.npz
                          means (rms for the speed, standard deviation for P) deep inside each initial band
   boundary               number of lattice links across chi = 1/2, in units of the two straight initial boundaries
   snap, snap_t           chi maps at SNAP times (tau_c)
-  mc, z0, tau_m          of the run (tau_m in tau_c)
-halfhalf.mp4             chi, m, P - <P>, flow speed; one video frame per saved frame
+  mc, z0, tau_m, tau_chi of the run (times in tau_c)
+halfhalf.mp4             |u|, P - <P>, m, chi in the colours of the confluent-wet dashboard spec; one video frame per saved frame
 
   cw_halfhalf.py <case_in> <case_out> [--no-video]
 """
@@ -57,7 +57,7 @@ def main():
     a = ap.parse_args()
     p = read_params(a.case_in)
     LX, LY = int(p['LX']), int(p['LY'])
-    mc, z0, tm = float(p['mc']), float(p['zeta0_frac']), float(p['tau_m'])/TC
+    mc, z0, tm, tchi = float(p['mc']), float(p['zeta0_frac']), float(p['tau_m'])/TC, float(p['tau_chi'])/TC
     fr = frames(a.case_in)
     assert fr, f'no frames in {a.case_in}'
     a.case_out.mkdir(parents=True, exist_ok=True)
@@ -80,22 +80,27 @@ def main():
         from matplotlib.animation import FFMpegWriter
         plt.rcParams.update({'font.family': 'DejaVu Sans', 'figure.facecolor': 'white', 'savefig.facecolor': 'white',
                              'animation.ffmpeg_path': imageio_ffmpeg.get_ffmpeg_exe()})
-        fig, ax = plt.subplots(1, 4, figsize=(15.6, 4.5), dpi=100)
-        fig.subplots_adjust(left=.006, right=.994, top=.86, bottom=.07, wspace=.03)
+        # The confluent-wet dashboard spec (dev_log, default rules): u, P, m, chi in this order; magma 0 .. p99.5,
+        # RdBu_r +- p99.5, viridis 0 .. 1, coolwarm 0 .. 1; limits sampled from ~10 frames and then fixed; a
+        # one-symbol title and a colour bar per panel. The only addition is the clock in the bottom margin.
+        pick = [fr[j] for j in np.unique(np.linspace(0, len(fr) - 1, 10).round().astype(int))]
+        smp = [load(f, LX, LY) for f in pick]
+        umax = float(np.percentile(np.concatenate([np.hypot(q['ux_mat'], q['uy_mat']).ravel() for q in smp])*TC, 99.5))
+        pmax = float(np.percentile(np.abs(np.concatenate([(q['pressure'] - q['pressure'].mean()).ravel() for q in smp])), 99.5))
+        fig = plt.figure(figsize=(16.4, 4.35), dpi=100)
         blank = np.zeros((LY, LX))
-        ims = [ax[0].imshow(blank, origin='lower', cmap='RdBu_r', vmin=0, vmax=1, interpolation='nearest'),
-               ax[1].imshow(blank, origin='lower', cmap='viridis', vmin=0, vmax=.4, interpolation='nearest'),
-               ax[2].imshow(blank, origin='lower', cmap='RdBu_r', vmin=-60, vmax=60, interpolation='nearest'),
-               ax[3].imshow(blank, origin='lower', cmap='magma', vmin=0, vmax=15, interpolation='nearest')]
-        titles = (r'phenotype $\chi$  (red = active, blue = passive)', 'memory m  (0 to 0.4)',
-                  r'pressure $P - \langle P\rangle$  ($\pm$60e-3)', r'flow speed  (0 to 15 per $\tau_c$)')
-        for x, s in zip(ax, titles):
-            x.set_xticks([]); x.set_yticks([]); x.set_title(s, fontsize=11.5, pad=5)
-            for sp in x.spines.values():
-                sp.set_visible(False)
-        fig.text(.008, .955, rf'half active / half passive start;  $\tau_m$ = {tm:g} $\tau_c$,  $m_c$ = {mc:g},  $z_0$ = {z0:g}',
-                 fontsize=12.5, va='center')
-        clock = fig.text(.008, .025, '', fontsize=11.5)
+        spec = (('magma', 0, umax, r'$|u|$'), ('RdBu_r', -pmax, pmax, r'$P$'), ('viridis', 0, 1, r'$m$'), ('coolwarm', 0, 1, r'$\chi$'))
+        ims = []
+        for j, (cm, lo, hi, s_) in enumerate(spec):
+            x0 = .008 + j*.248
+            x = fig.add_axes([x0, .075, .205, .205*16.4/4.35])
+            ims.append(x.imshow(blank, origin='lower', cmap=cm, vmin=lo, vmax=hi, interpolation='nearest'))
+            x.set_xticks([]); x.set_yticks([]); x.set_title(s_, fontsize=14, pad=5)
+            for sp_ in x.spines.values():
+                sp_.set_visible(False)
+            cb = fig.colorbar(ims[-1], cax=fig.add_axes([x0 + .209, .075, .006, .205*16.4/4.35]))
+            cb.ax.tick_params(labelsize=8.5)
+        clock = fig.text(.008, .02, '', fontsize=10.5)
         writer = FFMpegWriter(fps=12, codec='libx264', extra_args=['-pix_fmt', 'yuv420p', '-crf', '20', '-vf', 'pad=ceil(iw/2)*2:ceil(ih/2)*2'])
         writer.setup(fig, str(a.case_out/'halfhalf.mp4'), dpi=100)
 
@@ -113,12 +118,12 @@ def main():
             snaps.append(q['chi'].astype(np.float32))
         if writer is not None:
             P = q['pressure']
-            ims[0].set_data(q['chi'].T); ims[1].set_data(q['m'].T); ims[2].set_data(((P - P.mean())*1e3).T); ims[3].set_data(sp.T)
-            clock.set_text(rf't = {t[i]:5.1f} $\tau_c$ = {t[i]/tm:.2f} $\tau_m$      active share $\langle\chi\rangle$ = {ser["chi_mean"][i]:.2f}')
+            ims[0].set_data(sp.T); ims[1].set_data((P - P.mean()).T); ims[2].set_data(q['m'].T); ims[3].set_data(q['chi'].T)
+            clock.set_text(rf't = {t[i]:5.1f} $\tau_c$')
             writer.grab_frame()
     if writer is not None:
         writer.finish()
-    np.savez_compressed(a.case_out/'halfhalf.npz', t=t, snap=np.array(snaps), snap_t=t[want], mc=mc, z0=z0, tau_m=tm,
+    np.savez_compressed(a.case_out/'halfhalf.npz', t=t, snap=np.array(snaps), snap_t=t[want], mc=mc, z0=z0, tau_m=tm, tau_chi=tchi,
                         **{f'prof_{k}': v for k, v in prof.items()}, **ser)
     print(f'{a.case_in.name}: {len(fr)} frames to {t[-1]:.1f} tau_c; <chi> {ser["chi_mean"][0]:.3f} -> {ser["chi_mean"][-1]:.3f}; '
           f'boundary {ser["boundary"][0]:.2f} -> {ser["boundary"][-1]:.2f}')
